@@ -1,46 +1,43 @@
 package com.example.backend.Controller;
 
 import com.example.backend.model.User;
-import com.example.backend.Repository.UserRepository;
+import com.example.backend.service.UserService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.util.Map;
+
+@CrossOrigin(origins = "http://localhost:3000") // adapte au port de React
 @RestController
 @RequestMapping("/api/auth")
-//@CrossOrigin(origins = "http://localhost:3000")
 public class AuthController {
 
-    private final UserRepository userRepository;
-    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
-
-    public AuthController(UserRepository userRepository) {
-        this.userRepository = userRepository;
-    }
+    @Autowired
+    private UserService userService;
 
     @PostMapping("/login")
-    public String login(@RequestBody User user) {
-        try {
-            logger.info("Tentative de connexion pour : " + user.getNomPrenom());
+    public ResponseEntity<?> login(@RequestBody User loginRequest) {
+        User user = userService.authenticate(loginRequest.getNomPrenom(), loginRequest.getPassword());
 
-            User existing = userRepository.findByNomPrenom(user.getNomPrenom());
-            if (existing == null) {
-                logger.warn("Utilisateur non trouvé : " + user.getNomPrenom());
-                return "Utilisateur non trouvé";
-            }
-
-            if (!existing.getPassword().equals(user.getPassword())) {
-                logger.warn("Mot de passe incorrect pour : " + user.getNomPrenom());
-                return "Mot de passe incorrect";
-            }
-
-            logger.info("Connexion réussie pour : " + user.getNomPrenom() + " avec rôle : " + existing.getRole());
-            return existing.getRole();
-        } catch (Exception e) {
-            logger.error("Erreur serveur lors de la connexion : ", e);
-            // Retourner le message d'erreur exact pour debug (à sécuriser en production)
-            return "Erreur serveur: " + e.getMessage();
+        if (user != null) {
+            // ✅ retourne un JSON et status 200
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "user", Map.of(
+                            "id", user.getId(),
+                            "nomPrenom", user.getNomPrenom(),
+                            "role", user.getRole()
+                    ),
+                    "message", "Login successful"
+            ));
+        } else {
+            // 🔴 retourne status 401 et JSON
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                    "success", false,
+                    "message", "Invalid username or password"
+            ));
         }
     }
-
 }
