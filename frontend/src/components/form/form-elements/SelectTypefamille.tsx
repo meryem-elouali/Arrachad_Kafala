@@ -6,12 +6,11 @@ interface Option {
   value: string;
   label: string;
 }
-
-interface SelectTypefamille {
-  options?: Option[]; // optionnel
-  placeholder?: string;
-  onChange: (value: string) => void;
-}
+const handleSelect = (option: Option) => {
+    setSelected(option);
+    onChange(option.label); // <- envoyer le nom au backend
+    setOpen(false);
+};
 
 const SelectTypefamille: React.FC<SelectTypefamille> = ({
   options = [],

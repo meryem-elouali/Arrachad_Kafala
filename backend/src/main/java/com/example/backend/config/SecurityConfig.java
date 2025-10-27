@@ -19,9 +19,11 @@ public class SecurityConfig {
                 .csrf().disable() // désactive CSRF pour les tests
                 .cors().and() // 🔹 active la config CORS
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // autoriser le login sans auth
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/auth/**").permitAll() // login
+                        .requestMatchers("/api/**").permitAll()      // autorise toutes les API
+                        .anyRequest().permitAll()                     // <-- change authenticated() en permitAll()
                 );
+
 
         return http.build();
     }
