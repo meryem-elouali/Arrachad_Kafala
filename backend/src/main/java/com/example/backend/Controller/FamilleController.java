@@ -42,4 +42,18 @@ public class FamilleController {
     public ResponseEntity<List<Habitation>> getHabitations() {
         return ResponseEntity.ok(familleService.getAllHabitations());
     }
+    // Ajouter un type de famille
+    @PostMapping("/types")
+    public ResponseEntity<TypeFamille> addTypeFamille(@RequestBody TypeFamille typeFamille) {
+        TypeFamille saved = familleService.saveTypeFamille(typeFamille);
+        return ResponseEntity.ok(saved);
+    }
+
+    // Ajouter une habitation
+    @PostMapping("/habitations")
+    public ResponseEntity<Habitation> addHabitation(@RequestBody Habitation habitation) {
+        Habitation saved = familleService.saveHabitation(habitation);
+        return ResponseEntity.ok(saved);
+    }
+
 }

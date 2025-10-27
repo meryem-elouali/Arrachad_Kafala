@@ -28,6 +28,15 @@ public class FamilleService {
     public Famille saveFamille(Famille famille) {
         return familleRepository.save(famille);
     }
+    // Dans FamilleService.java
+    public TypeFamille saveTypeFamille(TypeFamille typeFamille) {
+        return typeFamilleRepository.save(typeFamille);
+    }
+
+    public Habitation saveHabitation(Habitation habitation) {
+        return habitationRepository.save(habitation);
+    }
+
 
     public List<Famille> getAllFamilles() {
         return familleRepository.findAll();
