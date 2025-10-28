@@ -3,7 +3,7 @@ import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import Label from "../../components/form/Label";
-
+import Input from "../../components/form/input/InputField";
 import ComponentCard from "../../components/common/ComponentCard";
 export default function FormElements() {
   const [familleData, setFamilleData] = useState({
@@ -21,6 +21,7 @@ export default function FormElements() {
     phone: "",
     villeNaissance: "",
     dateNaissance: "",
+
     dateDeces: "",
     typeMaladie: "",
     typeTravail: "",
@@ -202,6 +203,8 @@ export default function FormElements() {
          <ComponentCard title="معلومات عامة">
 
           <h2 className="font-bold text-lg">معلومات العائلة</h2>
+             <div className="flex gap-4">
+                <div className="w-1/2">
        <Select
          options={typesFamille}
          value={familleData.typeFamille?.id || ""}
@@ -214,7 +217,9 @@ export default function FormElements() {
          placeholder="نوع الحالة"
          apiUrl="http://localhost:8080/api/famille/types"
        />
+   </div>
 
+      <div className="w-1/2">
        <Select
          options={habitations}
          value={familleData.habitationFamille?.id || ""}
@@ -226,19 +231,21 @@ export default function FormElements() {
          }
          placeholder="نوع السكن"
          apiUrl="http://localhost:8080/api/famille/habitations"
-       />
+       /></div></div>
 
 
 
           <div className="md:col-span-2 mt-4">
                       <Label htmlFor="adresseFamille">عنوان العائلة</Label>
-          <input
+          <Input
             type="text"
             placeholder="عنوان العائلة"
             value={familleData.adresseFamille}
             onChange={(e) => setFamilleData({ ...familleData, adresseFamille: e.target.value })}
             className="border p-2 rounded w-full"
           /></div>
+             <div className="flex gap-4">
+                <div className="w-1/2">
            <div className="md:col-span-2 mt-4">
                                 <Label htmlFor="nombreEnfants">عدد الأبناء</Label>
           <input
@@ -248,7 +255,9 @@ export default function FormElements() {
             value={familleData.nombreEnfants}
             onChange={(e) => setFamilleData({ ...familleData, nombreEnfants: parseInt(e.target.value) })}
             className="border p-2 rounded w-full"
-          /></div>
+          /></div>   </div>
+
+                        <div className="w-1/2">
            <div className="md:col-span-2 mt-4">
                                 <Label htmlFor="numphone">رقم الهاتف</Label>
           <input
@@ -257,57 +266,115 @@ export default function FormElements() {
             value={familleData.phone}
             onChange={(e) => setFamilleData({ ...familleData, phone: e.target.value })}
             className="border p-2 rounded w-full"
-          /></div>
-           <div className="md:col-span-2 mt-4">
-                                <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
-          <input
-            type="text"
-            placeholder="__/__/____"
-            value={familleData.dateInscription}
-            onChange={(e) => setFamilleData({ ...familleData, dateInscription: e.target.value })}
-            className="border p-2 rounded w-full"
-          /></div>
+          /></div></div></div>
+             <div className="flex gap-4">
+                <div className="w-1/2">
+          <div className="flex flex-col md:col-span-2">
+            <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
+            <Input
+              type="text"
+              id="dateInscription"
+              placeholder="__/__/____"
+              value={familleData.dateInscription}
+              onChange={(e) => {
+                let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
+                if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                if (val.length > 10) val = val.slice(0, 10);
+                setFamilleData((prev) => ({ ...prev, dateInscription: val }));
+              }}
+            />
+          </div></div></div>
+
+
 
 </ComponentCard>
   <ComponentCard title="معلومات الام">
     <h2 className="font-bold text-lg">معلومات الأم</h2>
 
     {/* Nom et Prénom toujours visibles */}
-    <input
-      type="text"
-      placeholder="Nom"
-      value={mereData.nom}
-      onChange={(e) => setMereData({ ...mereData, nom: e.target.value })}
-      className="border p-2 rounded w-full"
-    />
-    <input
-      type="text"
-      placeholder="Prénom"
-      value={mereData.prenom}
-      onChange={(e) => setMereData({ ...mereData, prenom: e.target.value })}
-      className="border p-2 rounded w-full"
-    />
+
+    <div className="flex gap-4">
+     <div className="w-1/2">
+            <Label htmlFor="prenom">الاسم</Label>
+            <input
+              id="prenom"
+              type="text"
+              placeholder="الاسم"
+              value={mereData.prenom}
+              onChange={(e) => setMereData({ ...mereData, prenom: e.target.value })}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+      <div className="w-1/2">
+        <Label htmlFor="nom">النسب</Label>
+        <input
+          id="nom"
+          type="text"
+          placeholder="النسب"
+          value={mereData.nom}
+          onChange={(e) => setMereData({ ...mereData, nom: e.target.value })}
+          className="border p-2 rounded w-full"
+        />
+      </div>
+
+
+    </div>
+
 
     {/* Si non décédée, afficher les autres champs */}
     {!mereData.estDecedee && (
       <>
-        <input
+         <div className="flex gap-4">
+            <div className="w-1/2">
+
+             <Label htmlFor="nom">رقم البطاقة الوطنية</Label>
+        <Input
           type="text"
           placeholder="CIN"
           value={mereData.cin}
           onChange={(e) => setMereData({ ...mereData, cin: e.target.value })}
           className="border p-2 rounded w-full"
         />
-        <input
-          type="text"
-          placeholder="Téléphone"
-          value={mereData.phone}
-          onChange={(e) => setMereData({ ...mereData, phone: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
+           </div>
+
+              <div className="w-1/2">
+         <input
+                  type="text"
+                  placeholder="Téléphone"
+                  value={mereData.phone}
+                  onChange={(e) => setMereData({ ...mereData, phone: e.target.value })}
+                  className="border p-2 rounded w-full"
+                /></div></div>
+   <div className="flex gap-4">
+      <div className="w-1/2">
+                    <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
+                    <Input
+                      type="text"
+                      id="datanaissancemere"
+                      placeholder="__/__/____"
+                      value={mereData.dateNaissance}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
+                        if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                        if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                        if (val.length > 10) val = val.slice(0, 10);
+                        setMereData((prev) => ({ ...prev, dateNaissance: val }));
+                      }}
+                    />
+
+   </div>
+
+      <div className="w-1/2">
+              <Label htmlFor="villeNaissance">مكان الازدياد</Label>
+              <Input type="text" id="villeNaissance" value={mereData.villeNaissance}   onChange={(e) => setMereData({ ...mereData, villeNaissance: e.target.value })} />
+            </div></div>
+
 
         {/* Checkbox Malade */}
-        <div className="flex items-center mt-4">
+          <div className="flex gap-4">
+             <div className="w-1/2">
+              <div className="flex items-center mt-4">
           <input
             type="checkbox"
             checked={mereData.estMalade}
@@ -315,7 +382,9 @@ export default function FormElements() {
             className="mr-2"
           />
           <label>Malade</label>
-        </div>
+          </div></div>
+
+             <div className="w-1/2">
         {mereData.estMalade && (
           <input
             type="text"
@@ -325,8 +394,11 @@ export default function FormElements() {
             className="border p-2 rounded w-full mt-2"
           />
         )}
+        </div></div>
 
         {/* Checkbox Travaille */}
+           <div className="flex gap-4">
+              <div className="w-1/2">
         <div className="flex items-center mt-4">
           <input
             type="checkbox"
@@ -335,7 +407,9 @@ export default function FormElements() {
             className="mr-2"
           />
           <label>Travaille</label>
-        </div>
+        </div>   </div>
+
+                    <div className="w-1/2">
         {mereData.estTravaille && (
           <input
             type="text"
@@ -344,11 +418,13 @@ export default function FormElements() {
             onChange={(e) => setMereData({ ...mereData, typeTravail: e.target.value })}
             className="border p-2 rounded w-full mt-2"
           />
-        )}
+        )}</div></div>
       </>
     )}
 
     {/* Checkbox Décédée */}
+       <div className="flex gap-4">
+          <div className="w-1/2">
     <div className="flex items-center mt-4">
       <input
         type="checkbox"
@@ -358,7 +434,9 @@ export default function FormElements() {
       />
       <label>Décédée</label>
     </div>
+   </div>
 
+      <div className="w-1/2">
     {/* Si décédée, afficher seulement les champs essentiels */}
     {mereData.estDecedee && (
       <div className="mt-2 space-y-2">
@@ -372,7 +450,7 @@ export default function FormElements() {
         />
 
       </div>
-    )}
+    )}</div></div>
   </ComponentCard>
 
         </div>

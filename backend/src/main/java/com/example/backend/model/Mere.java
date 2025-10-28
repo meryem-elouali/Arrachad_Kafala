@@ -16,6 +16,7 @@ public class Mere {
     private String phone;
     private String villeNaissance;
     private String dateNaissance;
+
     private String dateDeces;
     private String typeMaladie;
     private String typeTravail;
