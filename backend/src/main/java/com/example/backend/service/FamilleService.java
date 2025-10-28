@@ -4,6 +4,7 @@ import com.example.backend.Repository.*;
 import com.example.backend.model.*;
 import org.springframework.stereotype.Service;
 import java.util.List;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class FamilleService {
@@ -21,10 +22,18 @@ public class FamilleService {
         this.habitationRepo = habitationRepo;
     }
 
+    @Transactional
     public Famille saveFamille(Famille famille) {
-        if (famille.getMere() != null) {
+        // Si la mère a déjà un id, on la récupère pour l’attacher
+        if (famille.getMere() != null && famille.getMere().getId() != null) {
+            Mere mere = mereRepo.findById(famille.getMere().getId())
+                    .orElseThrow(() -> new RuntimeException("Mère non trouvée"));
+            famille.setMere(mere);
+        } else if (famille.getMere() != null) {
+            // Sinon on la sauvegarde si c'est une nouvelle mère
             mereRepo.save(famille.getMere());
         }
+
         return familleRepo.save(famille);
     }
 
@@ -40,7 +49,6 @@ public class FamilleService {
         return typeRepo.save(typeFamille);
     }
 
-    // ✅ AJOUTER CETTE MÉTHODE
     public Habitation saveHabitation(Habitation habitation) {
         return habitationRepo.save(habitation);
     }
