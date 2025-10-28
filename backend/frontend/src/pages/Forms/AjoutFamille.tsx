@@ -48,16 +48,7 @@ export default function FormElements() {
   const handleSubmitAll = async () => {
     setLoading(true);
     try {
-      // Envoyer InfosFamille
-      const responseFamille = await fetch("http://localhost:8080/api/famille", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(familleData),
-      });
-      const savedFamille = await responseFamille.json();
-      console.log("Famille enregistrée :", savedFamille);
-
-      // Envoyer InfosMere
+      // 1️⃣ Envoyer InfosMere d'abord
       const formData = new FormData();
       Object.entries(mereData).forEach(([key, value]) => {
         formData.append(key, value);
@@ -69,6 +60,18 @@ export default function FormElements() {
       const savedMere = await responseMere.json();
       console.log("Mère enregistrée :", savedMere);
 
+      // 2️⃣ Ajouter l'id de la mère dans la famille
+      const familleToSave = { ...familleData, mere: { id: savedMere.id } };
+
+      // 3️⃣ Envoyer InfosFamille
+      const responseFamille = await fetch("http://localhost:8080/api/famille", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(familleToSave),
+      });
+      const savedFamille = await responseFamille.json();
+      console.log("Famille enregistrée :", savedFamille);
+
       alert("✅ Famille et Mère enregistrées avec succès !");
     } catch (error) {
       console.error(error);
@@ -77,6 +80,7 @@ export default function FormElements() {
       setLoading(false);
     }
   };
+
 
   // 🔹 Composant Select générique
   // 🔹 Composant Select générique
@@ -198,23 +202,32 @@ export default function FormElements() {
          <ComponentCard title="معلومات عامة">
 
           <h2 className="font-bold text-lg">معلومات العائلة</h2>
-        <Select
-          options={typesFamille}
-          value={familleData.typeFamille}
-          onChange={(val) => setFamilleData({ ...familleData, typeFamille: val })}
-          placeholder="نوع الحالة"
-          apiUrl="http://localhost:8080/api/famille/types"
-          onNewItem={(newType) => setTypesFamille((prev) => [...prev, newType])}
-        />
+       <Select
+         options={typesFamille}
+         value={familleData.typeFamille?.id || ""}
+         onChange={(val) =>
+           setFamilleData({
+             ...familleData,
+             typeFamille: { id: val }, // <-- objet complet attendu par Spring
+           })
+         }
+         placeholder="نوع الحالة"
+         apiUrl="http://localhost:8080/api/famille/types"
+       />
 
-        <Select
-          options={habitations}
-          value={familleData.habitationFamille}
-          onChange={(val) => setFamilleData({ ...familleData, habitationFamille: val })}
-          placeholder="نوع السكن"
-          apiUrl="http://localhost:8080/api/famille/habitations"
-          onNewItem={(newHab) => setHabitations((prev) => [...prev, newHab])}
-        />
+       <Select
+         options={habitations}
+         value={familleData.habitationFamille?.id || ""}
+         onChange={(val) =>
+           setFamilleData({
+             ...familleData,
+             habitationFamille: { id: val }, // <-- objet complet attendu
+           })
+         }
+         placeholder="نوع السكن"
+         apiUrl="http://localhost:8080/api/famille/habitations"
+       />
+
 
 
           <div className="md:col-span-2 mt-4">
