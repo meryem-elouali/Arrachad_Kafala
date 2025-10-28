@@ -1,158 +1,56 @@
+// Mere.java
 package com.example.backend.model;
 
 import jakarta.persistence.*;
-import java.time.LocalDate;
 
 @Entity
-@Table(name = "Mere")
+@Table(name = "mere")
 public class Mere {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-
-
-
-
-    @Column(name = "phone_mere")
-    private Integer phone;
-    @Column(name = "nom_mere")
     private String nom;
-    @Column(name = "prenom_mere")
     private String prenom;
-    @Column(name = "cin_mere")
     private String cin;
+    private String phone;
+    private String villeNaissance;
+    private String dateNaissance;
+    private String dateDeces;
+    private String typeMaladie;
+    private String typeTravail;
+    private Boolean estDecedee = false;
+    private Boolean estMalade = false;
+    private Boolean estTravaille = false;
+    private String photoMere;
 
-    @Column(name = "date_naissance_mere")
-    private LocalDate datenaissance;
-    @Column(name = "ville_naissance_mere")
-    private String villenaissance;
-    @Column(name = "mere_travaille")
-    private Boolean sitravaille;
-    @Column(name = "desc_travaille_mere")
-    private String desctravaille;
-    @Column(name = "mere_malade")
-    private Boolean simalade;
-    @Column(name = "desc_maladie_mere")
-    private String descmaladie;
-    @Column(name = "mere_deceder")
-    private Boolean sideceder;
-    @Column(name = "date_deces_mere")
-    private LocalDate datedeces;
-    @Column(name = "photo_mere")
-    @Lob
-    private byte[] photo;
-
-    public Long getId() {
-        return id;
-    }
-
-    public Integer getPhone() {
-        return phone;
-    }
-
-    public String getNom() {
-        return nom;
-    }
-
-    public String getPrenom() {
-        return prenom;
-    }
-
-    public String getCin() {
-        return cin;
-    }
-
-    public LocalDate getDatenaissance() {
-        return datenaissance;
-    }
-
-    public String getVillenaissance() {
-        return villenaissance;
-    }
-
-    public Boolean getSitravaille() {
-        return sitravaille;
-    }
-
-    public String getDesctravaille() {
-        return desctravaille;
-    }
-
-    public Boolean getSimalade() {
-        return simalade;
-    }
-
-    public String getDescmaladie() {
-        return descmaladie;
-    }
-
-    public byte[] getPhoto() {
-        return photo;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public void setPhone(Integer phone) {
-        this.phone = phone;
-    }
-
-    public void setNom(String nom) {
-        this.nom = nom;
-    }
-
-    public void setPrenom(String prenom) {
-        this.prenom = prenom;
-    }
-
-    public void setCin(String cin) {
-        this.cin = cin;
-    }
-
-    public void setDatenaissance(LocalDate datenaissance) {
-        this.datenaissance = datenaissance;
-    }
-
-    public void setVillenaissance(String villenaissance) {
-        this.villenaissance = villenaissance;
-    }
-
-    public void setSitravaille(Boolean sitravaille) {
-        this.sitravaille = sitravaille;
-    }
-
-    public void setDesctravaille(String desctravaille) {
-        this.desctravaille = desctravaille;
-    }
-
-    public void setSimalade(Boolean simalade) {
-        this.simalade = simalade;
-    }
-
-    public void setDescmaladie(String descmaladie) {
-        this.descmaladie = descmaladie;
-    }
-
-    public void setPhoto(byte[] photo) {
-        this.photo = photo;
-    }
-
-    public Boolean getSideceder() {
-        return sideceder;
-    }
-
-    public LocalDate getDatedeces() {
-        return datedeces;
-    }
-
-    public void setSideceder(Boolean sideceder) {
-        this.sideceder = sideceder;
-    }
-
-    public void setDatedeces(LocalDate datedeces) {
-        this.datedeces = datedeces;
-    }
+    // Getters / Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getNom() { return nom; }
+    public void setNom(String nom) { this.nom = nom; }
+    public String getPrenom() { return prenom; }
+    public void setPrenom(String prenom) { this.prenom = prenom; }
+    public String getCin() { return cin; }
+    public void setCin(String cin) { this.cin = cin; }
+    public String getPhone() { return phone; }
+    public void setPhone(String phone) { this.phone = phone; }
+    public String getVilleNaissance() { return villeNaissance; }
+    public void setVilleNaissance(String villeNaissance) { this.villeNaissance = villeNaissance; }
+    public String getDateNaissance() { return dateNaissance; }
+    public void setDateNaissance(String dateNaissance) { this.dateNaissance = dateNaissance; }
+    public String getDateDeces() { return dateDeces; }
+    public void setDateDeces(String dateDeces) { this.dateDeces = dateDeces; }
+    public String getTypeMaladie() { return typeMaladie; }
+    public void setTypeMaladie(String typeMaladie) { this.typeMaladie = typeMaladie; }
+    public String getTypeTravail() { return typeTravail; }
+    public void setTypeTravail(String typeTravail) { this.typeTravail = typeTravail; }
+    public Boolean getEstDecedee() { return estDecedee; }
+    public void setEstDecedee(Boolean estDecedee) { this.estDecedee = estDecedee; }
+    public Boolean getEstMalade() { return estMalade; }
+    public void setEstMalade(Boolean estMalade) { this.estMalade = estMalade; }
+    public Boolean getEstTravaille() { return estTravaille; }
+    public void setEstTravaille(Boolean estTravaille) { this.estTravaille = estTravaille; }
+    public String getPhotoMere() { return photoMere; }
+    public void setPhotoMere(String photoMere) { this.photoMere = photoMere; }
 }

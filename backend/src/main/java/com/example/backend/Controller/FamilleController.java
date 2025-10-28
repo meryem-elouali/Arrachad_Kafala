@@ -1,12 +1,8 @@
 package com.example.backend.Controller;
 
-import com.example.backend.model.Famille;
-import com.example.backend.model.Habitation;
-import com.example.backend.model.TypeFamille;
+import com.example.backend.model.*;
 import com.example.backend.service.FamilleService;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
@@ -20,40 +16,33 @@ public class FamilleController {
         this.familleService = familleService;
     }
 
-    @PostMapping
-    public ResponseEntity<Famille> addFamille(@RequestBody Famille famille) {
-        Famille savedFamille = familleService.saveFamille(famille);
-        return ResponseEntity.ok(savedFamille);
-    }
-
-    @GetMapping
-    public ResponseEntity<List<Famille>> getFamilles() {
-        return ResponseEntity.ok(familleService.getAllFamilles());
-    }
-
-    // Récupérer tous les types de famille
+    // 🔹 Obtenir tous les types de familles
     @GetMapping("/types")
-    public ResponseEntity<List<TypeFamille>> getTypesFamille() {
-        return ResponseEntity.ok(familleService.getAllTypesFamille());
+    public List<TypeFamille> getTypes() {
+        return familleService.getAllTypes();
     }
 
-    // Récupérer toutes les habitations
-    @GetMapping("/habitations")
-    public ResponseEntity<List<Habitation>> getHabitations() {
-        return ResponseEntity.ok(familleService.getAllHabitations());
-    }
-    // Ajouter un type de famille
+    // 🔹 Ajouter un nouveau type de famille
     @PostMapping("/types")
-    public ResponseEntity<TypeFamille> addTypeFamille(@RequestBody TypeFamille typeFamille) {
-        TypeFamille saved = familleService.saveTypeFamille(typeFamille);
-        return ResponseEntity.ok(saved);
+    public TypeFamille addTypeFamille(@RequestBody TypeFamille typeFamille) {
+        return familleService.saveTypeFamille(typeFamille);
     }
 
-    // Ajouter une habitation
+    // 🔹 Obtenir toutes les habitations
+    @GetMapping("/habitations")
+    public List<Habitation> getHabitations() {
+        return familleService.getAllHabitations();
+    }
+
+    // 🔹 Ajouter une nouvelle habitation (👉 nécessaire pour ton frontend)
     @PostMapping("/habitations")
-    public ResponseEntity<Habitation> addHabitation(@RequestBody Habitation habitation) {
-        Habitation saved = familleService.saveHabitation(habitation);
-        return ResponseEntity.ok(saved);
+    public Habitation addHabitation(@RequestBody Habitation habitation) {
+        return familleService.saveHabitation(habitation);
     }
 
+    // 🔹 Ajouter une famille
+    @PostMapping
+    public Famille addFamille(@RequestBody Famille famille) {
+        return familleService.saveFamille(famille);
+    }
 }

@@ -1,52 +1,47 @@
 package com.example.backend.service;
 
-import com.example.backend.Repository.FamilleRepository;
-import com.example.backend.Repository.HabitationRepository;
-import com.example.backend.Repository.TypeFamilleRepository;
-import com.example.backend.model.Famille;
-import com.example.backend.model.Habitation;
-import com.example.backend.model.TypeFamille;
+import com.example.backend.Repository.*;
+import com.example.backend.model.*;
 import org.springframework.stereotype.Service;
-
 import java.util.List;
 
 @Service
 public class FamilleService {
 
-    private final FamilleRepository familleRepository;
-    private final TypeFamilleRepository typeFamilleRepository;
-    private final HabitationRepository habitationRepository;
+    private final FamilleRepository familleRepo;
+    private final MereRepository mereRepo;
+    private final TypeFamilleRepository typeRepo;
+    private final HabitationRepository habitationRepo;
 
-    public FamilleService(FamilleRepository familleRepository,
-                          TypeFamilleRepository typeFamilleRepository,
-                          HabitationRepository habitationRepository) {
-        this.familleRepository = familleRepository;
-        this.typeFamilleRepository = typeFamilleRepository;
-        this.habitationRepository = habitationRepository;
+    public FamilleService(FamilleRepository familleRepo, MereRepository mereRepo,
+                          TypeFamilleRepository typeRepo, HabitationRepository habitationRepo) {
+        this.familleRepo = familleRepo;
+        this.mereRepo = mereRepo;
+        this.typeRepo = typeRepo;
+        this.habitationRepo = habitationRepo;
     }
 
     public Famille saveFamille(Famille famille) {
-        return familleRepository.save(famille);
-    }
-    // Dans FamilleService.java
-    public TypeFamille saveTypeFamille(TypeFamille typeFamille) {
-        return typeFamilleRepository.save(typeFamille);
-    }
-
-    public Habitation saveHabitation(Habitation habitation) {
-        return habitationRepository.save(habitation);
+        if (famille.getMere() != null) {
+            mereRepo.save(famille.getMere());
+        }
+        return familleRepo.save(famille);
     }
 
-
-    public List<Famille> getAllFamilles() {
-        return familleRepository.findAll();
-    }
-
-    public List<TypeFamille> getAllTypesFamille() {
-        return typeFamilleRepository.findAll();
+    public List<TypeFamille> getAllTypes() {
+        return typeRepo.findAll();
     }
 
     public List<Habitation> getAllHabitations() {
-        return habitationRepository.findAll();
+        return habitationRepo.findAll();
+    }
+
+    public TypeFamille saveTypeFamille(TypeFamille typeFamille) {
+        return typeRepo.save(typeFamille);
+    }
+
+    // ✅ AJOUTER CETTE MÉTHODE
+    public Habitation saveHabitation(Habitation habitation) {
+        return habitationRepo.save(habitation);
     }
 }
