@@ -26,7 +26,9 @@ public class Famille {
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "mere_id", referencedColumnName = "id")
     private Mere mere;
-
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "pere_id", referencedColumnName = "id")
+    private Pere Pere;
     // Getters / Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -44,4 +46,12 @@ public class Famille {
     public void setHabitationFamille(Habitation habitationFamille) { this.habitationFamille = habitationFamille; }
     public Mere getMere() { return mere; }
     public void setMere(Mere mere) { this.mere = mere; }
+
+    public Pere getPere() {
+        return Pere;
+    }
+
+    public void setPere(Pere pere) {
+        Pere = pere;
+    }
 }

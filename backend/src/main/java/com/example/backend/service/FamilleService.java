@@ -11,13 +11,15 @@ public class FamilleService {
 
     private final FamilleRepository familleRepo;
     private final MereRepository mereRepo;
+    private final PereRepository pereRepo;
     private final TypeFamilleRepository typeRepo;
     private final HabitationRepository habitationRepo;
 
-    public FamilleService(FamilleRepository familleRepo, MereRepository mereRepo,
+    public FamilleService(FamilleRepository familleRepo, MereRepository mereRepo,PereRepository pereRepo,
                           TypeFamilleRepository typeRepo, HabitationRepository habitationRepo) {
         this.familleRepo = familleRepo;
         this.mereRepo = mereRepo;
+        this.pereRepo = pereRepo;
         this.typeRepo = typeRepo;
         this.habitationRepo = habitationRepo;
     }
@@ -33,7 +35,14 @@ public class FamilleService {
             // Sinon on la sauvegarde si c'est une nouvelle mère
             mereRepo.save(famille.getMere());
         }
-
+        if (famille.getPere() != null && famille.getPere().getId() != null) {
+            Pere pere = pereRepo.findById(famille.getPere().getId())
+                    .orElseThrow(() -> new RuntimeException("Père non trouvée"));
+            famille.setPere(pere);
+        } else if (famille.getPere() != null) {
+            // Sinon on la sauvegarde si c'est une nouvelle mère
+            pereRepo.save(famille.getPere());
+        }
         return familleRepo.save(famille);
     }
 

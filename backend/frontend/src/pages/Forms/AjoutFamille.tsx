@@ -30,6 +30,22 @@ export default function FormElements() {
     estTravaille: false,
     photoMere: null,
   });
+  const [pereData, setPereData] = useState({
+      nom: "",
+      prenom: "",
+      cin: "",
+      phone: "",
+      villeNaissance: "",
+      dateNaissance: "",
+
+      dateDeces: "",
+      typeMaladie: "",
+      typeTravail: "",
+      estDecedee: false,
+      estMalade: false,
+      estTravaille: false,
+      photoPere: null,
+    });
   const [typesFamille, setTypesFamille] = useState([]);
   const [habitations, setHabitations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -50,19 +66,29 @@ export default function FormElements() {
     setLoading(true);
     try {
       // 1️⃣ Envoyer InfosMere d'abord
-      const formData = new FormData();
+      const formDataMere = new FormData();
       Object.entries(mereData).forEach(([key, value]) => {
-        formData.append(key, value);
+        formDataMere.append(key, value);
       });
       const responseMere = await fetch("http://localhost:8080/api/mere", {
         method: "POST",
-        body: formData,
+        body: formDataMere,
       });
+    const formDataPere = new FormData();
+        Object.entries(pereData).forEach(([key, value]) => {
+          formDataPere.append(key, value);
+        });
+   const responsePere = await fetch("http://localhost:8080/api/pere", {
+          method: "POST",
+          body: formDataPere,
+        });
+
       const savedMere = await responseMere.json();
       console.log("Mère enregistrée :", savedMere);
-
+ const savedPere = await responsePere.json();
+      console.log("Père enregistrée :", savedPere);
       // 2️⃣ Ajouter l'id de la mère dans la famille
-      const familleToSave = { ...familleData, mere: { id: savedMere.id } };
+      const familleToSave = { ...familleData, mere: { id: savedMere.id } , pere: { id: savedPere.id }};
 
       // 3️⃣ Envoyer InfosFamille
       const responseFamille = await fetch("http://localhost:8080/api/famille", {
@@ -200,9 +226,9 @@ export default function FormElements() {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {/* Formulaire Famille */}
         <div className="space-y-6">
-         <ComponentCard title="معلومات عامة">
 
-          <h2 className="font-bold text-lg">معلومات العائلة</h2>
+ <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
+
              <div className="flex gap-4">
                 <div className="w-1/2">
        <Select
@@ -289,11 +315,223 @@ export default function FormElements() {
 
 
 </ComponentCard>
-  <ComponentCard title="معلومات الام">
-    <h2 className="font-bold text-lg">معلومات الأم</h2>
+
+ <ComponentCard title={<span className="font-bold">معلومات الأب</span>}>
+
 
     {/* Nom et Prénom toujours visibles */}
+ {/* Checkbox Décédée */}
+       <div className="flex gap-4">
+          <div className="w-1/2">
+    <div className="flex items-center mt-4">
+      <input
+        type="checkbox"
+        checked={pereData.estDecedee}
+        onChange={(e) => setPereData({ ...pereData, estDecedee: e.target.checked })}
+        className="mr-2"
+      />
+      <label>هل الاب متوفي?</label>
+    </div>
+   </div>
 
+      <div className="w-1/2">
+    {/* Si décédée, afficher seulement les champs essentiels */}
+    {pereData.estDecedee && (
+      <div className="mt-2 space-y-2">
+
+  <Label htmlFor="nom">تاريخ الوفاة</Label>
+  <Input
+                        type="text"
+                        id="datanaissancepere"
+                        placeholder="__/__/____"
+                       value={pereData.dateDeces}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
+                          if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                          if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                          if (val.length > 10) val = val.slice(0, 10);
+                          setPereData((prev) => ({ ...prev, dateDeces: val }));
+                        }}
+                      />
+
+
+      </div>
+    )}</div></div>
+    <div className="flex gap-4">
+     <div className="w-1/2">
+            <Label htmlFor="prenom">الاسم</Label>
+            <input
+              id="prenom"
+              type="text"
+              placeholder="الاسم"
+              value={pereData.prenom}
+              onChange={(e) => setPereData({ ...pereData, prenom: e.target.value })}
+              className="border p-2 rounded w-full"
+            />
+          </div>
+      <div className="w-1/2">
+        <Label htmlFor="nom">النسب</Label>
+        <input
+          id="nom"
+          type="text"
+          placeholder="النسب"
+          value={pereData.nom}
+          onChange={(e) => setPereData({ ...pereData, nom: e.target.value })}
+          className="border p-2 rounded w-full"
+        />
+      </div>
+
+
+    </div>
+
+
+    {/* Si non décédée, afficher les autres champs */}
+    {!pereData.estDecedee && (
+      <>
+         <div className="flex gap-4">
+            <div className="w-1/2">
+
+             <Label htmlFor="nom">رقم البطاقة الوطنية</Label>
+        <Input
+          type="text"
+          placeholder="CIN"
+          value={pereData.cin}
+          onChange={(e) => setPereData({ ...pereData, cin: e.target.value })}
+          className="border p-2 rounded w-full"
+        />
+           </div>
+
+              <div className="w-1/2">
+                <Label htmlFor="nom">رقم الهاتف</Label>
+         <input
+                  type="text"
+                  placeholder="Téléphone"
+                  value={pereData.phone}
+                  onChange={(e) => setPereData({ ...pereData, phone: e.target.value })}
+                  className="border p-2 rounded w-full"
+                /></div></div>
+   <div className="flex gap-4">
+      <div className="w-1/2">
+                    <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
+                    <Input
+                      type="text"
+                      id="datanaissancepere"
+                      placeholder="__/__/____"
+                      value={pereData.dateNaissance}
+                      onChange={(e) => {
+                        let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
+                        if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                        if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                        if (val.length > 10) val = val.slice(0, 10);
+                        setPereData((prev) => ({ ...prev, dateNaissance: val }));
+                      }}
+                    />
+
+   </div>
+
+      <div className="w-1/2">
+              <Label htmlFor="villeNaissance">مكان الازدياد</Label>
+              <Input type="text" id="villeNaissance" value={pereData.villeNaissance}   onChange={(e) => setPereData({ ...pereData, villeNaissance: e.target.value })} />
+            </div></div>
+
+
+        {/* Checkbox Malade */}
+          <div className="flex gap-4">
+             <div className="w-1/2">
+              <div className="flex items-center mt-4">
+          <input
+            type="checkbox"
+            checked={pereData.estMalade}
+            onChange={(e) => setPereData({ ...pereData, estMalade: e.target.checked })}
+            className="mr-2"
+          />
+          <label>هل الاب مريض?</label>
+          </div></div>
+
+             <div className="w-1/2">
+        {pereData.estMalade && (
+          <input
+            type="text"
+            placeholder="نوع المرض"
+            value={pereData.typeMaladie}
+            onChange={(e) => setPereData({ ...pereData, typeMaladie: e.target.value })}
+            className="border p-2 rounded w-full mt-2"
+          />
+        )}
+        </div></div>
+
+        {/* Checkbox Travaille */}
+           <div className="flex gap-4">
+              <div className="w-1/2">
+        <div className="flex items-center mt-4">
+          <input
+            type="checkbox"
+            checked={pereData.estTravaille}
+            onChange={(e) => setPereData({ ...pereData, estTravaille: e.target.checked })}
+            className="mr-2"
+          />
+          <label>هل الاب يعمل?</label>
+        </div>   </div>
+
+                    <div className="w-1/2">
+        {pereData.estTravaille && (
+          <input
+            type="text"
+            placeholder="نوع العمل"
+            value={pereData.typeTravail}
+            onChange={(e) => setPereData({ ...pereData, typeTravail: e.target.value })}
+            className="border p-2 rounded w-full mt-2"
+          />
+        )}</div></div>
+      </>
+    )}
+
+
+  </ComponentCard>
+</div>
+ <div className="space-y-6">
+
+ <ComponentCard title={<span className="font-bold">معلومات الأم</span>}>
+
+
+    {/* Nom et Prénom toujours visibles */}
+ {/* Checkbox Décédée */}
+       <div className="flex gap-4">
+          <div className="w-1/2">
+    <div className="flex items-center mt-4">
+      <input
+        type="checkbox"
+        checked={mereData.estDecedee}
+        onChange={(e) => setMereData({ ...mereData, estDecedee: e.target.checked })}
+        className="mr-2"
+      />
+      <label>هل الام متوفاة?</label>
+    </div>
+   </div>
+
+      <div className="w-1/2">
+    {/* Si décédée, afficher seulement les champs essentiels */}
+    {mereData.estDecedee && (
+      <div className="mt-2 space-y-2">
+
+  <Label htmlFor="nom">تاريخ الوفاة</Label>
+  <Input
+                        type="text"
+                        id="datanaissancemere"
+                        placeholder="__/__/____"
+                       value={mereData.dateDeces}
+                        onChange={(e) => {
+                          let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
+                          if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                          if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                          if (val.length > 10) val = val.slice(0, 10);
+                          setMereData((prev) => ({ ...prev, dateDeces: val }));
+                        }}
+                      />
+
+
+      </div>
+    )}</div></div>
     <div className="flex gap-4">
      <div className="w-1/2">
             <Label htmlFor="prenom">الاسم</Label>
@@ -339,6 +577,7 @@ export default function FormElements() {
            </div>
 
               <div className="w-1/2">
+                <Label htmlFor="nom">رقم الهاتف</Label>
          <input
                   type="text"
                   placeholder="Téléphone"
@@ -381,14 +620,14 @@ export default function FormElements() {
             onChange={(e) => setMereData({ ...mereData, estMalade: e.target.checked })}
             className="mr-2"
           />
-          <label>Malade</label>
+          <label>هل الام مريضة?</label>
           </div></div>
 
              <div className="w-1/2">
         {mereData.estMalade && (
           <input
             type="text"
-            placeholder="Description de la maladie"
+            placeholder="نوع المرض"
             value={mereData.typeMaladie}
             onChange={(e) => setMereData({ ...mereData, typeMaladie: e.target.value })}
             className="border p-2 rounded w-full mt-2"
@@ -406,14 +645,14 @@ export default function FormElements() {
             onChange={(e) => setMereData({ ...mereData, estTravaille: e.target.checked })}
             className="mr-2"
           />
-          <label>Travaille</label>
+          <label>هل الام تعمل?</label>
         </div>   </div>
 
                     <div className="w-1/2">
         {mereData.estTravaille && (
           <input
             type="text"
-            placeholder="Description du travail"
+            placeholder="نوع العمل"
             value={mereData.typeTravail}
             onChange={(e) => setMereData({ ...mereData, typeTravail: e.target.value })}
             className="border p-2 rounded w-full mt-2"
@@ -422,35 +661,7 @@ export default function FormElements() {
       </>
     )}
 
-    {/* Checkbox Décédée */}
-       <div className="flex gap-4">
-          <div className="w-1/2">
-    <div className="flex items-center mt-4">
-      <input
-        type="checkbox"
-        checked={mereData.estDecedee}
-        onChange={(e) => setMereData({ ...mereData, estDecedee: e.target.checked })}
-        className="mr-2"
-      />
-      <label>Décédée</label>
-    </div>
-   </div>
 
-      <div className="w-1/2">
-    {/* Si décédée, afficher seulement les champs essentiels */}
-    {mereData.estDecedee && (
-      <div className="mt-2 space-y-2">
-
-        <input
-          type="text"
-          placeholder="Date de décès"
-          value={mereData.dateDeces}
-          onChange={(e) => setMereData({ ...mereData, dateDeces: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
-
-      </div>
-    )}</div></div>
   </ComponentCard>
 
         </div>
