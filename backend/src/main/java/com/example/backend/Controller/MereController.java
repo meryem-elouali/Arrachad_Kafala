@@ -6,6 +6,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Base64;
 
 @RestController
 @RequestMapping("/api/mere")
@@ -29,7 +33,7 @@ public class MereController {
             @RequestParam(value = "estDecedee", required = false) Boolean estDecedee,
             @RequestParam(value = "estMalade", required = false) Boolean estMalade,
             @RequestParam(value = "estTravaille", required = false) Boolean estTravaille,
-            @RequestParam(value = "photoMere", required = false) MultipartFile photoMere
+            @RequestParam(value = "photoMere", required = false) MultipartFile photoMere  // <-- MultipartFile
     ) throws IOException {
 
         Mere mere = new Mere();
@@ -45,10 +49,13 @@ public class MereController {
         mere.setEstDecedee(estDecedee != null ? estDecedee : false);
         mere.setEstMalade(estMalade != null ? estMalade : false);
         mere.setEstTravaille(estTravaille != null ? estTravaille : false);
-        if(photoMere != null && !photoMere.isEmpty()) {
-            mere.setPhotoMere(photoMere.getOriginalFilename());
+
+        if (photoMere != null && !photoMere.isEmpty()) {
+            mere.setPhotoMere(photoMere.getBytes());  // <-- stocker le fichier
         }
 
         return ResponseEntity.ok(mereRepository.save(mere));
     }
+
+
 }

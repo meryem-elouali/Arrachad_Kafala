@@ -14,35 +14,50 @@ public class FamilleService {
     private final PereRepository pereRepo;
     private final TypeFamilleRepository typeRepo;
     private final HabitationRepository habitationRepo;
+    private final EnfantRepository enfantRepo; // ajouter ici
 
-    public FamilleService(FamilleRepository familleRepo, MereRepository mereRepo,PereRepository pereRepo,
-                          TypeFamilleRepository typeRepo, HabitationRepository habitationRepo) {
+    public FamilleService(FamilleRepository familleRepo, MereRepository mereRepo, PereRepository pereRepo,
+                          TypeFamilleRepository typeRepo, HabitationRepository habitationRepo,
+                          EnfantRepository enfantRepo) {  // ajouter ici
         this.familleRepo = familleRepo;
         this.mereRepo = mereRepo;
         this.pereRepo = pereRepo;
         this.typeRepo = typeRepo;
         this.habitationRepo = habitationRepo;
+        this.enfantRepo = enfantRepo; // initialiser
     }
-
     @Transactional
     public Famille saveFamille(Famille famille) {
-        // Si la mère a déjà un id, on la récupère pour l’attacher
-        if (famille.getMere() != null && famille.getMere().getId() != null) {
-            Mere mere = mereRepo.findById(famille.getMere().getId())
-                    .orElseThrow(() -> new RuntimeException("Mère non trouvée"));
-            famille.setMere(mere);
-        } else if (famille.getMere() != null) {
-            // Sinon on la sauvegarde si c'est une nouvelle mère
-            mereRepo.save(famille.getMere());
+        // Gestion mère
+        if (famille.getMere() != null) {
+            if (famille.getMere().getId() != null) {
+                Mere mere = mereRepo.findById(famille.getMere().getId())
+                        .orElseThrow(() -> new RuntimeException("Mère non trouvée"));
+                famille.setMere(mere);
+            } else {
+                mereRepo.save(famille.getMere());
+            }
         }
-        if (famille.getPere() != null && famille.getPere().getId() != null) {
-            Pere pere = pereRepo.findById(famille.getPere().getId())
-                    .orElseThrow(() -> new RuntimeException("Père non trouvée"));
-            famille.setPere(pere);
-        } else if (famille.getPere() != null) {
-            // Sinon on la sauvegarde si c'est une nouvelle mère
-            pereRepo.save(famille.getPere());
+
+        // Gestion père
+        if (famille.getPere() != null) {
+            if (famille.getPere().getId() != null) {
+                Pere pere = pereRepo.findById(famille.getPere().getId())
+                        .orElseThrow(() -> new RuntimeException("Père non trouvé"));
+                famille.setPere(pere);
+            } else {
+                pereRepo.save(famille.getPere());
+            }
         }
+
+        // Gestion enfants
+        if (famille.getEnfants() != null) {
+            for (Enfant enfant : famille.getEnfants()) {
+                enfant.setFamille(famille); // lier l'enfant à la famille
+                enfantRepo.save(enfant);
+            }
+        }
+
         return familleRepo.save(famille);
     }
 
@@ -57,6 +72,7 @@ public class FamilleService {
     public TypeFamille saveTypeFamille(TypeFamille typeFamille) {
         return typeRepo.save(typeFamille);
     }
+
 
     public Habitation saveHabitation(Habitation habitation) {
         return habitationRepo.save(habitation);

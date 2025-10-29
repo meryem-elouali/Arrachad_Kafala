@@ -3,6 +3,9 @@ package com.example.backend.model;
 
 import jakarta.persistence.*;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Entity
 @Table(name = "famille")
 public class Famille {
@@ -28,7 +31,12 @@ public class Famille {
     private Mere mere;
     @OneToOne(cascade = CascadeType.ALL)
     @JoinColumn(name = "pere_id", referencedColumnName = "id")
+
     private Pere Pere;
+    @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<Enfant> enfants = new ArrayList<>();
+
+
     // Getters / Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -53,5 +61,11 @@ public class Famille {
 
     public void setPere(Pere pere) {
         Pere = pere;
+    }
+    public List<Enfant> getEnfants() { return enfants; }
+    public void setEnfants(List<Enfant> enfants) {
+        this.enfants = enfants;
+
+
     }
 }

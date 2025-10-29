@@ -1,15 +1,17 @@
 import ComponentCard from "../../common/ComponentCard";
 import { useDropzone } from "react-dropzone";
-
 interface DropzoneProps {
   label: string;
   id: string;
+  onFileSelect: (file: File) => void; // <-- ajouter la prop
 }
 
-const DropzoneComponent: React.FC<DropzoneProps> = ({ label, id }) => {
+const DropzoneComponent: React.FC<DropzoneProps> = ({ label, id, onFileSelect }) => {
   const onDrop = (acceptedFiles: File[]) => {
     console.log(`${id} files dropped:`, acceptedFiles);
-    // Ici tu peux stocker dans un state parent ou uploader
+    if (acceptedFiles && acceptedFiles[0]) {
+      onFileSelect(acceptedFiles[0]); // ✅ transmet le fichier au parent
+    }
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -45,7 +47,7 @@ const DropzoneComponent: React.FC<DropzoneProps> = ({ label, id }) => {
                   viewBox="0 0 29 28"
                   xmlns="http://www.w3.org/2000/svg"
                 >
-                  <path d="M14.5 3.9 …" /> {/* raccourci */}
+                  <path d="M14.5 3.9 …" />
                 </svg>
               </div>
             </div>
@@ -64,5 +66,6 @@ const DropzoneComponent: React.FC<DropzoneProps> = ({ label, id }) => {
     </ComponentCard>
   );
 };
+
 
 export default DropzoneComponent;

@@ -5,7 +5,17 @@ import { FaCheck, FaTimes } from "react-icons/fa";
 import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import ComponentCard from "../../components/common/ComponentCard";
+import DropzoneComponent from "../../components/form/form-elements/DropZone";
 export default function FormElements() {
+const toBase64 = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = error => reject(error);
+  });
+
+
   const [familleData, setFamilleData] = useState({
     typeFamille: "",
     habitationFamille: "",
@@ -14,6 +24,7 @@ export default function FormElements() {
     phone: "",
     dateInscription: "",
   });
+
   const [mereData, setMereData] = useState({
     nom: "",
     prenom: "",
@@ -21,7 +32,6 @@ export default function FormElements() {
     phone: "",
     villeNaissance: "",
     dateNaissance: "",
-
     dateDeces: "",
     typeMaladie: "",
     typeTravail: "",
@@ -30,86 +40,157 @@ export default function FormElements() {
     estTravaille: false,
     photoMere: null,
   });
-  const [pereData, setPereData] = useState({
-      nom: "",
-      prenom: "",
-      cin: "",
-      phone: "",
-      villeNaissance: "",
-      dateNaissance: "",
 
-      dateDeces: "",
-      typeMaladie: "",
-      typeTravail: "",
-      estDecedee: false,
-      estMalade: false,
-      estTravaille: false,
-      photoPere: null,
-    });
+  const [pereData, setPereData] = useState({
+    nom: "",
+    prenom: "",
+    cin: "",
+    phone: "",
+    villeNaissance: "",
+    dateNaissance: "",
+    dateDeces: "",
+    typeMaladie: "",
+    typeTravail: "",
+    estDecedee: false,
+    estMalade: false,
+    estTravaille: false,
+    photoPere: null,
+  });
+
+  const [enfants, setEnfants] = useState([]);
+  const [niveauxscolaires, setNiveauxscolaires] = useState([]);
   const [typesFamille, setTypesFamille] = useState([]);
   const [habitations, setHabitations] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // Fetch listes initiales
   useEffect(() => {
     fetch("http://localhost:8080/api/famille/types")
-      .then(res => res.json())
-      .then(data => setTypesFamille(data.map(t => ({ value: t.id, label: t.nom }))))
+      .then((res) => res.json())
+      .then((data) =>
+        setTypesFamille(data.map((t) => ({ value: t.id, label: t.nom })))
+      )
       .catch(console.error);
 
     fetch("http://localhost:8080/api/famille/habitations")
-      .then(res => res.json())
-      .then(data => setHabitations(data.map(h => ({ value: h.id, label: h.nom }))))
+      .then((res) => res.json())
+      .then((data) =>
+        setHabitations(data.map((h) => ({ value: h.id, label: h.nom })))
+      )
+      .catch(console.error);
+
+    fetch("http://localhost:8080/api/enfant/niveauScolaire")
+      .then((res) => res.json())
+      .then((data) =>
+        setNiveauxscolaires(data.map((n) => ({ value: n.id, label: n.nom })))
+      )
       .catch(console.error);
   }, []);
 
+  // Mise à jour automatique du tableau enfants
+  useEffect(() => {
+    const n = familleData.nombreEnfants || 0;
+    setEnfants((prev) => {
+      const updated = [...prev];
+      if (n > prev.length) {
+        for (let i = prev.length; i < n; i++) {
+          updated.push({
+            nom: "",
+            prenom: "",
+            dateNaissance: "",
+            niveauscolaire: null,
+          });
+        }
+      } else if (n < prev.length) {
+        updated.length = n;
+      }
+      return updated;
+    });
+  }, [familleData.nombreEnfants]);
+
   const handleSubmitAll = async () => {
-    setLoading(true);
     try {
-      // 1️⃣ Envoyer InfosMere d'abord
-      const formDataMere = new FormData();
-      Object.entries(mereData).forEach(([key, value]) => {
-        formDataMere.append(key, value);
-      });
-      const responseMere = await fetch("http://localhost:8080/api/mere", {
-        method: "POST",
-        body: formDataMere,
-      });
-    const formDataPere = new FormData();
-        Object.entries(pereData).forEach(([key, value]) => {
-          formDataPere.append(key, value);
-        });
-   const responsePere = await fetch("http://localhost:8080/api/pere", {
+      // 🔹 Envoi Mère
+     if (!mereData.photoMere) {
+          alert("⚠️ Veuillez sélectionner la photo de la mère");
+          return;
+        }
+
+        // 🔹 Créer FormData pour la mère
+        const formDataMere = new FormData();
+        formDataMere.append("nom", mereData.nom);
+        formDataMere.append("prenom", mereData.prenom);
+        formDataMere.append("cin", mereData.cin);
+        formDataMere.append("phone", mereData.phone);
+        formDataMere.append("villeNaissance", mereData.villeNaissance);
+        formDataMere.append("dateNaissance", mereData.dateNaissance);
+        formDataMere.append("dateDeces", mereData.dateDeces);
+        formDataMere.append("typeMaladie", mereData.typeMaladie);
+        formDataMere.append("typeTravail", mereData.typeTravail);
+        formDataMere.append("estDecedee", String(mereData.estDecedee));
+        formDataMere.append("estMalade", String(mereData.estMalade));
+        formDataMere.append("estTravaille", String(mereData.estTravaille));
+        formDataMere.append("photoMere", mereData.photoMere); // 🔹 le File réel
+
+        const responseMere = await fetch("http://localhost:8080/api/mere", {
           method: "POST",
-          body: formDataPere,
+          body: formDataMere,
+          // ❌ Ne pas mettre Content-Type : fetch met automatiquement multipart/form-data
         });
 
-      const savedMere = await responseMere.json();
-      console.log("Mère enregistrée :", savedMere);
- const savedPere = await responsePere.json();
-      console.log("Père enregistrée :", savedPere);
-      // 2️⃣ Ajouter l'id de la mère dans la famille
-      const familleToSave = { ...familleData, mere: { id: savedMere.id } , pere: { id: savedPere.id }};
+        if (!responseMere.ok) throw new Error("Erreur lors de l’enregistrement de la mère");
+        const savedMere = await responseMere.json();
+        console.log("Mère enregistrée :", savedMere);
 
-      // 3️⃣ Envoyer InfosFamille
+      // 🔹 Envoi Père
+      const responsePere = await fetch("http://localhost:8080/api/pere", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(pereData),
+      });
+
+      if (!responsePere.ok) throw new Error("Erreur lors de l’enregistrement du père");
+      const savedPere = await responsePere.json();
+
+      // 🔹 Envoi Famille (avec références père/mère)
+      const familleComplet = {
+        ...familleData,
+        mere: { id: savedMere.id },
+        pere: { id: savedPere.id },
+      };
+
       const responseFamille = await fetch("http://localhost:8080/api/famille", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(familleToSave),
+        body: JSON.stringify(familleComplet),
       });
-      const savedFamille = await responseFamille.json();
-      console.log("Famille enregistrée :", savedFamille);
 
-      alert("✅ Famille et Mère enregistrées avec succès !");
+      if (!responseFamille.ok) throw new Error("Erreur lors de l’enregistrement de la famille");
+      const savedFamille = await responseFamille.json();
+
+      // 🔹 Envoi Enfants
+      for (const enfant of enfants) {
+        const enfantComplet = {
+          ...enfant,
+          famille: { id: savedFamille.id },
+          niveauscolaire: { id: enfant.niveauscolaire },
+        };
+
+        await fetch("http://localhost:8080/api/enfant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(enfantComplet),
+        });
+      }
+
+      alert("✅ Famille enregistrée avec succès !");
     } catch (error) {
-      console.error(error);
-      alert("❌ Erreur lors de l'enregistrement !");
-    } finally {
-      setLoading(false);
+      console.error("Erreur :", error);
+      alert("❌ Une erreur est survenue : " + error.message);
     }
   };
 
 
-  // 🔹 Composant Select générique
   // 🔹 Composant Select générique
   const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }) => {
     const [open, setOpen] = useState(false);
@@ -117,9 +198,7 @@ export default function FormElements() {
     const [newOption, setNewOption] = useState("");
     const [opts, setOpts] = useState(options);
 
-    useEffect(() => {
-      setOpts(options);
-    }, [options]);
+    useEffect(() => setOpts(options), [options]);
 
     const handleSelect = (opt) => {
       onChange(opt.value);
@@ -136,17 +215,9 @@ export default function FormElements() {
         });
         const savedItem = await response.json();
         const newOpt = { value: savedItem.id, label: savedItem.nom };
-
-        // 🆕 Ajout immédiat dans la liste locale
         setOpts((prev) => [...prev, newOpt]);
-
-        // 🆕 Informer le parent pour qu’il mette aussi à jour sa liste
         if (onNewItem) onNewItem(newOpt);
-
-        // 🆕 Sélectionner automatiquement la nouvelle option
         onChange(newOpt.value);
-
-        // ✅ Réinitialiser
         setNewOption("");
         setAdding(false);
         setOpen(false);
@@ -157,55 +228,26 @@ export default function FormElements() {
 
     return (
       <div className="relative w-full">
-        <div
-          className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer"
-          onClick={() => setOpen(!open)}
-        >
-          {opts.find(o => o.value === value)?.label || placeholder}
-        </div>
+        <div className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
+         {opts.find((o) => o.value === (value?.id ?? value))?.label || placeholder}
 
+        </div>
         {open && (
           <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto">
-            {opts.map(opt => (
-              <div
-                key={opt.value}
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer"
-                onClick={() => handleSelect(opt)}
-              >
+            {opts.map((opt) => (
+              <div key={opt.value} className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={() => handleSelect(opt)}>
                 {opt.label}
               </div>
             ))}
-
             {!adding ? (
-              <div
-                className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100"
-                onClick={() => setAdding(true)}
-              >
+              <div className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100" onClick={() => setAdding(true)}>
                 + Ajouter un élément
               </div>
             ) : (
               <div className="flex px-4 py-2 gap-2 items-center">
-                <input
-                  type="text"
-                  placeholder="Nouvel élément"
-                  value={newOption}
-                  onChange={(e) => setNewOption(e.target.value)}
-                  className="border p-1 rounded w-full"
-                />
-                <button
-                  type="button"
-                  className="px-3 py-1 bg-blue-600 text-white rounded"
-                  onClick={handleAddOption}
-                >
-                  <FaCheck />
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1 bg-gray-300 text-black rounded"
-                  onClick={() => setAdding(false)}
-                >
-                  <FaTimes />
-                </button>
+                <Input type="text" placeholder="Nouvel élément" value={newOption} onChange={(e) => setNewOption(e.target.value)} className="border p-1 rounded w-full"/>
+                <button type="button" className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleAddOption}><FaCheck /></button>
+                <button type="button" className="px-3 py-1 bg-gray-300 text-black rounded" onClick={() => setAdding(false)}><FaTimes /></button>
               </div>
             )}
           </div>
@@ -231,18 +273,20 @@ export default function FormElements() {
 
              <div className="flex gap-4">
                 <div className="w-1/2">
-       <Select
-         options={typesFamille}
-         value={familleData.typeFamille?.id || ""}
-         onChange={(val) =>
-           setFamilleData({
-             ...familleData,
-             typeFamille: { id: val }, // <-- objet complet attendu par Spring
-           })
-         }
-         placeholder="نوع الحالة"
-         apiUrl="http://localhost:8080/api/famille/types"
-       />
+      <Select
+        options={typesFamille}
+        value={familleData.typeFamille?.id || ""}
+        onChange={(val) =>
+          setFamilleData({
+            ...familleData,
+            typeFamille: { id: val },
+          })
+        }
+        placeholder="نوع الحالة"
+        apiUrl="http://localhost:8080/api/famille/types"
+        onNewItem={(newOpt) => setTypesFamille((prev) => [...prev, newOpt])} // 🔹 ICI
+      />
+
    </div>
 
       <div className="w-1/2">
@@ -252,12 +296,14 @@ export default function FormElements() {
          onChange={(val) =>
            setFamilleData({
              ...familleData,
-             habitationFamille: { id: val }, // <-- objet complet attendu
+             habitationFamille: { id: val },
            })
          }
          placeholder="نوع السكن"
          apiUrl="http://localhost:8080/api/famille/habitations"
-       /></div></div>
+         onNewItem={(newOpt) => setHabitations((prev) => [...prev, newOpt])} // 🔹 ICI
+       />
+</div></div>
 
 
 
@@ -274,7 +320,7 @@ export default function FormElements() {
                 <div className="w-1/2">
            <div className="md:col-span-2 mt-4">
                                 <Label htmlFor="nombreEnfants">عدد الأبناء</Label>
-          <input
+          <Input
             type="number"
             placeholder="عدد الأبناء"
             min={0}
@@ -286,7 +332,7 @@ export default function FormElements() {
                         <div className="w-1/2">
            <div className="md:col-span-2 mt-4">
                                 <Label htmlFor="numphone">رقم الهاتف</Label>
-          <input
+          <Input
             type="text"
             placeholder="رقم الهاتف"
             value={familleData.phone}
@@ -360,7 +406,7 @@ export default function FormElements() {
     <div className="flex gap-4">
      <div className="w-1/2">
             <Label htmlFor="prenom">الاسم</Label>
-            <input
+            <Input
               id="prenom"
               type="text"
               placeholder="الاسم"
@@ -371,7 +417,7 @@ export default function FormElements() {
           </div>
       <div className="w-1/2">
         <Label htmlFor="nom">النسب</Label>
-        <input
+        <Input
           id="nom"
           type="text"
           placeholder="النسب"
@@ -403,7 +449,7 @@ export default function FormElements() {
 
               <div className="w-1/2">
                 <Label htmlFor="nom">رقم الهاتف</Label>
-         <input
+         <Input
                   type="text"
                   placeholder="Téléphone"
                   value={pereData.phone}
@@ -450,7 +496,7 @@ export default function FormElements() {
 
              <div className="w-1/2">
         {pereData.estMalade && (
-          <input
+          <Input
             type="text"
             placeholder="نوع المرض"
             value={pereData.typeMaladie}
@@ -475,7 +521,7 @@ export default function FormElements() {
 
                     <div className="w-1/2">
         {pereData.estTravaille && (
-          <input
+          <Input
             type="text"
             placeholder="نوع العمل"
             value={pereData.typeTravail}
@@ -535,7 +581,7 @@ export default function FormElements() {
     <div className="flex gap-4">
      <div className="w-1/2">
             <Label htmlFor="prenom">الاسم</Label>
-            <input
+            <Input
               id="prenom"
               type="text"
               placeholder="الاسم"
@@ -546,7 +592,7 @@ export default function FormElements() {
           </div>
       <div className="w-1/2">
         <Label htmlFor="nom">النسب</Label>
-        <input
+        <Input
           id="nom"
           type="text"
           placeholder="النسب"
@@ -578,7 +624,7 @@ export default function FormElements() {
 
               <div className="w-1/2">
                 <Label htmlFor="nom">رقم الهاتف</Label>
-         <input
+         <Input
                   type="text"
                   placeholder="Téléphone"
                   value={mereData.phone}
@@ -625,7 +671,7 @@ export default function FormElements() {
 
              <div className="w-1/2">
         {mereData.estMalade && (
-          <input
+          <Input
             type="text"
             placeholder="نوع المرض"
             value={mereData.typeMaladie}
@@ -650,7 +696,7 @@ export default function FormElements() {
 
                     <div className="w-1/2">
         {mereData.estTravaille && (
-          <input
+          <Input
             type="text"
             placeholder="نوع العمل"
             value={mereData.typeTravail}
@@ -658,11 +704,137 @@ export default function FormElements() {
             className="border p-2 rounded w-full mt-2"
           />
         )}</div></div>
+         <div className="md:col-span-2 mt-4">
+             <DropzoneComponent
+               label="صورة الأم"
+               id="photoMere"
+               onFileSelect={(file) => {
+                 // stocke le File réel
+                 setMereData(prev => ({ ...prev, photoMere: file }));
+                 console.log("✅ Fichier mère sélectionné :", file.name);
+               }}
+             />
+
+
+
+
+
+
+
+    </div>
       </>
     )}
 
 
   </ComponentCard>
+<ComponentCard title={<span className="font-bold">معلومات الأبناء</span>}>
+  {/* Si aucun enfant, ne rien afficher */}
+  {familleData.nombreEnfants > 0 ? (
+    <>
+      {Array.from({ length: familleData.nombreEnfants }, (_, index) => (
+        <div key={index} className="border rounded-xl p-4 mb-6 bg-gray-50">
+          <h2 className="text-xl font-semibold mb-4 text-center">
+            الابن {index + 1}
+          </h2>
+
+          {/* Nom et prénom */}
+          <div className="flex gap-4">
+            <div className="w-1/2">
+              <Label htmlFor={`prenom-${index}`}>الاسم</Label>
+              <Input
+                id={`prenom-${index}`}
+                type="text"
+                placeholder="الاسم"
+                value={enfants[index]?.prenom || ""}
+                onChange={(e) => {
+                  const newEnfants = [...enfants];
+                  newEnfants[index] = {
+                    ...newEnfants[index],
+                    prenom: e.target.value,
+                  };
+                  setEnfants(newEnfants);
+                }}
+                className="border p-2 rounded w-full"
+              />
+            </div>
+
+            <div className="w-1/2">
+              <Label htmlFor={`nom-${index}`}>النسب</Label>
+              <Input
+                id={`nom-${index}`}
+                type="text"
+                placeholder="النسب"
+                value={enfants[index]?.nom || ""}
+                onChange={(e) => {
+                  const newEnfants = [...enfants];
+                  newEnfants[index] = {
+                    ...newEnfants[index],
+                    nom: e.target.value,
+                  };
+                  setEnfants(newEnfants);
+                }}
+                className="border p-2 rounded w-full"
+              />
+            </div>
+          </div>
+
+          {/* Date de naissance et niveau scolaire */}
+          <div className="flex gap-4 mt-4">
+            <div className="w-1/2">
+              <Label htmlFor={`date-${index}`}>تاريخ الازدياد</Label>
+              <Input
+                id={`date-${index}`}
+                type="text"
+                placeholder="__/__/____"
+                value={enfants[index]?.dateNaissance || ""}
+                onChange={(e) => {
+                  let val = e.target.value.replace(/\D/g, "");
+                  if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                  if (val.length > 5)
+                    val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                  if (val.length > 10) val = val.slice(0, 10);
+
+                  const newEnfants = [...enfants];
+                  newEnfants[index] = {
+                    ...newEnfants[index],
+                    dateNaissance: val,
+                  };
+                  setEnfants(newEnfants);
+                }}
+              />
+            </div>
+
+            <div className="w-1/2">
+              <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
+              <Select
+                options={niveauxscolaires}
+                value={enfants[index]?.niveauscolaire || ""}
+               onChange={(val) => {
+                 const newEnfants = [...enfants];
+                 newEnfants[index] = {
+                   ...newEnfants[index],
+                   niveauscolaire: { id: val }, // ✅ envoyer objet avec id
+                 };
+                 setEnfants(newEnfants);
+               }}
+
+                placeholder="اختر المستوى الدراسي"
+                apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
+                // 🔹 Ajout immédiat dans la liste globale des niveaux
+                onNewItem={(newOpt) =>
+                  setNiveauxscolaires((prev) => [...prev, newOpt])
+                }
+              />
+            </div>
+
+          </div>
+        </div>
+      ))}
+    </>
+  ) : (
+    <p className="text-gray-500 text-center">لم يتم إدخال عدد الأبناء</p>
+  )}
+</ComponentCard>
 
         </div>
       </div>
