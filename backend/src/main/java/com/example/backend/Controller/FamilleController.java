@@ -45,4 +45,10 @@ public class FamilleController {
     public Famille addFamille(@RequestBody Famille famille) {
         return familleService.saveFamille(famille);
     }
+    // 🔹 Retourner toutes les familles avec enfants, mère et père
+    @GetMapping
+    public List<Famille> getAllFamilles() {
+        return familleService.getAllFamilles();
+    }
+
 }

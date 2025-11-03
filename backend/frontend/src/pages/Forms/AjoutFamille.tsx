@@ -99,6 +99,7 @@ const toBase64 = (file: File) =>
             prenom: "",
             dateNaissance: "",
             niveauscolaire: null,
+            photoEnfant: null,
           });
         }
       } else if (n < prev.length) {
@@ -143,11 +144,31 @@ const toBase64 = (file: File) =>
         console.log("Mère enregistrée :", savedMere);
 
       // 🔹 Envoi Père
-      const responsePere = await fetch("http://localhost:8080/api/pere", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(pereData),
-      });
+     if (!pereData.photoPere) {
+       alert("⚠️ Veuillez sélectionner la photo du père");
+       return;
+     }
+
+     // 🔹 Créer FormData pour le père
+     const formDataPere = new FormData();
+     formDataPere.append("nom", pereData.nom);
+     formDataPere.append("prenom", pereData.prenom);
+     formDataPere.append("cin", pereData.cin);
+     formDataPere.append("phone", pereData.phone);
+     formDataPere.append("villeNaissance", pereData.villeNaissance);
+     formDataPere.append("dateNaissance", pereData.dateNaissance);
+     formDataPere.append("dateDeces", pereData.dateDeces);
+     formDataPere.append("typeMaladie", pereData.typeMaladie);
+     formDataPere.append("typeTravail", pereData.typeTravail);
+     formDataPere.append("estDecedee", String(pereData.estDecedee));
+     formDataPere.append("estMalade", String(pereData.estMalade));
+     formDataPere.append("estTravaille", String(pereData.estTravaille));
+     formDataPere.append("photoPere", pereData.photoPere); // 🔹 le fichier réel
+
+     const responsePere = await fetch("http://localhost:8080/api/pere", {
+       method: "POST",
+       body: formDataPere,
+     });
 
       if (!responsePere.ok) throw new Error("Erreur lors de l’enregistrement du père");
       const savedPere = await responsePere.json();
@@ -169,26 +190,38 @@ const toBase64 = (file: File) =>
       const savedFamille = await responseFamille.json();
 
       // 🔹 Envoi Enfants
-      for (const enfant of enfants) {
-        const enfantComplet = {
-          ...enfant,
-          famille: { id: savedFamille.id },
-          niveauscolaire: { id: enfant.niveauscolaire },
-        };
+    for (const enfant of enfants) {
+         const formDataEnfant = new FormData();
+         formDataEnfant.append("nom", enfant.nom);
+         formDataEnfant.append("prenom", enfant.prenom);
+         formDataEnfant.append("dateNaissance", enfant.dateNaissance);
+         formDataEnfant.append("niveauscolaire", enfant.niveauscolaire?.id || "");
+         formDataEnfant.append("familleId", savedFamille.id.toString());
 
-        await fetch("http://localhost:8080/api/enfant", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(enfantComplet),
-        });
-      }
+         if (enfant.photoEnfant) {
+           formDataEnfant.append("photoEnfant", enfant.photoEnfant);
+         }
 
-      alert("✅ Famille enregistrée avec succès !");
-    } catch (error) {
-      console.error("Erreur :", error);
-      alert("❌ Une erreur est survenue : " + error.message);
-    }
-  };
+         const responseEnfant = await fetch("http://localhost:8080/api/enfant", {
+           method: "POST",
+           body: formDataEnfant,
+         });
+
+         if (!responseEnfant.ok) {
+           const errorText = await responseEnfant.text();
+           throw new Error("Erreur lors de l’enregistrement de l'enfant : " + errorText);
+         }
+
+         const savedEnfant = await responseEnfant.json();
+         console.log("Enfant enregistré :", savedEnfant);
+       }
+
+       alert("Toutes les données ont été enregistrées avec succès !");
+     } catch (error) {
+       console.error(error);
+       alert("Erreur lors de l'enregistrement : " + error);
+     }
+   };
 
 
   // 🔹 Composant Select générique
@@ -532,6 +565,18 @@ const toBase64 = (file: File) =>
       </>
     )}
 
+{!pereData.estDecedee && (
+  <div className="mt-4">
+    <DropzoneComponent
+      label="صورة الأب"
+      id="photoPere"
+      onFileSelect={(file) => {
+        setPereData((prev) => ({ ...prev, photoPere: file }));
+      }}
+    />
+
+  </div>
+)}
 
   </ComponentCard>
 </div>
@@ -726,115 +771,131 @@ const toBase64 = (file: File) =>
     )}
 
 
-  </ComponentCard>
-<ComponentCard title={<span className="font-bold">معلومات الأبناء</span>}>
-  {/* Si aucun enfant, ne rien afficher */}
-  {familleData.nombreEnfants > 0 ? (
-    <>
-      {Array.from({ length: familleData.nombreEnfants }, (_, index) => (
-        <div key={index} className="border rounded-xl p-4 mb-6 bg-gray-50">
-          <h2 className="text-xl font-semibold mb-4 text-center">
-            الابن {index + 1}
-          </h2>
+  </ComponentCard><ComponentCard title={<span className="font-bold">معلومات الأبناء</span>}>
+                    {/* Si aucun enfant, ne rien afficher */}
+                    {familleData.nombreEnfants > 0 ? (
+                      <>
+                        {Array.from({ length: familleData.nombreEnfants }, (_, index) => (
+                          <div key={index} className="border rounded-xl p-4 mb-6 bg-gray-50">
+                            <h2 className="text-xl font-semibold mb-4 text-center">
+                              الابن {index + 1}
+                            </h2>
 
-          {/* Nom et prénom */}
-          <div className="flex gap-4">
-            <div className="w-1/2">
-              <Label htmlFor={`prenom-${index}`}>الاسم</Label>
-              <Input
-                id={`prenom-${index}`}
-                type="text"
-                placeholder="الاسم"
-                value={enfants[index]?.prenom || ""}
-                onChange={(e) => {
-                  const newEnfants = [...enfants];
-                  newEnfants[index] = {
-                    ...newEnfants[index],
-                    prenom: e.target.value,
-                  };
-                  setEnfants(newEnfants);
-                }}
-                className="border p-2 rounded w-full"
-              />
-            </div>
+                            {/* Nom et prénom */}
+                            <div className="flex gap-4">
+                              <div className="w-1/2">
+                                <Label htmlFor={`prenom-${index}`}>الاسم</Label>
+                                <Input
+                                  id={`prenom-${index}`}
+                                  type="text"
+                                  placeholder="الاسم"
+                                  value={enfants[index]?.prenom || ""}
+                                  onChange={(e) => {
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      prenom: e.target.value,
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                  className="border p-2 rounded w-full"
+                                />
+                              </div>
 
-            <div className="w-1/2">
-              <Label htmlFor={`nom-${index}`}>النسب</Label>
-              <Input
-                id={`nom-${index}`}
-                type="text"
-                placeholder="النسب"
-                value={enfants[index]?.nom || ""}
-                onChange={(e) => {
-                  const newEnfants = [...enfants];
-                  newEnfants[index] = {
-                    ...newEnfants[index],
-                    nom: e.target.value,
-                  };
-                  setEnfants(newEnfants);
-                }}
-                className="border p-2 rounded w-full"
-              />
-            </div>
-          </div>
+                              <div className="w-1/2">
+                                <Label htmlFor={`nom-${index}`}>النسب</Label>
+                                <Input
+                                  id={`nom-${index}`}
+                                  type="text"
+                                  placeholder="النسب"
+                                  value={enfants[index]?.nom || ""}
+                                  onChange={(e) => {
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      nom: e.target.value,
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                  className="border p-2 rounded w-full"
+                                />
+                              </div>
+                            </div>
 
-          {/* Date de naissance et niveau scolaire */}
-          <div className="flex gap-4 mt-4">
-            <div className="w-1/2">
-              <Label htmlFor={`date-${index}`}>تاريخ الازدياد</Label>
-              <Input
-                id={`date-${index}`}
-                type="text"
-                placeholder="__/__/____"
-                value={enfants[index]?.dateNaissance || ""}
-                onChange={(e) => {
-                  let val = e.target.value.replace(/\D/g, "");
-                  if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                  if (val.length > 5)
-                    val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                  if (val.length > 10) val = val.slice(0, 10);
+                            {/* Date de naissance et niveau scolaire */}
+                            <div className="flex gap-4 mt-4">
+                              <div className="w-1/2">
+                                <Label htmlFor={`date-${index}`}>تاريخ الازدياد</Label>
+                                <Input
+                                  id={`date-${index}`}
+                                  type="text"
+                                  placeholder="__/__/____"
+                                  value={enfants[index]?.dateNaissance || ""}
+                                  onChange={(e) => {
+                                    let val = e.target.value.replace(/\D/g, "");
+                                    if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                                    if (val.length > 5)
+                                      val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                                    if (val.length > 10) val = val.slice(0, 10);
 
-                  const newEnfants = [...enfants];
-                  newEnfants[index] = {
-                    ...newEnfants[index],
-                    dateNaissance: val,
-                  };
-                  setEnfants(newEnfants);
-                }}
-              />
-            </div>
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      dateNaissance: val,
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                />
+                              </div>
 
-            <div className="w-1/2">
-              <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
-              <Select
-                options={niveauxscolaires}
-                value={enfants[index]?.niveauscolaire || ""}
-               onChange={(val) => {
-                 const newEnfants = [...enfants];
-                 newEnfants[index] = {
-                   ...newEnfants[index],
-                   niveauscolaire: { id: val }, // ✅ envoyer objet avec id
-                 };
-                 setEnfants(newEnfants);
-               }}
+                              <div className="w-1/2">
+                                <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
+                                <Select
+                                  options={niveauxscolaires}
+                                  value={enfants[index]?.niveauscolaire || ""}
+                                  onChange={(val) => {
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      niveauscolaire: { id: val },
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                  placeholder="اختر المستوى الدراسي"
+                                  apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
+                                  onNewItem={(newOpt) =>
+                                    setNiveauxscolaires((prev) => [...prev, newOpt])
+                                  }
+                                />
+                              </div>
+                            </div>
 
-                placeholder="اختر المستوى الدراسي"
-                apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
-                // 🔹 Ajout immédiat dans la liste globale des niveaux
-                onNewItem={(newOpt) =>
-                  setNiveauxscolaires((prev) => [...prev, newOpt])
-                }
-              />
-            </div>
+                            {/* ✅ Dropzone + aperçu */}
+                            <div className="mt-6">
+                            <DropzoneComponent
+                              label={`صورة الطفل ${index + 1}`}
+                              id={`photoEnfant_${index}`}
+                              onFileSelect={(file) => {
+                                const newEnfants = [...enfants];
+                                newEnfants[index] = {
+                                  ...newEnfants[index],
+                                  photoEnfant: file, // ⚡️ ici
+                                };
+                                setEnfants(newEnfants);
+                              }}
+                            />
 
-          </div>
-        </div>
-      ))}
-    </>
-  ) : (
-    <p className="text-gray-500 text-center">لم يتم إدخال عدد الأبناء</p>
-  )}
-</ComponentCard>
+
+
+                            </div>
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <p className="text-gray-500 text-center">لم يتم إدخال عدد الأبناء</p>
+                    )}
+                  </ComponentCard>
+
 
         </div>
       </div>

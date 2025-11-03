@@ -23,6 +23,16 @@ public class Enfant {
     @ManyToOne
     @JoinColumn(name = "niveauscolaire_id")
     private NiveauScolaire niveauscolaire;
+    @Lob
+    private byte[] photoEnfant;
+
+    public byte[] getPhotoEnfant() {
+        return photoEnfant;
+    }
+
+    public void setPhotoEnfant(byte[] photoEnfant) {
+        this.photoEnfant = photoEnfant;
+    }
 
     public Long getId() {
         return id;

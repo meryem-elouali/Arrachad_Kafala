@@ -23,7 +23,16 @@ public class Pere {
     private Boolean estDecedee = false;
     private Boolean estMalade = false;
     private Boolean estTravaille = false;
-    private String photoPere;
+    @Lob
+    private byte[] photoPere;
+
+    public byte[] getPhotoPere() {
+        return photoPere;
+    }
+
+    public void setPhotoPere(byte[] photoPere) {
+        this.photoPere = photoPere;
+    }
 
     // Getters / Setters
     public Long getId() { return id; }
@@ -52,6 +61,5 @@ public class Pere {
     public void setEstMalade(Boolean estMalade) { this.estMalade = estMalade; }
     public Boolean getEstTravaille() { return estTravaille; }
     public void setEstTravaille(Boolean estTravaille) { this.estTravaille = estTravaille; }
-    public String getPhotoPere() { return photoPere; }
-    public void setPhotoPere(String photoPere) { this.photoPere = photoPere; }
+
 }

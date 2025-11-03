@@ -1,33 +1,62 @@
 package com.example.backend.Controller;
 
-import com.example.backend.model.*;
+import com.example.backend.model.Enfant;
+import com.example.backend.model.Famille;
+import com.example.backend.model.NiveauScolaire;
 import com.example.backend.Repository.EnfantRepository;
 import com.example.backend.Repository.FamilleRepository;
 import com.example.backend.service.EnfantService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
+
 @RestController
 @RequestMapping("/api/enfant")
 @CrossOrigin(origins = "http://localhost:3000")
 public class EnfantController {
 
     private final EnfantService enfantService;
+    private final FamilleRepository familleRepository;
 
-    public EnfantController(EnfantService enfantService) {
+    public EnfantController(EnfantService enfantService, FamilleRepository familleRepository) {
         this.enfantService = enfantService;
+        this.familleRepository = familleRepository;
     }
 
-    // 🔹 Ajouter un enfant (JSON)
+    // 🔹 Ajouter un enfant avec MultipartFile pour la photo
     @PostMapping
-    public Enfant addEnfant(@RequestBody Enfant enfant) {
-        if (enfant.getFamille() == null || enfant.getFamille().getId() == null) {
-            throw new RuntimeException("Famille non fournie");
+    public ResponseEntity<Enfant> addEnfant(
+            @RequestParam("prenom") String prenom,
+            @RequestParam("nom") String nom,
+            @RequestParam("dateNaissance") String dateNaissance,
+            @RequestParam("familleId") Long familleId,
+            @RequestParam(value = "niveauScolaireId", required = false) Long niveauScolaireId,
+            @RequestParam(value = "photoEnfant", required = false) MultipartFile photoEnfant
+    ) throws IOException {
+
+        Famille famille = familleRepository.findById(familleId)
+                .orElseThrow(() -> new RuntimeException("Famille non trouvée"));
+
+        Enfant enfant = new Enfant();
+        enfant.setPrenom(prenom);
+        enfant.setNom(nom);
+        enfant.setDateNaissance(dateNaissance);
+        enfant.setFamille(famille);
+
+        if (niveauScolaireId != null) {
+            NiveauScolaire niveau = enfantService.getNiveauScolaireById(niveauScolaireId);
+            enfant.setNiveauscolaire(niveau);
         }
 
-        // Appel au service pour sauvegarder l'enfant et lier à la famille
-        return enfantService.saveEnfant(enfant, enfant.getFamille().getId());
+        if (photoEnfant != null && !photoEnfant.isEmpty()) {
+            enfant.setPhotoEnfant(photoEnfant.getBytes());
+        }
+
+        Enfant savedEnfant = enfantService.saveEnfant(enfant, familleId);
+        return ResponseEntity.ok(savedEnfant);
     }
 
     // 🔹 Liste des enfants
@@ -36,12 +65,7 @@ public class EnfantController {
         return enfantService.getAllEnfants();
     }
 
-    // 🔹 Niveau scolaire
-    @PostMapping("/niveauScolaire")
-    public NiveauScolaire addNiveauScolaire(@RequestBody NiveauScolaire niveauScolaire) {
-        return enfantService.saveNiveauScolaire(niveauScolaire);
-    }
-
+    // 🔹 Liste des niveaux scolaires
     @GetMapping("/niveauScolaire")
     public List<NiveauScolaire> getNiveauScolaires() {
         return enfantService.getNiveauScolaires();

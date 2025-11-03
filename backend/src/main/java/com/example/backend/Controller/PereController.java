@@ -48,8 +48,9 @@ public class PereController {
         pere.setEstMalade(estMalade != null ? estMalade : false);
         pere.setEstTravaille(estTravaille != null ? estTravaille : false);
         if(photoPere != null && !photoPere.isEmpty()) {
-            pere.setPhotoPere(photoPere.getOriginalFilename());
+            pere.setPhotoPere(photoPere.getBytes()); // stocke les données du fichier
         }
+
 
         return ResponseEntity.ok(pereRepository.save(pere));
     }
