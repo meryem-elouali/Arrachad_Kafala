@@ -1,5 +1,6 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
 
@@ -17,7 +18,8 @@ public class Enfant {
     private String dateNaissance;    // تاريخ الازدياد (ou LocalDate si tu préfères)
 
     @ManyToOne
-    @JoinColumn(name = "famille_id") // clé étrangère
+    @JoinColumn(name = "famille_id")
+    @JsonIgnore// clé étrangère
     private Famille famille;
     // 🔹 Relation avec le niveau scolaire
     @ManyToOne

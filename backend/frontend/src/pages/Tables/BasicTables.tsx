@@ -61,7 +61,11 @@ export default function BasicTables() {
                 <TableCell>{famille.nomFamille || "N/A"}</TableCell>
                 <TableCell>{famille.mere ? `${famille.mere.nom} ${famille.mere.prenom}` : "N/A"}</TableCell>
                 <TableCell>{famille.pere ? `${famille.pere.nom} ${famille.pere.prenom}` : "N/A"}</TableCell>
-                <TableCell>{famille.enfants?.length || 0}</TableCell>
+              <TableCell>
+                {famille.enfants && famille.enfants.length > 0 ? famille.enfants.length : 0}
+              </TableCell>
+
+
                 <TableCell>
                   <Badge size="sm" color="success">{famille.niveauScolaire?.nom || "N/A"}</Badge>
                 </TableCell>

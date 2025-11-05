@@ -70,6 +70,11 @@ public class EnfantController {
     public List<NiveauScolaire> getNiveauScolaires() {
         return enfantService.getNiveauScolaires();
     }
+    @PostMapping("/niveauScolaire")
+    public ResponseEntity<NiveauScolaire> addNiveauScolaire(@RequestBody NiveauScolaire niveau) {
+        NiveauScolaire saved = enfantService.saveNiveauScolaire(niveau);
+        return ResponseEntity.ok(saved);
+    }
 
     // 🔹 Enfants par famille
     @GetMapping("/famille/{familleId}")

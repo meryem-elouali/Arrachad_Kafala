@@ -6,19 +6,25 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import ComponentCard from "../../components/common/ComponentCard";
 import DropzoneComponent from "../../components/form/form-elements/DropZone";
+
+// TypeScript interfaces
+interface Option {
+  value: string | number;
+  label: string;
+}
+
+interface Enfant {
+  nom: string;
+  prenom: string;
+  dateNaissance: string;
+  niveauscolaire: { id: string | number } | null;
+  photoEnfant: File | null;
+}
+
 export default function FormElements() {
-const toBase64 = (file: File) =>
-  new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-
-
   const [familleData, setFamilleData] = useState({
-    typeFamille: "",
-    habitationFamille: "",
+    typeFamille: null as { id: string | number } | null,
+    habitationFamille: null as { id: string | number } | null,
     adresseFamille: "",
     nombreEnfants: 0,
     phone: "",
@@ -38,7 +44,7 @@ const toBase64 = (file: File) =>
     estDecedee: false,
     estMalade: false,
     estTravaille: false,
-    photoMere: null,
+    photoMere: null as File | null,
   });
 
   const [pereData, setPereData] = useState({
@@ -54,37 +60,82 @@ const toBase64 = (file: File) =>
     estDecedee: false,
     estMalade: false,
     estTravaille: false,
-    photoPere: null,
+    photoPere: null as File | null,
   });
 
-  const [enfants, setEnfants] = useState([]);
-  const [niveauxscolaires, setNiveauxscolaires] = useState([]);
-  const [typesFamille, setTypesFamille] = useState([]);
-  const [habitations, setHabitations] = useState([]);
+  const [enfants, setEnfants] = useState<Enfant[]>([]);
+  const [niveauxscolaires, setNiveauxscolaires] = useState<Option[]>([]);
+  const [typesFamille, setTypesFamille] = useState<Option[]>([]);
+  const [habitations, setHabitations] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
+const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      if (!e.target) return reject("Erreur lecture fichier");
+      img.src = e.target.result as string;
+    };
+    reader.readAsDataURL(file);
+
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = (maxWidth / width) * height;
+        width = maxWidth;
+      }
+      if (height > maxHeight) {
+        width = (maxHeight / height) * width;
+        height = maxHeight;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject("Erreur canvas");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        (blob) => {
+          if (blob) resolve(blob);
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+
+    img.onerror = (err) => reject(err);
+  });
+};
 
   // Fetch listes initiales
   useEffect(() => {
-    fetch("http://localhost:8080/api/famille/types")
-      .then((res) => res.json())
-      .then((data) =>
-        setTypesFamille(data.map((t) => ({ value: t.id, label: t.nom })))
-      )
-      .catch(console.error);
+    const fetchData = async () => {
+      try {
+        const [typesRes, habitationsRes, niveauxRes] = await Promise.all([
+          fetch("http://localhost:8080/api/famille/types"),
+          fetch("http://localhost:8080/api/famille/habitations"),
+          fetch("http://localhost:8080/api/enfant/niveauScolaire"),
+        ]);
 
-    fetch("http://localhost:8080/api/famille/habitations")
-      .then((res) => res.json())
-      .then((data) =>
-        setHabitations(data.map((h) => ({ value: h.id, label: h.nom })))
-      )
-      .catch(console.error);
+        const typesData = await typesRes.json();
+        setTypesFamille(typesData.map((t: any) => ({ value: t.id, label: t.nom })));
 
-    fetch("http://localhost:8080/api/enfant/niveauScolaire")
-      .then((res) => res.json())
-      .then((data) =>
-        setNiveauxscolaires(data.map((n) => ({ value: n.id, label: n.nom })))
-      )
-      .catch(console.error);
+        const habitationsData = await habitationsRes.json();
+        setHabitations(habitationsData.map((h: any) => ({ value: h.id, label: h.nom })));
+
+        const niveauxData = await niveauxRes.json();
+        setNiveauxscolaires(niveauxData.map((n: any) => ({ value: n.id, label: n.nom })));
+      } catch (error) {
+        console.error("Erreur lors du fetch des listes :", error);
+      }
+    };
+    fetchData();
   }, []);
 
   // Mise à jour automatique du tableau enfants
@@ -94,159 +145,120 @@ const toBase64 = (file: File) =>
       const updated = [...prev];
       if (n > prev.length) {
         for (let i = prev.length; i < n; i++) {
-          updated.push({
-            nom: "",
-            prenom: "",
-            dateNaissance: "",
-            niveauscolaire: null,
-            photoEnfant: null,
-          });
+          updated.push({ nom: "", prenom: "", dateNaissance: "", niveauscolaire: null, photoEnfant: null });
         }
-      } else if (n < prev.length) {
+      } else {
         updated.length = n;
       }
       return updated;
     });
   }, [familleData.nombreEnfants]);
 
-  const handleSubmitAll = async () => {
-    try {
-      // 🔹 Envoi Mère
-     if (!mereData.photoMere) {
-          alert("⚠️ Veuillez sélectionner la photo de la mère");
-          return;
-        }
+  // Gestion date format jj/mm/aaaa
+  const formatDateInput = (val: string) => {
+    val = val.replace(/\D/g, "");
+    if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+    if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+    return val.slice(0, 10);
+  };
 
-        // 🔹 Créer FormData pour la mère
-        const formDataMere = new FormData();
-        formDataMere.append("nom", mereData.nom);
-        formDataMere.append("prenom", mereData.prenom);
-        formDataMere.append("cin", mereData.cin);
-        formDataMere.append("phone", mereData.phone);
-        formDataMere.append("villeNaissance", mereData.villeNaissance);
-        formDataMere.append("dateNaissance", mereData.dateNaissance);
-        formDataMere.append("dateDeces", mereData.dateDeces);
-        formDataMere.append("typeMaladie", mereData.typeMaladie);
-        formDataMere.append("typeTravail", mereData.typeTravail);
-        formDataMere.append("estDecedee", String(mereData.estDecedee));
-        formDataMere.append("estMalade", String(mereData.estMalade));
-        formDataMere.append("estTravaille", String(mereData.estTravaille));
-        formDataMere.append("photoMere", mereData.photoMere); // 🔹 le File réel
-
-        const responseMere = await fetch("http://localhost:8080/api/mere", {
-          method: "POST",
-          body: formDataMere,
-          // ❌ Ne pas mettre Content-Type : fetch met automatiquement multipart/form-data
-        });
-
-        if (!responseMere.ok) throw new Error("Erreur lors de l’enregistrement de la mère");
-        const savedMere = await responseMere.json();
-        console.log("Mère enregistrée :", savedMere);
-
-      // 🔹 Envoi Père
-     if (!pereData.photoPere) {
-       alert("⚠️ Veuillez sélectionner la photo du père");
+  // Envoi formulaire complet
+ const handleSubmitAll = async () => {
+   setLoading(true);
+   try {
+     // Vérification obligatoire
+     if (!mereData.photoMere || !pereData.photoPere) {
+       alert("⚠️ Veuillez sélectionner les photos de la mère et du père");
+       setLoading(false);
        return;
      }
 
-     // 🔹 Créer FormData pour le père
+     // ✅ Compression avant upload
+     const mereBlob = await compressImage(mereData.photoMere);
+     const pereBlob = await compressImage(pereData.photoPere);
+
+     const formDataMere = new FormData();
+     Object.entries(mereData).forEach(([key, val]) => {
+       if (key === "photoMere") formDataMere.append("photo", mereBlob, mereData.photoMere!.name);
+       else formDataMere.append(key, val as any);
+     });
+
+     const responseMere = await fetch("http://localhost:8080/api/mere", {
+       method: "POST",
+       body: formDataMere,
+     });
+     if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
+     const savedMere = await responseMere.json();
+
      const formDataPere = new FormData();
-     formDataPere.append("nom", pereData.nom);
-     formDataPere.append("prenom", pereData.prenom);
-     formDataPere.append("cin", pereData.cin);
-     formDataPere.append("phone", pereData.phone);
-     formDataPere.append("villeNaissance", pereData.villeNaissance);
-     formDataPere.append("dateNaissance", pereData.dateNaissance);
-     formDataPere.append("dateDeces", pereData.dateDeces);
-     formDataPere.append("typeMaladie", pereData.typeMaladie);
-     formDataPere.append("typeTravail", pereData.typeTravail);
-     formDataPere.append("estDecedee", String(pereData.estDecedee));
-     formDataPere.append("estMalade", String(pereData.estMalade));
-     formDataPere.append("estTravaille", String(pereData.estTravaille));
-     formDataPere.append("photoPere", pereData.photoPere); // 🔹 le fichier réel
+     Object.entries(pereData).forEach(([key, val]) => {
+       if (key === "photoPere") formDataPere.append("photo", pereBlob, pereData.photoPere!.name);
+       else formDataPere.append(key, val as any);
+     });
 
      const responsePere = await fetch("http://localhost:8080/api/pere", {
        method: "POST",
        body: formDataPere,
      });
+     if (!responsePere.ok) throw new Error("Erreur enregistrement père");
+     const savedPere = await responsePere.json();
 
-      if (!responsePere.ok) throw new Error("Erreur lors de l’enregistrement du père");
-      const savedPere = await responsePere.json();
+     // Famille
+     const familleComplet = { ...familleData, mere: { id: savedMere.id }, pere: { id: savedPere.id } };
+     const responseFamille = await fetch("http://localhost:8080/api/famille", {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify(familleComplet),
+     });
+     if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
+     const savedFamille = await responseFamille.json();
 
-      // 🔹 Envoi Famille (avec références père/mère)
-      const familleComplet = {
-        ...familleData,
-        mere: { id: savedMere.id },
-        pere: { id: savedPere.id },
-      };
-
-      const responseFamille = await fetch("http://localhost:8080/api/famille", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(familleComplet),
-      });
-
-      if (!responseFamille.ok) throw new Error("Erreur lors de l’enregistrement de la famille");
-      const savedFamille = await responseFamille.json();
-
-      // 🔹 Envoi Enfants
-    for (const enfant of enfants) {
-         const formDataEnfant = new FormData();
-         formDataEnfant.append("nom", enfant.nom);
-         formDataEnfant.append("prenom", enfant.prenom);
-         formDataEnfant.append("dateNaissance", enfant.dateNaissance);
-         formDataEnfant.append("niveauscolaire", enfant.niveauscolaire?.id || "");
-         formDataEnfant.append("familleId", savedFamille.id.toString());
-
-         if (enfant.photoEnfant) {
-           formDataEnfant.append("photoEnfant", enfant.photoEnfant);
+     // Enfants
+     for (const enfant of enfants) {
+       const formDataEnfant = new FormData();
+       Object.entries(enfant).forEach(([key, val]) => {
+         if (key === "photoEnfant" && val instanceof File) {
+           compressImage(val).then((blob) => {
+             formDataEnfant.append("photo", blob, val.name);
+           });
+         } else if (val && typeof val === "object" && "id" in val) {
+           formDataEnfant.append(key, val.id.toString());
+         } else {
+           formDataEnfant.append(key, val as any);
          }
-
-         const responseEnfant = await fetch("http://localhost:8080/api/enfant", {
-           method: "POST",
-           body: formDataEnfant,
-         });
-
-         if (!responseEnfant.ok) {
-           const errorText = await responseEnfant.text();
-           throw new Error("Erreur lors de l’enregistrement de l'enfant : " + errorText);
-         }
-
-         const savedEnfant = await responseEnfant.json();
-         console.log("Enfant enregistré :", savedEnfant);
-       }
-
-       alert("Toutes les données ont été enregistrées avec succès !");
-     } catch (error) {
-       console.error(error);
-       alert("Erreur lors de l'enregistrement : " + error);
+       });
+       formDataEnfant.append("familleId", savedFamille.id.toString());
+       const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
+       if (!res.ok) throw new Error(await res.text());
      }
-   };
+
+     alert("Toutes les données ont été enregistrées avec succès !");
+   } catch (error) {
+     console.error(error);
+     alert("Erreur lors de l'enregistrement : " + error);
+   } finally {
+     setLoading(false);
+   }
+ };
 
 
-  // 🔹 Composant Select générique
-  const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }) => {
+  // Composant Select générique
+  const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
     const [open, setOpen] = useState(false);
     const [adding, setAdding] = useState(false);
     const [newOption, setNewOption] = useState("");
     const [opts, setOpts] = useState(options);
-
     useEffect(() => setOpts(options), [options]);
 
-    const handleSelect = (opt) => {
+    const handleSelect = (opt: Option) => {
       onChange(opt.value);
       setOpen(false);
     };
-
     const handleAddOption = async () => {
       if (!newOption.trim()) return;
       try {
-        const response = await fetch(apiUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nom: newOption }),
-        });
-        const savedItem = await response.json();
+        const res = await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nom: newOption }) });
+        const savedItem = await res.json();
         const newOpt = { value: savedItem.id, label: savedItem.nom };
         setOpts((prev) => [...prev, newOpt]);
         if (onNewItem) onNewItem(newOpt);
@@ -255,15 +267,14 @@ const toBase64 = (file: File) =>
         setAdding(false);
         setOpen(false);
       } catch (error) {
-        console.error("Erreur lors de l’ajout :", error);
+        console.error(error);
       }
     };
 
     return (
       <div className="relative w-full">
         <div className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
-         {opts.find((o) => o.value === (value?.id ?? value))?.label || placeholder}
-
+          {opts.find((o) => o.value === value)?.label || placeholder}
         </div>
         {open && (
           <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto">
@@ -278,9 +289,13 @@ const toBase64 = (file: File) =>
               </div>
             ) : (
               <div className="flex px-4 py-2 gap-2 items-center">
-                <Input type="text" placeholder="Nouvel élément" value={newOption} onChange={(e) => setNewOption(e.target.value)} className="border p-1 rounded w-full"/>
-                <button type="button" className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleAddOption}><FaCheck /></button>
-                <button type="button" className="px-3 py-1 bg-gray-300 text-black rounded" onClick={() => setAdding(false)}><FaTimes /></button>
+                <Input type="text" placeholder="Nouvel élément" value={newOption} onChange={(e) => setNewOption(e.target.value)} className="border p-1 rounded w-full" />
+                <button type="button" className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleAddOption}>
+                  <FaCheck />
+                </button>
+                <button type="button" className="px-3 py-1 bg-gray-300 text-black rounded" onClick={() => setAdding(false)}>
+                  <FaTimes />
+                </button>
               </div>
             )}
           </div>
@@ -288,7 +303,6 @@ const toBase64 = (file: File) =>
       </div>
     );
   };
-
 
   return (
     <div dir="rtl">
