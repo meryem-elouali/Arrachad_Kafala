@@ -33,6 +33,9 @@ public class EnfantController {
             @RequestParam("nom") String nom,
             @RequestParam("dateNaissance") String dateNaissance,
             @RequestParam("familleId") Long familleId,
+            @RequestParam(value = "typeMaladie", required = false) String typeMaladie,
+
+            @RequestParam(value = "estMalade", required = false) Boolean estMalade,
             @RequestParam(value = "niveauScolaireId", required = false) Long niveauScolaireId,
             @RequestParam(value = "photoEnfant", required = false) MultipartFile photoEnfant
     ) throws IOException {
@@ -44,6 +47,8 @@ public class EnfantController {
         enfant.setPrenom(prenom);
         enfant.setNom(nom);
         enfant.setDateNaissance(dateNaissance);
+        enfant.setTypeMaladie(typeMaladie);
+        enfant.setEstMalade(estMalade != null ? estMalade : false);
         enfant.setFamille(famille);
 
         if (niveauScolaireId != null) {

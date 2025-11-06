@@ -6,6 +6,7 @@ import FormElements from "../Forms/AjoutFamille";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "../../components/ui/table";
 import Badge from "../../components/ui/badge/Badge";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 
 interface Enfant {
   id: number;
@@ -17,8 +18,10 @@ interface Enfant {
 interface Famille {
   id: number;
   nomFamille: string;
+  phone: string;
   mere?: { nom: string; prenom: string };
   pere?: { nom: string; prenom: string };
+   typeFamille?: { nom: string };
   enfants?: Enfant[];
   niveauScolaire?: { nom: string };
 }
@@ -28,6 +31,8 @@ export default function BasicTables() {
   const [familles, setFamilles] = useState<Famille[]>([]);
   const [loading, setLoading] = useState(true);
 
+// À l'intérieur de ton composant BasicTables
+const navigate = useNavigate();
   useEffect(() => {
     axios.get("http://localhost:8080/api/famille") // Assure-toi que ton endpoint renvoie bien un tableau de familles
       .then(res => {
@@ -48,27 +53,35 @@ export default function BasicTables() {
         <Table>
           <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
             <TableRow>
-              <TableCell isHeader>العائلة</TableCell>
+
               <TableCell isHeader>اسم الأم</TableCell>
-              <TableCell isHeader>اسم الأب</TableCell>
+              <TableCell isHeader>الهاتف</TableCell>
               <TableCell isHeader>عدد الأبناء</TableCell>
-              <TableCell isHeader>الدرجة</TableCell>
+               <TableCell isHeader>نوع الكفالة</TableCell>
+              <TableCell isHeader>action</TableCell>
             </TableRow>
           </TableHeader>
           <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
             {familles.map(famille => (
               <TableRow key={famille.id}>
-                <TableCell>{famille.nomFamille || "N/A"}</TableCell>
+
                 <TableCell>{famille.mere ? `${famille.mere.nom} ${famille.mere.prenom}` : "N/A"}</TableCell>
-                <TableCell>{famille.pere ? `${famille.pere.nom} ${famille.pere.prenom}` : "N/A"}</TableCell>
+               <TableCell>{famille.phone || "N/A"}</TableCell>
+
               <TableCell>
                 {famille.enfants && famille.enfants.length > 0 ? famille.enfants.length : 0}
               </TableCell>
 
 
-                <TableCell>
-                  <Badge size="sm" color="success">{famille.niveauScolaire?.nom || "N/A"}</Badge>
-                </TableCell>
+                 <TableCell>{famille.typeFamille ? `${famille.typeFamille.nom} ` : "N/A"}</TableCell>
+                 <TableCell>
+                   <button
+                     onClick={() => navigate("/profile", { state: { famille } })}
+                     className="px-2 py-1 bg-green-500 text-white rounded hover:bg-green-600"
+                   >
+                     Accéder
+                   </button>
+                 </TableCell>
               </TableRow>
             ))}
           </TableBody>

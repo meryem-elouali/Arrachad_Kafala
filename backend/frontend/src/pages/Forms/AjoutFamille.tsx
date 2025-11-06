@@ -19,6 +19,9 @@ interface Enfant {
   dateNaissance: string;
   niveauscolaire: { id: string | number } | null;
   photoEnfant: File | null;
+   typeMaladie: "",
+
+      estMalade: false,
 }
 
 export default function FormElements() {
@@ -29,6 +32,9 @@ export default function FormElements() {
     nombreEnfants: 0,
     phone: "",
     dateInscription: "",
+      typeMaladie: "",
+
+        estMalade: false,
   });
 
   const [mereData, setMereData] = useState({
@@ -161,85 +167,80 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
     if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
     return val.slice(0, 10);
   };
+const handleSubmitAll = async () => {
+  setLoading(true);
+  try {
+    // ✅ Préparer les blobs uniquement si les fichiers existent
+    const mereBlob = mereData.photoMere ? await compressImage(mereData.photoMere) : null;
+    const pereBlob = pereData.photoPere ? await compressImage(pereData.photoPere) : null;
 
-  // Envoi formulaire complet
- const handleSubmitAll = async () => {
-   setLoading(true);
-   try {
-     // Vérification obligatoire
-     if (!mereData.photoMere || !pereData.photoPere) {
-       alert("⚠️ Veuillez sélectionner les photos de la mère et du père");
-       setLoading(false);
-       return;
-     }
+    // FormData mère
+    const formDataMere = new FormData();
+    Object.entries(mereData).forEach(([key, val]) => {
+      if (key === "photoMere" && mereBlob) formDataMere.append("photoMere", mereBlob, mereData.photoMere!.name);
+      else formDataMere.append(key, val as any);
+    });
 
-     // ✅ Compression avant upload
-     const mereBlob = await compressImage(mereData.photoMere);
-     const pereBlob = await compressImage(pereData.photoPere);
+    const responseMere = await fetch("http://localhost:8080/api/mere", {
+      method: "POST",
+      body: formDataMere,
+    });
+    if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
+    const savedMere = await responseMere.json();
 
-     const formDataMere = new FormData();
-     Object.entries(mereData).forEach(([key, val]) => {
-       if (key === "photoMere") formDataMere.append("photo", mereBlob, mereData.photoMere!.name);
-       else formDataMere.append(key, val as any);
-     });
+    // FormData père
+    const formDataPere = new FormData();
+    Object.entries(pereData).forEach(([key, val]) => {
+      if (key === "photoPere" && pereBlob) formDataPere.append("photoPere", pereBlob, pereData.photoPere!.name);
+      else formDataPere.append(key, val as any);
+    });
 
-     const responseMere = await fetch("http://localhost:8080/api/mere", {
-       method: "POST",
-       body: formDataMere,
-     });
-     if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
-     const savedMere = await responseMere.json();
+    const responsePere = await fetch("http://localhost:8080/api/pere", {
+      method: "POST",
+      body: formDataPere,
+    });
+    if (!responsePere.ok) throw new Error("Erreur enregistrement père");
+    const savedPere = await responsePere.json();
 
-     const formDataPere = new FormData();
-     Object.entries(pereData).forEach(([key, val]) => {
-       if (key === "photoPere") formDataPere.append("photo", pereBlob, pereData.photoPere!.name);
-       else formDataPere.append(key, val as any);
-     });
+    // Famille
+    const familleComplet = { ...familleData, mere: { id: savedMere.id }, pere: { id: savedPere.id } };
+    const responseFamille = await fetch("http://localhost:8080/api/famille", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(familleComplet),
+    });
+    if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
+    const savedFamille = await responseFamille.json();
 
-     const responsePere = await fetch("http://localhost:8080/api/pere", {
-       method: "POST",
-       body: formDataPere,
-     });
-     if (!responsePere.ok) throw new Error("Erreur enregistrement père");
-     const savedPere = await responsePere.json();
+    // Enfants
+    for (const enfant of enfants) {
+      const formDataEnfant = new FormData();
+      Object.entries(enfant).forEach(([key, val]) => {
+        if (key === "photoEnfant" && val instanceof File) {
+          // ⚡ vérifier avant compression
+          compressImage(val).then((blob) => {
+            formDataEnfant.append("photoEnfant", blob, val.name);
+          });
+        } else if (val && typeof val === "object" && "id" in val) {
+          formDataEnfant.append(key, val.id.toString());
+        } else {
+          formDataEnfant.append(key, val as any);
+        }
+      });
+      formDataEnfant.append("familleId", savedFamille.id.toString());
+      const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
+      if (!res.ok) throw new Error(await res.text());
+    }
 
-     // Famille
-     const familleComplet = { ...familleData, mere: { id: savedMere.id }, pere: { id: savedPere.id } };
-     const responseFamille = await fetch("http://localhost:8080/api/famille", {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-       body: JSON.stringify(familleComplet),
-     });
-     if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
-     const savedFamille = await responseFamille.json();
+    alert("Toutes les données ont été enregistrées avec succès !");
+  } catch (error) {
+    console.error(error);
+    alert("Erreur lors de l'enregistrement : " + error);
+  } finally {
+    setLoading(false);
+  }
+};
 
-     // Enfants
-     for (const enfant of enfants) {
-       const formDataEnfant = new FormData();
-       Object.entries(enfant).forEach(([key, val]) => {
-         if (key === "photoEnfant" && val instanceof File) {
-           compressImage(val).then((blob) => {
-             formDataEnfant.append("photo", blob, val.name);
-           });
-         } else if (val && typeof val === "object" && "id" in val) {
-           formDataEnfant.append(key, val.id.toString());
-         } else {
-           formDataEnfant.append(key, val as any);
-         }
-       });
-       formDataEnfant.append("familleId", savedFamille.id.toString());
-       const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
-       if (!res.ok) throw new Error(await res.text());
-     }
-
-     alert("Toutes les données ont été enregistrées avec succès !");
-   } catch (error) {
-     console.error(error);
-     alert("Erreur lors de l'enregistrement : " + error);
-   } finally {
-     setLoading(false);
-   }
- };
 
 
   // Composant Select générique
@@ -404,7 +405,29 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
               }}
             />
           </div></div></div>
+  <div className="flex gap-4">
+             <div className="w-1/2">
+              <div className="flex items-center mt-4">
+          <input
+            type="checkbox"
+            checked={familleData.estMalade}
+            onChange={(e) => setFamilleData({ ...familleData, estMalade: e.target.checked })}
+            className="mr-2"
+          />
+          <label>هل تعتني بشخص مريض في المنزل?</label>
+          </div></div>
 
+             <div className="w-1/2">
+        {familleData.estMalade && (
+          <Input
+            type="text"
+            placeholder="نوع المرض"
+            value={familleData.typeMaladie}
+            onChange={(e) => setFamilleData({ ...familleData, typeMaladie: e.target.value })}
+            className="border p-2 rounded w-full mt-2"
+          />
+        )}
+        </div></div>
 
 
 </ComponentCard>
@@ -806,10 +829,7 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
                                   value={enfants[index]?.prenom || ""}
                                   onChange={(e) => {
                                     const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      prenom: e.target.value,
-                                    };
+                                    newEnfants[index] = { ...newEnfants[index], prenom: e.target.value };
                                     setEnfants(newEnfants);
                                   }}
                                   className="border p-2 rounded w-full"
@@ -825,10 +845,7 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
                                   value={enfants[index]?.nom || ""}
                                   onChange={(e) => {
                                     const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      nom: e.target.value,
-                                    };
+                                    newEnfants[index] = { ...newEnfants[index], nom: e.target.value };
                                     setEnfants(newEnfants);
                                   }}
                                   className="border p-2 rounded w-full"
@@ -848,15 +865,11 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
                                   onChange={(e) => {
                                     let val = e.target.value.replace(/\D/g, "");
                                     if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                                    if (val.length > 5)
-                                      val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                                    if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
                                     if (val.length > 10) val = val.slice(0, 10);
 
                                     const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      dateNaissance: val,
-                                    };
+                                    newEnfants[index] = { ...newEnfants[index], dateNaissance: val };
                                     setEnfants(newEnfants);
                                   }}
                                 />
@@ -869,38 +882,66 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
                                   value={enfants[index]?.niveauscolaire || ""}
                                   onChange={(val) => {
                                     const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      niveauscolaire: { id: val },
-                                    };
+                                    newEnfants[index] = { ...newEnfants[index], niveauscolaire: val };
                                     setEnfants(newEnfants);
                                   }}
                                   placeholder="اختر المستوى الدراسي"
                                   apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
-                                  onNewItem={(newOpt) =>
-                                    setNiveauxscolaires((prev) => [...prev, newOpt])
-                                  }
+                                  onNewItem={(newOpt) => setNiveauxscolaires((prev) => [...prev, newOpt])}
                                 />
                               </div>
                             </div>
 
-                            {/* ✅ Dropzone + aperçu */}
+                            {/* Checkbox Malade */}
+                            <div className="flex gap-4 mt-4">
+                              <div className="w-1/2 flex items-center">
+                                <input
+                                  type="checkbox"
+                                  checked={enfants[index]?.estMalade || false}
+                                  onChange={(e) => {
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      estMalade: e.target.checked,
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                  className="mr-2"
+                                />
+                                <label>هل الابن مريض?</label>
+                              </div>
+
+                              <div className="w-1/2">
+                                {enfants[index]?.estMalade && (
+                                  <Input
+                                    type="text"
+                                    placeholder="نوع المرض"
+                                    value={enfants[index]?.typeMaladie || ""}
+                                    onChange={(e) => {
+                                      const newEnfants = [...enfants];
+                                      newEnfants[index] = {
+                                        ...newEnfants[index],
+                                        typeMaladie: e.target.value,
+                                      };
+                                      setEnfants(newEnfants);
+                                    }}
+                                    className="border p-2 rounded w-full mt-2"
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Dropzone + aperçu */}
                             <div className="mt-6">
-                            <DropzoneComponent
-                              label={`صورة الطفل ${index + 1}`}
-                              id={`photoEnfant_${index}`}
-                              onFileSelect={(file) => {
-                                const newEnfants = [...enfants];
-                                newEnfants[index] = {
-                                  ...newEnfants[index],
-                                  photoEnfant: file, // ⚡️ ici
-                                };
-                                setEnfants(newEnfants);
-                              }}
-                            />
-
-
-
+                              <DropzoneComponent
+                                label={`صورة الطفل ${index + 1}`}
+                                id={`photoEnfant_${index}`}
+                                onFileSelect={(file) => {
+                                  const newEnfants = [...enfants];
+                                  newEnfants[index] = { ...newEnfants[index], photoEnfant: file };
+                                  setEnfants(newEnfants);
+                                }}
+                              />
                             </div>
                           </div>
                         ))}
@@ -909,6 +950,7 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
                       <p className="text-gray-500 text-center">لم يتم إدخال عدد الأبناء</p>
                     )}
                   </ComponentCard>
+
 
 
         </div>

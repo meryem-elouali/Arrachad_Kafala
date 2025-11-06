@@ -50,5 +50,11 @@ public class FamilleController {
     public List<Famille> getAllFamilles() {
         return familleService.getAllFamilles();
     }
+    // 🔹 Obtenir une famille par son ID (avec enfants, mère et père)
+    @GetMapping("/{id}")
+    public Famille getFamilleById(@PathVariable Long id) {
+        return familleService.getFamilleById(id);
+    }
+
 
 }

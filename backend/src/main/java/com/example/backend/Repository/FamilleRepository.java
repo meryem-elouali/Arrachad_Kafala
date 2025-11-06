@@ -15,4 +15,13 @@ public interface FamilleRepository extends JpaRepository<Famille, Long> {
             "LEFT JOIN FETCH f.pere " +
             "LEFT JOIN FETCH f.enfants")
     List<Famille> findAllWithRelations();
+    // 🔹 Récupérer une famille par ID avec mère, père et enfants
+    @Query("SELECT f FROM Famille f " +
+            "LEFT JOIN FETCH f.mere " +
+            "LEFT JOIN FETCH f.pere " +
+            "LEFT JOIN FETCH f.enfants " +
+            "WHERE f.id = :id")
+    Famille findByIdWithRelations(Long id);
+
+
 }

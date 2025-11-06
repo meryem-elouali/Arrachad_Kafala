@@ -15,7 +15,10 @@ public class Famille {
     private Integer nombreEnfants;
     private String phone;
     private String dateInscription;
+    private String typeMaladie;
 
+
+    private Boolean estMalade = false;
     @ManyToOne
     @JoinColumn(name = "type_famille_id")
     private TypeFamille typeFamille;
@@ -65,4 +68,20 @@ public class Famille {
 
     public List<Enfant> getEnfants() { return enfants; }
     public void setEnfants(List<Enfant> enfants) { this.enfants = enfants; }
+
+    public String getTypeMaladie() {
+        return typeMaladie;
+    }
+
+    public Boolean getEstMalade() {
+        return estMalade;
+    }
+
+    public void setTypeMaladie(String typeMaladie) {
+        this.typeMaladie = typeMaladie;
+    }
+
+    public void setEstMalade(Boolean estMalade) {
+        this.estMalade = estMalade;
+    }
 }

@@ -79,4 +79,10 @@ public class FamilleService {
     public List<Famille> getAllFamilles() {
         return familleRepo.findAllWithRelations(); // ✅ chargement avec mère, père et enfants
     }
+    @Transactional(readOnly = true)
+    public Famille getFamilleById(Long id) {
+        return familleRepo.findByIdWithRelations(id); // ✅ utilise maintenant la requête avec JOIN FETCH
+    }
+
+
 }

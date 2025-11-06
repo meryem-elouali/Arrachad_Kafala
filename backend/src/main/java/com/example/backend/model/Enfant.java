@@ -16,7 +16,10 @@ public class Enfant {
     private String prenom;           // الاسم
     private String nom;              // النسب
     private String dateNaissance;    // تاريخ الازدياد (ou LocalDate si tu préfères)
+    private String typeMaladie;
 
+
+    private Boolean estMalade = false;
     @ManyToOne
     @JoinColumn(name = "famille_id")
     @JsonIgnore// clé étrangère
@@ -83,5 +86,21 @@ public class Enfant {
 
     public void setFamille(Famille famille) {
         this.famille = famille;
+    }
+
+    public String getTypeMaladie() {
+        return typeMaladie;
+    }
+
+    public Boolean getEstMalade() {
+        return estMalade;
+    }
+
+    public void setTypeMaladie(String typeMaladie) {
+        this.typeMaladie = typeMaladie;
+    }
+
+    public void setEstMalade(Boolean estMalade) {
+        this.estMalade = estMalade;
     }
 }
