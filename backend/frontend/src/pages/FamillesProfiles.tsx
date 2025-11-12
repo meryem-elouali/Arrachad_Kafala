@@ -1,51 +1,152 @@
 import { useState, useEffect } from "react";
-
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
 import Button from "../components/ui/button/Button";
 import Input from "../components/form/input/InputField";
 import Label from "../components/form/Label";
+import { FaCheck, FaTimes } from "react-icons/fa";
+
+interface Option {
+  value: number;
+  label: string;
+}
+
+const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newOption, setNewOption] = useState("");
+  const [opts, setOpts] = useState<Option[]>(options);
+
+  useEffect(() => setOpts(options), [options]);
+
+  const handleSelect = (opt: Option) => {
+    onChange(opt.value); // garder number
+    setOpen(false);
+  };
+
+  const handleAddOption = async () => {
+    if (!newOption.trim()) return;
+    if (!apiUrl) {
+      alert("Erreur: URL API manquante pour ajouter un élément.");
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nom: newOption }),
+      });
+      if (!res.ok) throw new Error("Erreur serveur");
+      const savedItem = await res.json();
+      const newOpt = { value: savedItem.id, label: savedItem.nom }; // number
+      setOpts((prev) => [...prev, newOpt]);
+      if (onNewItem) onNewItem(newOpt);
+      onChange(newOpt.value); // sélection automatique
+      setNewOption("");
+      setAdding(false);
+      setOpen(false);
+    } catch (error) {
+      console.error("Erreur lors de l'ajout:", error);
+      alert("Erreur lors de l'ajout de l'élément. Vérifiez la connexion.");
+    }
+  };
+
+  return (
+    <div className="relative w-full">
+      <div className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
+        {opts.find((o) => o.value === value)?.label || placeholder}
+      </div>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto">
+          {opts.map((opt) => (
+            <div key={opt.value} className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={() => handleSelect(opt)}>
+              {opt.label}
+            </div>
+          ))}
+          {!adding ? (
+            <div className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100" onClick={() => setAdding(true)}>
+              + Ajouter un élément
+            </div>
+          ) : (
+            <div className="flex px-4 py-2 gap-2 items-center">
+              <Input type="text" placeholder="Nouvel élément" value={newOption} onChange={(e) => setNewOption(e.target.value)} className="border p-1 rounded w-full" />
+              <button type="button" className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleAddOption}>
+                <FaCheck />
+              </button>
+              <button type="button" className="px-3 py-1 bg-gray-300 text-black rounded" onClick={() => setAdding(false)}>
+                <FaTimes />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface Enfant {
   id: number;
   prenom: string;
   nom: string;
   dateNaissance: string;
-  photoEnfant?: number[];
+  photoEnfant?: string;
 }
 
 interface Famille {
   id: number;
-  nomFamille: string;
-  adresseFamille:string;
+  nomFamille?: string;
+  adresseFamille: string;
   phone: string;
-  mere?: { nom: string; prenom: string;photoMere?: number[];  };
-  pere?: { nom: string; prenom: string;photoPere?: number[];  };
-  typeFamille?: { nom: string };
+  nombreEnfants: number;
+  dateInscription: string;
+  typeMaladie: string;
+  estMalade: boolean;
+  mere?: { photoMere?: string; nom: string; prenom: string };
+  pere?: { photoPere?: string; nom: string; prenom: string };
+  typeFamille?: { id: number; nom: string };
+  habitationFamille?: { id: number; nom: string };
   enfants?: Enfant[];
-  niveauScolaire?: { nom: string };
 }
+
 export default function FamillesProfiles() {
- const [modalType, setModalType] = useState<null | "personal" | "address">(null);
+  const [modalType, setModalType] = useState<null | "العائلة" | "address">(null);
   const [famille, setFamille] = useState<Famille | null>(null);
+  const [habitations, setHabitations] = useState<Option[]>([]);
+  const [typesFamilles, setTypesFamilles] = useState<Option[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(true);
 
-  const openModal = (type: "personal" | "address") => setModalType(type);
-  const closeModal = () => setModalType(null);
+  const [formData, setFormData] = useState({
+    typeFamilleId: 0,
+    habitationFamilleId: 0,
+    adresseFamille: "",
+    phone: "",
+    dateInscription: "",
+    possedeMalade: false,
+    personneMalade: "",
+  });
 
- function toBase64(byteArray?: number[]): string | undefined {
-   if (!byteArray) return undefined;
-   const uint8Array = new Uint8Array(byteArray);
-   let binary = '';
-   for (let i = 0; i < uint8Array.byteLength; i++) {
-     binary += String.fromCharCode(uint8Array[i]);
-   }
-   return `data:image/jpeg;base64,${btoa(binary)}`;
- }
+  useEffect(() => {
+    const fetchOptions = async () => {
+      try {
+        const [typesRes, habitationsRes] = await Promise.all([
+          fetch("http://localhost:8080/api/famille/types"),
+          fetch("http://localhost:8080/api/famille/habitations"),
+        ]);
+        const typesData = await typesRes.json();
+        const habitationsData = await habitationsRes.json();
 
+        setTypesFamilles([{ value: 0, label: "Aucun" }, ...typesData.map((t: any) => ({ value: t.id, label: t.nom }))]);
+        setHabitations([{ value: 0, label: "Aucun" }, ...habitationsData.map((h: any) => ({ value: h.id, label: h.nom }))]);
+        setLoadingOptions(false);
+      } catch (err) {
+        console.error("Erreur fetch options:", err);
+      }
+    };
+    fetchOptions();
+  }, []);
 
-
-useEffect(() => {
+  useEffect(() => {
     const fetchFamille = async () => {
       try {
         const urlParts = window.location.pathname.split("/").filter(Boolean);
@@ -53,8 +154,6 @@ useEffect(() => {
         if (isNaN(id)) return;
 
         const res = await fetch(`http://localhost:8080/api/famille/${id}`);
-        if (!res.ok) return;
-
         const data: Famille = await res.json();
         setFamille(data);
       } catch (err) {
@@ -64,51 +163,182 @@ useEffect(() => {
     fetchFamille();
   }, []);
 
-  if (!famille) return <p>Chargement...</p>;
-  const handleSave = () => {
-    console.log("Saving changes...");
+  useEffect(() => {
+    if (famille && typesFamilles.length > 0 && habitations.length > 0) {
+      if (famille.typeFamille && famille.typeFamille.id !== 0 && !typesFamilles.some(t => t.value === famille.typeFamille.id)) {
+        setTypesFamilles(prev => [...prev, { value: famille.typeFamille.id, label: famille.typeFamille.nom }]);
+      }
+      if (famille.habitationFamille && famille.habitationFamille.id !== 0 && !habitations.some(h => h.value === famille.habitationFamille.id)) {
+        setHabitations(prev => [...prev, { value: famille.habitationFamille.id, label: famille.habitationFamille.nom }]);
+      }
+
+      setFormData({
+        typeFamilleId: famille.typeFamille?.id || 0,
+        habitationFamilleId: famille.habitationFamille?.id || 0,
+        adresseFamille: famille.adresseFamille || "",
+        phone: famille.phone || "",
+        dateInscription: famille.dateInscription || "",
+        possedeMalade: famille.possedeMalade || false,
+        personneMalade: famille.personneMalade || "",
+      });
+    }
+  }, [famille, typesFamilles, habitations]);
+
+  const openModal = (type: "العائلة" | "address") => setModalType(type);
+  const closeModal = () => setModalType(null);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!famille) return;
+
+    const selectedTypeFamille = typesFamilles.find(t => t.value.toString() === formData.typeFamilleId.toString()) || null;
+    const selectedHabitation = habitations.find(h => h.value.toString() === formData.habitationFamilleId.toString()) || null;
+
+    try {
+      const updatedData = {
+        typeFamille: selectedTypeFamille
+          ? { id: Number(selectedTypeFamille.value), nom: selectedTypeFamille.label }
+          : null,
+        habitationFamille: selectedHabitation
+          ? { id: Number(selectedHabitation.value), nom: selectedHabitation.label }
+          : null,
+        adresseFamille: formData.adresseFamille,
+        phone: formData.phone,
+        dateInscription: formData.dateInscription,
+        possedeMalade: formData.possedeMalade,
+        personneMalade: formData.personneMalade,
+      };
+
+      const res = await fetch(`http://localhost:8080/api/famille/${famille.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedData),
+      });
+
+      const text = await res.text(); // lire le texte pour debug
+      if (!res.ok) throw new Error(`Erreur HTTP ${res.status}: ${text}`);
+
+      const updatedFamille = JSON.parse(text);
+      setFamille(updatedFamille);
+      setFormData({
+        typeFamilleId: updatedFamille.typeFamille?.id || 0,
+        habitationFamilleId: updatedFamille.habitationFamille?.id || 0,
+        adresseFamille: updatedFamille.adresseFamille || "",
+        phone: updatedFamille.phone || "",
+        dateInscription: updatedFamille.dateInscription || "",
+        possedeMalade: updatedFamille.possedeMalade || false,
+        personneMalade: updatedFamille.personneMalade || "",
+      });
+
+    } catch (err: any) {
+      console.error("Erreur fetch PUT:", err);
+      alert(`Erreur réseau ou serveur: ${err.message}`);
+    }
+
     closeModal();
   };
-   const renderModalContent = () => {
-      if (modalType === "personal") {
-        return (
-          <>
-            <h4 className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Edit Personal Information
-            </h4>
-            <form className="flex flex-col">
-              <div className="custom-scrollbar h-[450px] overflow-y-auto px-2 pb-3">
-                <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
-                  <div>
-                    <Label>First Name</Label>
-                    <Input type="text" value="Musharof" />
-                  </div>
-                  <div>
-                    <Label>Last Name</Label>
-                    <Input type="text" value="Chowdhury" />
-                  </div>
-                  <div>
-                    <Label>Email</Label>
-                    <Input type="text" value="randomuser@pimjo.com" />
-                  </div>
-                  <div>
-                    <Label>Phone</Label>
-                    <Input type="text" value="+09 363 398 46" />
-                  </div>
+
+
+  if (!famille || loadingOptions) return <p>Chargement...</p>;
+
+  const renderModalContent = () => {
+    if (modalType === "العائلة") {
+      return (
+        <>
+          <h4 dir="rtl" className="mb-2 text-2xl font-semibold text-gray-800 dark:text-white/90">
+            تعديل معلومات العائلة
+          </h4>
+          <form dir="rtl" className="flex flex-col">
+            <div className="px-2 overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
+                <div>
+                  <Label>نوع الحالة</Label>
+                  <Select
+                    options={typesFamilles}
+                    value={formData.typeFamilleId}
+                    onChange={(val: number) => setFormData(prev => ({ ...prev, typeFamilleId: val }))}
+                    placeholder="نوع الحالة"
+                    apiUrl="http://localhost:8080/api/famille/types"
+                    onNewItem={(newOpt) => console.log("New type added:", newOpt)}
+                  />
+                </div>
+
+                <div>
+                  <Label>نوع السكن</Label>
+                  <Select
+                    options={habitations}
+                    value={formData.habitationFamilleId}
+                    onChange={(val: number) => setFormData(prev => ({ ...prev, habitationFamilleId: val }))}
+                    placeholder="نوع السكن"
+                    apiUrl="http://localhost:8080/api/famille/habitations"
+                    onNewItem={(newOpt) => console.log("New habitation added:", newOpt)}
+                  />
+                </div>
+
+                <div>
+                  <Label>العنوان</Label>
+                  <Input type="text" name="adresseFamille" value={formData.adresseFamille} onChange={handleChange} />
+                </div>
+
+                <div>
+                  <Label>الهاتف</Label>
+                  <Input type="text" name="phone" value={formData.phone} onChange={handleChange} />
+                </div>
+
+                <div>
+                  <Label>date inscription</Label>
+                  <Input
+                    type="text"
+                    name="dateInscription"
+                    placeholder="__/__/____"
+                    value={formData.dateInscription}
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, "");
+                      if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+                      if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+                      if (val.length > 10) val = val.slice(0, 10);
+                      setFormData(prev => ({ ...prev, dateInscription: val }));
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={formData.possedeMalade}
+                    onChange={(e) => setFormData(prev => ({ ...prev, possedeMalade: e.target.checked, personneMalade: e.target.checked ? prev.personneMalade : "" }))}
+                    className="mr-2"
+                  />
+                  <label>هل تعتني بشخص مريض في المنزل?</label>
+                </div>
+
+                <div>
+                  <Label>صلة القرابة</Label>
+                  <Input
+                    type="text"
+                    name="personneMalade"
+                    value={formData.personneMalade}
+                    onChange={handleChange}
+                    disabled={!formData.possedeMalade}
+                  />
                 </div>
               </div>
-              <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-                <Button size="sm" variant="outline" onClick={closeModal}>
-                  Close
-                </Button>
-                <Button size="sm" onClick={handleSave}>
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </>
-        );
-      }
+            </div>
+
+            <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
+              <Button size="sm" variant="outline" onClick={closeModal}>Close</Button>
+              <Button size="sm" onClick={handleSave}>Save Changes</Button>
+            </div>
+          </form>
+        </>
+      );
+    }
+
+
 
       if (modalType === "address") {
         return (
@@ -226,7 +456,7 @@ useEffect(() => {
                     </div>
                     <button
 
-              onClick={() => openModal("address")}
+              onClick={() => openModal("العائلة")}
                       className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
                     >
                       <svg
@@ -304,10 +534,11 @@ useEffect(() => {
                 </div>
               </div>
 
-              <button
-                onClick={openModal}
-                className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
-              >
+             <button
+
+                          onClick={() => openModal("address")}
+                                  className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
+                                >
                 <svg
                   className="fill-current"
                   width="18"

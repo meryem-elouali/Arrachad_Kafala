@@ -32,9 +32,9 @@ export default function FormElements() {
     nombreEnfants: 0,
     phone: "",
     dateInscription: "",
-      typeMaladie: "",
+      personneMalade: "",
 
-        estMalade: false,
+        possedeMalade: false,
   });
 
   const [mereData, setMereData] = useState({
@@ -412,20 +412,20 @@ const handleSubmitAll = async () => {
               <div className="flex items-center mt-4">
           <input
             type="checkbox"
-            checked={familleData.estMalade}
-            onChange={(e) => setFamilleData({ ...familleData, estMalade: e.target.checked })}
+            checked={familleData.possedeMalade}
+            onChange={(e) => setFamilleData({ ...familleData, possedeMalade: e.target.checked })}
             className="mr-2"
           />
           <label>هل تعتني بشخص مريض في المنزل?</label>
           </div></div>
 
              <div className="w-1/2">
-        {familleData.estMalade && (
+        {familleData.possedeMalade && (
           <Input
             type="text"
             placeholder="نوع المرض"
-            value={familleData.typeMaladie}
-            onChange={(e) => setFamilleData({ ...familleData, typeMaladie: e.target.value })}
+            value={familleData.personneMalade}
+            onChange={(e) => setFamilleData({ ...familleData, personneMalade: e.target.value })}
             className="border p-2 rounded w-full mt-2"
           />
         )}

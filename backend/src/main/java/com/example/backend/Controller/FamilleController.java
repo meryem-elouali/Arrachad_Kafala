@@ -55,6 +55,27 @@ public class FamilleController {
     public Famille getFamilleById(@PathVariable Long id) {
         return familleService.getFamilleById(id);
     }
+    // 🔹 Mettre à jour une famille existante
+    @PutMapping("/{id}")
+    public Famille updateFamille(@PathVariable Long id, @RequestBody Famille updatedFamille) {
+        // Récupérer la famille existante
+        Famille existingFamille = familleService.getFamilleById(id);
+        if (existingFamille == null) {
+            throw new RuntimeException("Famille introuvable avec l'id : " + id);
+        }
+
+        // Mettre à jour les champs
+        existingFamille.setAdresseFamille(updatedFamille.getAdresseFamille());
+        existingFamille.setPhone(updatedFamille.getPhone());
+        existingFamille.setDateInscription(updatedFamille.getDateInscription());
+        existingFamille.setPossedeMalade(updatedFamille.getPossedeMalade());
+        existingFamille.setPersonneMalade(updatedFamille.getPersonneMalade());
+        existingFamille.setTypeFamille(updatedFamille.getTypeFamille());
+        existingFamille.setHabitationFamille(updatedFamille.getHabitationFamille());
+
+        // Sauvegarder la famille mise à jour
+        return familleService.saveFamille(existingFamille);
+    }
 
 
 }

@@ -15,10 +15,27 @@ public class Famille {
     private Integer nombreEnfants;
     private String phone;
     private String dateInscription;
-    private String typeMaladie;
+    @Column(name = "personne_malade") // correspond à la colonne de la DB
+    private String personneMalade;
 
+    public String getPersonneMalade() {
+        return personneMalade;
+    }
 
-    private Boolean estMalade = false;
+    public void setPersonneMalade(String personneMalade) {
+        this.personneMalade = personneMalade;
+    }
+
+    @Column(name = "possede_malade") // correspond à la colonne de la DB
+    private Boolean possedeMalade = false;
+
+    public Boolean getPossedeMalade() {
+        return possedeMalade;
+    }
+
+    public void setPossedeMalade(Boolean possedeMalade) {
+        this.possedeMalade = possedeMalade;
+    }
     @ManyToOne
     @JoinColumn(name = "type_famille_id")
     private TypeFamille typeFamille;
@@ -69,19 +86,5 @@ public class Famille {
     public List<Enfant> getEnfants() { return enfants; }
     public void setEnfants(List<Enfant> enfants) { this.enfants = enfants; }
 
-    public String getTypeMaladie() {
-        return typeMaladie;
-    }
 
-    public Boolean getEstMalade() {
-        return estMalade;
-    }
-
-    public void setTypeMaladie(String typeMaladie) {
-        this.typeMaladie = typeMaladie;
-    }
-
-    public void setEstMalade(Boolean estMalade) {
-        this.estMalade = estMalade;
-    }
 }
