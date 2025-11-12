@@ -170,6 +170,11 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
 const handleSubmitAll = async () => {
   setLoading(true);
   try {
+  console.log("===== DÉBUT ENVOI =====");
+      console.log("📦 Données famille :", familleData);
+      console.log("👩‍🦰 Données mère :", mereData);
+      console.log("🧔 Données père :", pereData);
+      console.log("👧 Liste enfants :", enfants);
     // ✅ Préparer les blobs uniquement si les fichiers existent
     const mereBlob = mereData.photoMere ? await compressImage(mereData.photoMere) : null;
     const pereBlob = pereData.photoPere ? await compressImage(pereData.photoPere) : null;
@@ -212,25 +217,22 @@ const handleSubmitAll = async () => {
     if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
     const savedFamille = await responseFamille.json();
 
-    // Enfants
-    for (const enfant of enfants) {
-      const formDataEnfant = new FormData();
-      Object.entries(enfant).forEach(([key, val]) => {
-        if (key === "photoEnfant" && val instanceof File) {
-          // ⚡ vérifier avant compression
-          compressImage(val).then((blob) => {
-            formDataEnfant.append("photoEnfant", blob, val.name);
-          });
-        } else if (val && typeof val === "object" && "id" in val) {
-          formDataEnfant.append(key, val.id.toString());
-        } else {
-          formDataEnfant.append(key, val as any);
-        }
-      });
-      formDataEnfant.append("familleId", savedFamille.id.toString());
-      const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
-      if (!res.ok) throw new Error(await res.text());
-    }
+   for (const enfant of enfants) {
+     const formDataEnfant = new FormData();
+     for (const [key, val] of Object.entries(enfant)) {
+       if (key === "photoEnfant" && val instanceof File) {
+         const blob = await compressImage(val); // ⚡ await
+         formDataEnfant.append("photoEnfant", blob, val.name);
+       } else if (val && typeof val === "object" && "id" in val) {
+         formDataEnfant.append(key, val.id.toString());
+       } else {
+         formDataEnfant.append(key, val as any);
+       }
+     }
+     formDataEnfant.append("familleId", savedFamille.id.toString());
+     const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
+     if (!res.ok) throw new Error(await res.text());
+   }
 
     alert("Toutes les données ont été enregistrées avec succès !");
   } catch (error) {
