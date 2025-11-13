@@ -9,6 +9,7 @@ import com.example.backend.model.NiveauScolaire;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class EnfantService {
@@ -52,8 +53,12 @@ public class EnfantService {
     }
 
     // 🔹 Méthode pour récupérer un NiveauScolaire par ID
-    public NiveauScolaire getNiveauScolaireById(Long id) {
-        return niveauScolairerepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé"));
+    public Optional<NiveauScolaire> getNiveauScolaireById(Long id) {
+        return niveauScolairerepo.findById(id);
+    }
+
+    // 🔹 Récupérer un enfant par ID
+    public Optional<Enfant> getEnfantById(Long id) {
+        return enfantRepository.findById(id);
     }
 }

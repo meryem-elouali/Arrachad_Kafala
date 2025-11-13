@@ -20,6 +20,7 @@ public class Mere {
     private String dateDeces;
     private String typeMaladie;
     private String typeTravail;
+    @Column(name = "est_decede")
     private Boolean estDecedee = false;
     private Boolean estMalade = false;
     private Boolean estTravaille = false;
@@ -61,5 +62,20 @@ public class Mere {
     public Boolean getEstTravaille() { return estTravaille; }
     public void setEstTravaille(Boolean estTravaille) { this.estTravaille = estTravaille; }
 
+    @Override
+    public String toString() {
+        return "Mere{" +
+                "nom='" + nom + '\'' +
+                ", prenom='" + prenom + '\'' +
+                ", phone='" + phone + '\'' +
+                ", estMalade=" + estMalade +
+                ", typeMaladie='" + typeMaladie + '\'' +
+                ", estTravaille=" + estTravaille +
+                ", typeTravail='" + typeTravail + '\'' +
+                ", photoMere='" + photoMere + '\'' +
+                ", estDecedee=" + estDecedee +
+                ", dateDeces=" + dateDeces +
+                '}';
+    }
 
 }

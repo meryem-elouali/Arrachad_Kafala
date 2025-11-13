@@ -12,6 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/enfant")
@@ -34,7 +35,6 @@ public class EnfantController {
             @RequestParam("dateNaissance") String dateNaissance,
             @RequestParam("familleId") Long familleId,
             @RequestParam(value = "typeMaladie", required = false) String typeMaladie,
-
             @RequestParam(value = "estMalade", required = false) Boolean estMalade,
             @RequestParam(value = "niveauScolaireId", required = false) Long niveauScolaireId,
             @RequestParam(value = "photoEnfant", required = false) MultipartFile photoEnfant
@@ -52,8 +52,8 @@ public class EnfantController {
         enfant.setFamille(famille);
 
         if (niveauScolaireId != null) {
-            NiveauScolaire niveau = enfantService.getNiveauScolaireById(niveauScolaireId);
-            enfant.setNiveauscolaire(niveau);
+            Optional<NiveauScolaire> niveauOpt = enfantService.getNiveauScolaireById(niveauScolaireId);
+            enfant.setNiveauscolaire(niveauOpt.orElse(null));
         }
 
         if (photoEnfant != null && !photoEnfant.isEmpty()) {
@@ -75,6 +75,7 @@ public class EnfantController {
     public List<NiveauScolaire> getNiveauScolaires() {
         return enfantService.getNiveauScolaires();
     }
+
     @PostMapping("/niveauScolaire")
     public ResponseEntity<NiveauScolaire> addNiveauScolaire(@RequestBody NiveauScolaire niveau) {
         NiveauScolaire saved = enfantService.saveNiveauScolaire(niveau);
@@ -88,4 +89,47 @@ public class EnfantController {
                 .filter(e -> e.getFamille() != null && e.getFamille().getId().equals(familleId))
                 .toList();
     }
+
+
+    @PutMapping("/{id}")
+    public ResponseEntity<Enfant> updateEnfant(
+            @PathVariable Long id,
+            @RequestParam("prenom") String prenom,
+            @RequestParam("nom") String nom,
+            @RequestParam("dateNaissance") String dateNaissance,
+            @RequestParam(value = "typeMaladie", required = false) String typeMaladie,
+            @RequestParam(value = "estMalade", required = false) Boolean estMalade,
+            @RequestParam(value = "niveauScolaireId", required = false) Long niveauScolaireId,
+            @RequestParam(value = "photoEnfantBase64", required = false) String photoEnfantBase64
+    ) throws IOException {
+
+        Enfant enfant = enfantService.getEnfantById(id)
+                .orElseThrow(() -> new RuntimeException("Enfant non trouvé"));
+
+        // Mise à jour des champs
+        enfant.setPrenom(prenom);
+        enfant.setNom(nom);
+        enfant.setDateNaissance(dateNaissance);
+        enfant.setTypeMaladie(typeMaladie);
+        enfant.setEstMalade(estMalade != null ? estMalade : false);
+
+        if (niveauScolaireId != null) {
+            Optional<NiveauScolaire> niveauOpt = enfantService.getNiveauScolaireById(niveauScolaireId);
+            enfant.setNiveauscolaire(niveauOpt.orElse(null));
+        }
+
+        if (photoEnfantBase64 != null && !photoEnfantBase64.isEmpty()) {
+            try {
+                byte[] photoBytes = java.util.Base64.getDecoder().decode(photoEnfantBase64);
+                enfant.setPhotoEnfant(photoBytes);
+            } catch (IllegalArgumentException e) {
+                // Handle invalid base64
+                throw new RuntimeException("Photo invalide");
+            }
+        }
+
+        Enfant updatedEnfant = enfantService.saveEnfant(enfant, enfant.getFamille().getId());
+        return ResponseEntity.ok(updatedEnfant);
+    }
+
 }
