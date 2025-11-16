@@ -3,8 +3,6 @@ package com.example.backend.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
-
-
 @Entity
 @Table(name = "enfants")
 public class Enfant {
@@ -13,71 +11,67 @@ public class Enfant {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    private String prenom;           // الاسم
-    private String nom;              // النسب
-    private String dateNaissance;    // تاريخ الازدياد (ou LocalDate si tu préfères)
+    private String prenom;
+    private String nom;
+    private String dateNaissance;
     private String typeMaladie;
-
-
     private Boolean estMalade = false;
+
     @ManyToOne
     @JoinColumn(name = "famille_id")
-    @JsonIgnore// clé étrangère
+    @JsonIgnore
     private Famille famille;
-    // 🔹 Relation avec le niveau scolaire
-    @ManyToOne
-    @JoinColumn(name = "niveauscolaire_id")
-    private NiveauScolaire niveauscolaire;
+
     @Lob
     private byte[] photoEnfant;
 
-    public byte[] getPhotoEnfant() {
-        return photoEnfant;
-    }
-
-    public void setPhotoEnfant(byte[] photoEnfant) {
-        this.photoEnfant = photoEnfant;
-    }
-
+    // getters & setters
     public Long getId() {
         return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public String getPrenom() {
         return prenom;
     }
 
-    public String getNom() {
-        return nom;
-    }
-
-    public String getDateNaissance() {
-        return dateNaissance;
-    }
-
-    public NiveauScolaire getNiveauscolaire() {
-        return niveauscolaire;
-    }
-// 🔹 Relation avec la famille (clé étrangère)
-
-    public void setId(Long id) {
-        this.id = id;
-    }
-
     public void setPrenom(String prenom) {
         this.prenom = prenom;
+    }
+
+    public String getNom() {
+        return nom;
     }
 
     public void setNom(String nom) {
         this.nom = nom;
     }
 
+    public String getDateNaissance() {
+        return dateNaissance;
+    }
+
     public void setDateNaissance(String dateNaissance) {
         this.dateNaissance = dateNaissance;
     }
 
-    public void setNiveauscolaire(NiveauScolaire niveauscolaire) {
-        this.niveauscolaire = niveauscolaire;
+    public String getTypeMaladie() {
+        return typeMaladie;
+    }
+
+    public void setTypeMaladie(String typeMaladie) {
+        this.typeMaladie = typeMaladie;
+    }
+
+    public Boolean getEstMalade() {
+        return estMalade;
+    }
+
+    public void setEstMalade(Boolean estMalade) {
+        this.estMalade = estMalade;
     }
 
     public Famille getFamille() {
@@ -88,19 +82,11 @@ public class Enfant {
         this.famille = famille;
     }
 
-    public String getTypeMaladie() {
-        return typeMaladie;
+    public byte[] getPhotoEnfant() {
+        return photoEnfant;
     }
 
-    public Boolean getEstMalade() {
-        return estMalade;
-    }
-
-    public void setTypeMaladie(String typeMaladie) {
-        this.typeMaladie = typeMaladie;
-    }
-
-    public void setEstMalade(Boolean estMalade) {
-        this.estMalade = estMalade;
+    public void setPhotoEnfant(byte[] photoEnfant) {
+        this.photoEnfant = photoEnfant;
     }
 }

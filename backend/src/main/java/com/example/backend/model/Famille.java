@@ -1,5 +1,6 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -53,6 +54,7 @@ public class Famille {
     private Pere pere; // <-- changer la majuscule ici
 
     @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
     private List<Enfant> enfants = new ArrayList<>();
 
     // Getters / Setters

@@ -34,9 +34,7 @@ public class EnfantController {
             @RequestParam("dateNaissance") String dateNaissance,
             @RequestParam("familleId") Long familleId,
             @RequestParam(value = "typeMaladie", required = false) String typeMaladie,
-
             @RequestParam(value = "estMalade", required = false) Boolean estMalade,
-            @RequestParam(value = "niveauScolaireId", required = false) Long niveauScolaireId,
             @RequestParam(value = "photoEnfant", required = false) MultipartFile photoEnfant
     ) throws IOException {
 
@@ -51,18 +49,15 @@ public class EnfantController {
         enfant.setEstMalade(estMalade != null ? estMalade : false);
         enfant.setFamille(famille);
 
-        if (niveauScolaireId != null) {
-            NiveauScolaire niveau = enfantService.getNiveauScolaireById(niveauScolaireId);
-            enfant.setNiveauscolaire(niveau);
-        }
-
         if (photoEnfant != null && !photoEnfant.isEmpty()) {
             enfant.setPhotoEnfant(photoEnfant.getBytes());
         }
 
         Enfant savedEnfant = enfantService.saveEnfant(enfant, familleId);
+
         return ResponseEntity.ok(savedEnfant);
     }
+
 
     // 🔹 Liste des enfants
     @GetMapping

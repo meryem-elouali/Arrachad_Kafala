@@ -1,0 +1,26 @@
+.etudes-table .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.etudes-table .p-datatable .p-datatable-thead > tr > th {
+
+    color: #00000;
+    font-weight: bold;
+    text-align: center;
+}
+
+.etudes-table .p-datatable .p-datatable-tbody > tr > td {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.etudes-table .p-datatable-striped .p-datatable-tbody > tr:nth-child(even) {
+    background-color: #f3f3f3;
+}
+
+.etudes-table .p-input-icon-left input {
+    width: 250px;
+}
