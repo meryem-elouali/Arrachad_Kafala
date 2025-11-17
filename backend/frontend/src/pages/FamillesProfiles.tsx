@@ -12,7 +12,7 @@ interface Option {
   value: number;
   label: string;
 }
-/** */
+
 const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
   const [open, setOpen] = useState(false);
   const [adding, setAdding] = useState(false);
