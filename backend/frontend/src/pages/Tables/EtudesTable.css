@@ -1,3 +1,14 @@
+/* Conteneur général de la table */
+.etudes-table {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: white;
+    color: #111; /* texte noir */
+    border-radius: 12px;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+/* Header de la table avec espacement */
 .etudes-table .table-header {
     display: flex;
     justify-content: space-between;
@@ -5,22 +16,105 @@
     margin-bottom: 1rem;
 }
 
+/* En-têtes de colonnes */
 .etudes-table .p-datatable .p-datatable-thead > tr > th {
-
-    color: #00000;
-    font-weight: bold;
+    background-color: #fff;
+    color: #111;
+    font-weight: 600;
     text-align: center;
+    border-bottom: 2px solid #ddd;
+    padding: 0.75rem 1rem;
 }
 
+/* Cellules du corps */
 .etudes-table .p-datatable .p-datatable-tbody > tr > td {
     text-align: center;
     vertical-align: middle;
+    padding: 0.75rem 1rem;
+    background-color: white;
+    border-bottom: 1px solid #eee;
 }
 
+/* Lignes alternées */
 .etudes-table .p-datatable-striped .p-datatable-tbody > tr:nth-child(even) {
-    background-color: #f3f3f3;
+    background-color: #f9f9f9;
 }
 
+/* Hover sur lignes */
+.etudes-table .p-datatable .p-datatable-tbody > tr:hover {
+    background-color: #e6f7ff;
+    transition: background 0.3s ease;
+}
+
+/* Input de recherche */
 .etudes-table .p-input-icon-left input {
-    width: 250px;
+    width: 100%;
+    max-width: 300px;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    outline: none;
+    transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Input de recherche focus */
+.etudes-table .p-input-icon-left input:focus {
+    border-color: #40a9ff;
+    box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
+}
+
+/* Pagination */
+.etudes-table .p-paginator {
+    background-color: #fff;
+    border-top: 1px solid #ddd;
+    padding: 0.5rem 1rem;
+    border-radius: 0 0 12px 12px;
+}
+
+/* Boutons PrimeReact dans table */
+.etudes-table .p-button {
+    border-radius: 8px;
+}
+
+/* Textes RTL (arabe) */
+.etudes-table[dir="rtl"] .p-datatable th,
+.etudes-table[dir="rtl"] .p-datatable td {
+    text-align: right;
+}
+
+/* Filtrage */
+.etudes-table .p-column-filter {
+    padding: 0.25rem 0.5rem;
+}
+
+/* Bordure générale de la table */
+.etudes-table .p-datatable {
+    border: 1px solid #ddd;
+    border-radius: 12px;
+}
+
+/* Styles des colonnes triables */
+.etudes-table .p-sortable-column {
+    cursor: pointer;
+}
+
+.etudes-table .p-sortable-column:after {
+    content: "⇅";
+    font-size: 0.6rem;
+    margin-left: 0.25rem;
+    color: #aaa;
+}
+.etudes-table .p-button-success {
+    background-color: #4caf50; /* vert moderne */
+    border: none;
+    border-radius: 8px;
+    padding: 0.5rem 1rem;
+    font-weight: 500;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.etudes-table .p-button-success:hover {
+    background-color: #43a047;
+    transform: translateY(-1px);
 }

@@ -26,4 +26,11 @@ public interface EtudeRepository extends JpaRepository<Etude, Long> {
             "SELECT MAX(e2.annee_scolaire) FROM etudes e2 WHERE e2.enfant_id = :enfantId)",
             nativeQuery = true)
     Etude findLatestEtudeByEnfantId(Long enfantId);
+    @Query("SELECT e FROM Etude e " +
+            "LEFT JOIN FETCH e.niveauScolaire " +
+            "LEFT JOIN FETCH e.ecole " +
+            "WHERE e.enfant.id = :enfantId " +
+            "ORDER BY e.anneeScolaire ASC")
+    List<Etude> findAllEtudesByEnfantId(Long enfantId);
+
 }

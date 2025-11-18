@@ -8,56 +8,72 @@ interface Option {
 interface SelectProps {
   options: Option[];
   placeholder?: string;
-  onChange: (value: string) => void;
-  className?: string;
-  defaultValue?: string;
+  onChange: (value: string, newOption?: boolean) => void;
+  value?: string;
+  allowAdd?: boolean;
 }
 
 const Select: React.FC<SelectProps> = ({
   options,
-  placeholder = "Select an option",
+  placeholder = "Select...",
   onChange,
-  className = "",
-  defaultValue = "",
+  value = "",
+  allowAdd = false,
 }) => {
-  // Manage the selected value
-  const [selectedValue, setSelectedValue] = useState<string>(defaultValue);
+  const [selectedValue, setSelectedValue] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [localOptions, setLocalOptions] = useState<Option[]>(options);
+  const [newOption, setNewOption] = useState("");
 
-  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    setSelectedValue(value);
-    onChange(value); // Trigger parent handler
+  const handleSelect = (val: string) => {
+    setSelectedValue(val);
+    onChange(val);
+    setOpen(false);
+  };
+
+  const handleAddOption = () => {
+    if (newOption.trim() === "") return;
+    const option = { value: newOption, label: newOption };
+    setLocalOptions([...localOptions, option]);
+    onChange(newOption, true);
+    setSelectedValue(newOption);
+    setNewOption("");
+    setOpen(false);
   };
 
   return (
-    <select
-      className={`h-11 w-full appearance-none rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 pr-11 text-sm shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 ${
-        selectedValue
-          ? "text-gray-800 dark:text-white/90"
-          : "text-gray-400 dark:text-gray-400"
-      } ${className}`}
-      value={selectedValue}
-      onChange={handleChange}
-    >
-      {/* Placeholder option */}
-      <option
-        value=""
-        disabled
-        className="text-gray-700 dark:bg-gray-900 dark:text-gray-400"
-      >
-        {placeholder}
-      </option>
-      {/* Map over options */}
-      {options.map((option) => (
-        <option
-          key={option.value}
-          value={option.value}
-          className="text-gray-700 dark:bg-gray-900 dark:text-gray-400"
-        >
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <div className="relative w-full">
+      <input
+        type="text"
+        className="h-11 w-full rounded-lg border px-3 text-sm"
+        value={selectedValue || newOption}
+        placeholder={placeholder}
+        onClick={() => setOpen(!open)}
+        onChange={(e) => setNewOption(e.target.value)}
+      />
+
+      {open && (
+        <div className="absolute z-10 mt-1 w-full border rounded bg-white shadow max-h-60 overflow-y-auto">
+          {localOptions.map((opt) => (
+            <div
+              key={opt.value}
+              className="px-3 py-1 cursor-pointer hover:bg-gray-200"
+              onClick={() => handleSelect(opt.value)}
+            >
+              {opt.label}
+            </div>
+          ))}
+          {allowAdd && newOption.trim() !== "" && !localOptions.some(o => o.value === newOption) && (
+            <div
+              className="px-3 py-1 cursor-pointer bg-blue-100 hover:bg-blue-200 text-blue-700"
+              onClick={handleAddOption}
+            >
+              + Ajouter "{newOption}"
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
