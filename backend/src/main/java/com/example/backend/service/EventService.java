@@ -1,9 +1,13 @@
 package com.example.backend.service;
 
+import com.example.backend.Repository.EnfantRepository;
 import com.example.backend.Repository.EventRepository;
 import com.example.backend.Repository.EventTypeRepository;
+import com.example.backend.Repository.MereRepository;
+import com.example.backend.model.Enfant;
 import com.example.backend.model.Event;
 import com.example.backend.model.EventType;
+import com.example.backend.model.Mere;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -13,14 +17,22 @@ import java.util.Optional;
 public class EventService {
 
     private final EventRepository eventRepository;
-    private final EventTypeRepository eventTypeRepository; // <-- ajouter ici
+    private final EventTypeRepository eventTypeRepository;
+    private final MereRepository mereRepository;
+    private final EnfantRepository enfantRepository;
 
-    // Injecter les deux repositories
-    public EventService(EventRepository eventRepository, EventTypeRepository eventTypeRepository) {
+    // Injecter tous les repositories
+    public EventService(EventRepository eventRepository,
+                        EventTypeRepository eventTypeRepository,
+                        MereRepository mereRepository,
+                        EnfantRepository enfantRepository) {
         this.eventRepository = eventRepository;
         this.eventTypeRepository = eventTypeRepository;
+        this.mereRepository = mereRepository;
+        this.enfantRepository = enfantRepository;
     }
 
+    // --------------------- EVENTS ---------------------
     public List<Event> getAllEvents() {
         return eventRepository.findAll();
     }
@@ -30,7 +42,7 @@ public class EventService {
     }
 
     public Event saveEvent(Event event) {
-        // Si tu veux vérifier ou charger le EventType avant de sauver :
+        // Charger EventType avant de sauver
         if (event.getEventType() != null && event.getEventType().getId() != null) {
             Optional<EventType> typeOpt = eventTypeRepository.findById(event.getEventType().getId());
             typeOpt.ifPresent(event::setEventType);
@@ -42,4 +54,24 @@ public class EventService {
     public void deleteEvent(Long id) {
         eventRepository.deleteById(id);
     }
+
+    public List<Event> getEventsByType(Long typeId) {
+        return eventRepository.findByEventTypeId(typeId);
+    }
+
+    // --------------------- PARTICIPANTS ---------------------
+    public List<Mere> getMeresByIds(List<Integer> ids) {
+        List<Long> longIds = ids.stream()
+                .map(Integer::longValue)
+                .toList(); // ou collect(Collectors.toList())
+        return mereRepository.findAllById(longIds);
+    }
+
+    public List<Enfant> getEnfantsByIds(List<Integer> ids) {
+        List<Long> longIds = ids.stream()
+                .map(Integer::longValue)
+                .toList();
+        return enfantRepository.findAllById(longIds);
+    }
+
 }

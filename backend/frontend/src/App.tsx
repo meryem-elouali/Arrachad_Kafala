@@ -16,6 +16,9 @@ import Buttons from "./pages/UiElements/Buttons";
 import LineChart from "./pages/Charts/LineChart";
 import BarChart from "./pages/Charts/BarChart";
 import Calendar from "./pages/Calendar";
+import ListeEvents from "./pages/ListeEvents";
+import EventDetails from "./pages/EventDetails";
+
 import BasicTables from "./pages/Tables/BasicTables";
 import SuiviEtudes from "./pages/Tables/SuiviEtudes";
 import AjoutFamille from "./pages/Forms/AjoutFamille";
@@ -41,6 +44,9 @@ export default function App() {
    <Route path="/EtudesProfile/:enfantid" element={<EtudesProfile />} />
 
             <Route path="/calendar" element={<Calendar />} />
+                 <Route path="/listeevents" element={<ListeEvents />} />
+                 <Route path="/event-details/:id" element={<EventDetails />} />
+
             <Route path="/blank" element={<Blank />} />
 
             {/* Forms */}

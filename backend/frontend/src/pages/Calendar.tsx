@@ -7,6 +7,7 @@ import { EventInput, DateSelectArg, EventClickArg } from "@fullcalendar/core";
 import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
+import { useNavigate } from "react-router-dom";
 
 type Cible = "MERE" | "ENFANT" | "JEUNE" | "FAMILLE";
 
@@ -42,6 +43,7 @@ const Calendar: React.FC = () => {
   const [eventTypeId, setEventTypeId] = useState<number | "">("");
   const calendarRef = useRef<FullCalendar>(null);
   const { isOpen, openModal, closeModal } = useModal();
+const navigate = useNavigate();
 
   const calendarsEvents = {
     Danger: "danger",
@@ -184,7 +186,8 @@ useEffect(() => {
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
           headerToolbar={{
-            left: "prev,next addEventButton",
+           left: "prev,next addEventButton listEventButton",
+
             center: "title",
             right: "dayGridMonth,timeGridWeek,timeGridDay",
           }}
@@ -192,9 +195,17 @@ useEffect(() => {
           selectable
           select={handleDateSelect}
           eventClick={handleEventClick}
-          customButtons={{
-            addEventButton: { text: "Add Event +", click: openModal },
-          }}
+         customButtons={{
+           addEventButton: {
+             text: "Add Event +",
+             click: openModal,
+           },
+           listEventButton: {
+             text: "Liste Events",
+             click: () => navigate("/listeevents"),
+           },
+         }}
+
         />
 
         <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[700px] p-6 lg:p-10">
