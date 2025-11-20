@@ -14,4 +14,7 @@ public interface EnfantRepository extends JpaRepository<Enfant, Long> {
 
     // Optionnel : rechercher un enfant par son nom
     List<Enfant> findByNom(String nom);
+    // Rechercher les enfants par tranche d'âge
+
+
 }

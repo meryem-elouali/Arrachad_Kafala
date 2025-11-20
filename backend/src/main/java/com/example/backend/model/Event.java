@@ -1,5 +1,6 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -45,27 +46,21 @@ public class Event {
     private String description = "";
 
 
-    // ------------------------------------
-    // Photos en Base64
-    // ------------------------------------
-    @ElementCollection
-    @CollectionTable(
-            name = "event_photos",
-            joinColumns = @JoinColumn(name = "event_id")
-    )
-    @Column(name = "photo_base64", columnDefinition = "LONGTEXT")
-    private List<String> photos = new ArrayList<>();
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference
+    private List<EventFile> files = new ArrayList<>();
 
 
-    @ManyToMany
+
+
+    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "event_meres",
             joinColumns = @JoinColumn(name = "event_id"),
             inverseJoinColumns = @JoinColumn(name = "mere_id")
     )
     private List<Mere> meresParticipants = new ArrayList<>();
-
-    @ManyToMany
+    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
     @JoinTable(
             name = "event_enfants",
             joinColumns = @JoinColumn(name = "event_id"),
@@ -111,8 +106,13 @@ public class Event {
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
 
-    public List<String> getPhotos() { return photos; }
-    public void setPhotos(List<String> photos) { this.photos = photos; }
+    public List<EventFile> getFiles() {
+        return files;
+    }
+
+    public void setFiles(List<EventFile> files) {
+        this.files = files;
+    }
 
     public List<Mere> getMeresParticipants() { return meresParticipants; }
     public void setMeresParticipants(List<Mere> meresParticipants) { this.meresParticipants = meresParticipants; }

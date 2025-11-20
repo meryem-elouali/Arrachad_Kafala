@@ -8,6 +8,7 @@ import com.example.backend.model.Enfant;
 import com.example.backend.model.Event;
 import com.example.backend.model.EventType;
 import com.example.backend.model.Mere;
+import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -41,6 +42,7 @@ public class EventService {
         return eventRepository.findById(id);
     }
 
+    @Transactional
     public Event saveEvent(Event event) {
         // Charger EventType avant de sauver
         if (event.getEventType() != null && event.getEventType().getId() != null) {

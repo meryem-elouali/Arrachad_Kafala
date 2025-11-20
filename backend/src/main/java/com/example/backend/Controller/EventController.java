@@ -1,11 +1,7 @@
 package com.example.backend.Controller;
 
 import com.example.backend.Repository.EventTypeRepository;
-import com.example.backend.model.Cible;
-import com.example.backend.model.Enfant;
-import com.example.backend.model.Event;
-import com.example.backend.model.EventType;
-import com.example.backend.model.Mere;
+import com.example.backend.model.*;
 import com.example.backend.service.EventService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -75,8 +71,19 @@ public class EventController {
             event.setDescription(description);
 
             // Photos Base64
-            List<String> photos = (List<String>) props.get("photos");
-            event.setPhotos(photos != null ? photos : new ArrayList<>());
+            // Fichiers (Base64 + type)
+            List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
+            if (files != null) {
+                List<EventFile> eventFiles = new ArrayList<>();
+                for (Map<String, String> f : files) {
+                    EventFile ef = new EventFile();
+                    ef.setBase64(f.get("base64"));
+                    ef.setType(f.get("type")); // ex: "image/png" ou "application/pdf"
+                    eventFiles.add(ef);
+                }
+                event.setFiles(eventFiles);
+            }
+
 
             // Mères participants
             List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
@@ -159,8 +166,21 @@ public class EventController {
             existingEvent.setDescription(description);
 
             // Photos Base64
-            List<String> photos = (List<String>) props.get("photos");
-            existingEvent.setPhotos(photos != null ? photos : new ArrayList<>());
+            // Fichiers
+            List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
+            if (files != null) {
+                List<EventFile> eventFiles = new ArrayList<>();
+                for (Map<String, String> f : files) {
+                    EventFile ef = new EventFile();
+                    ef.setBase64(f.get("base64"));
+                    ef.setType(f.get("type"));
+                    ef.setEvent(existingEvent); // ⚠️ très important !
+                    eventFiles.add(ef);
+                }
+                existingEvent.setFiles(eventFiles);
+
+            }
+
 
             // Mères participants
             List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
@@ -174,6 +194,59 @@ public class EventController {
             if (enfantsIds != null) {
                 List<Enfant> enfants = eventService.getEnfantsByIds(enfantsIds);
                 existingEvent.setEnfantsParticipants(enfants);
+            }
+
+            Event saved = eventService.saveEvent(existingEvent);
+            return ResponseEntity.ok(saved);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body(null);
+        }
+    }
+    @PutMapping("/details/{id}")
+    public ResponseEntity<Event> updateEvent1(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        try {
+            Event existingEvent = eventService.getEventById(id)
+                    .orElseThrow(() -> new RuntimeException("Event not found"));
+
+            Map<String, Object> props = (Map<String, Object>) payload.get("extendedProps");
+            if (props != null) {
+                // Description
+                if (props.get("description") != null) {
+                    existingEvent.setDescription((String) props.get("description"));
+                }
+
+                // Fichiers
+                List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
+                if (files != null) {
+                    List<EventFile> eventFiles = new ArrayList<>();
+                    for (Map<String, String> f : files) {
+                        EventFile ef = new EventFile();
+                        ef.setBase64(f.get("base64"));
+                        ef.setType(f.get("type"));
+                        ef.setEvent(existingEvent); // ⚠️ très important !
+                        eventFiles.add(ef);
+                    }
+                    existingEvent.setFiles(eventFiles);
+
+                }
+
+
+                // PDF
+
+
+                // Mères participants
+                List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
+                if (meresIds != null) {
+                    existingEvent.setMeresParticipants(eventService.getMeresByIds(meresIds));
+                }
+
+                // Enfants participants
+                List<Integer> enfantsIds = (List<Integer>) props.get("enfantsParticipants");
+                if (enfantsIds != null) {
+                    existingEvent.setEnfantsParticipants(eventService.getEnfantsByIds(enfantsIds));
+                }
             }
 
             Event saved = eventService.saveEvent(existingEvent);

@@ -1,7 +1,10 @@
 // Mere.java
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+
+import java.util.List;
 
 @Entity
 @Table(name = "mere")
@@ -62,6 +65,9 @@ public class Mere {
     public Boolean getEstTravaille() { return estTravaille; }
     public void setEstTravaille(Boolean estTravaille) { this.estTravaille = estTravaille; }
 
+    @ManyToMany(mappedBy = "meresParticipants")
+    @JsonIgnore
+    private List<Event> events;
     @Override
     public String toString() {
         return "Mere{" +

@@ -3,6 +3,10 @@ package com.example.backend.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
+import java.time.LocalDate;
+import java.time.Period;
+import java.time.format.DateTimeFormatter;
+
 @Entity
 @Table(name = "enfants")
 public class Enfant {
@@ -21,6 +25,9 @@ public class Enfant {
     @JoinColumn(name = "famille_id")
     @JsonIgnore
     private Famille famille;
+    @ManyToMany(mappedBy = "enfantsParticipants")
+    @JsonIgnore
+    private java.util.List<Event> events;
 
     @Lob
     private byte[] photoEnfant;
@@ -86,7 +93,17 @@ public class Enfant {
         return photoEnfant;
     }
 
+
     public void setPhotoEnfant(byte[] photoEnfant) {
         this.photoEnfant = photoEnfant;
+    }
+
+    @Transient
+    public int getAge() {
+        if (dateNaissance == null || dateNaissance.isEmpty()) return 0;
+        // Convertir le string "dd/MM/yyyy" en LocalDate
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        LocalDate birthDate = LocalDate.parse(dateNaissance, formatter);
+        return Period.between(birthDate, LocalDate.now()).getYears();
     }
 }
