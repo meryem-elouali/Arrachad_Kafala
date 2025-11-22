@@ -10,6 +10,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/events")
@@ -26,9 +27,42 @@ public class EventController {
 
     // --------------------- GET ALL ---------------------
     @GetMapping
-    public ResponseEntity<List<Event>> getAllEvents() {
-        return ResponseEntity.ok(eventService.getAllEvents());
+    public ResponseEntity<List<Map<String, Object>>> getAllEvents() {
+        List<Event> events = eventService.getAllEvents();
+
+        List<Map<String, Object>> serialized = events.stream().map(ev -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("id", ev.getId());
+            map.put("title", ev.getTitle());
+            map.put("startDate", ev.getStartDate());
+            map.put("endDate", ev.getEndDate());
+            map.put("calendar", ev.getCalendarLevel());
+            map.put("place", ev.getPlace()); // peut être null
+            map.put("ageMin", ev.getAgeMin()); // peut être null
+            map.put("ageMax", ev.getAgeMax()); // peut être null
+
+            if (ev.getEventType() != null) {
+                Map<String, Object> typeMap = new java.util.HashMap<>();
+                typeMap.put("id", ev.getEventType().getId());
+                typeMap.put("name", ev.getEventType().getName());
+                map.put("eventType", typeMap);
+            } else {
+                map.put("eventType", null);
+            }
+
+            if (ev.getCibles() != null) {
+                map.put("cibles", ev.getCibles().stream().map(Enum::name).toList());
+            } else {
+                map.put("cibles", null);
+            }
+
+            return map;
+        }).toList();
+
+
+        return ResponseEntity.ok(serialized);
     }
+
 
     // --------------------- CREATE ---------------------
     @PostMapping
@@ -45,18 +79,26 @@ public class EventController {
             event.setCalendarLevel((String) props.getOrDefault("calendarLevel", "PRIMARY"));
 
             // Cible
-            String cibleStr = (String) props.get("cible");
-            if (cibleStr == null) throw new RuntimeException("Cible is required");
-            event.setCible(Cible.valueOf(cibleStr));
+            List<String> ciblesStr = (List<String>) props.get("cibles");
+            if (ciblesStr == null || ciblesStr.isEmpty())
+                throw new RuntimeException("Cibles are required");
 
-            // Age min/max si ENFANT
-            if (event.getCible() == Cible.ENFANT) {
+            List<Cible> cibles = new ArrayList<>();
+            for (String c : ciblesStr) {
+                cibles.add(Cible.valueOf(c));
+            }
+            event.setCibles(cibles);
+
+            // --- Gestion ageMin / ageMax si ENFANT ---
+            if (cibles.contains(Cible.ENFANT)) {
                 Object ageMinObj = props.get("ageMin");
                 Object ageMaxObj = props.get("ageMax");
                 event.setAgeMin(ageMinObj != null ? ((Number) ageMinObj).intValue() : null);
                 event.setAgeMax(ageMaxObj != null ? ((Number) ageMaxObj).intValue() : null);
+            } else {
+                event.setAgeMin(null);
+                event.setAgeMax(null);
             }
-
             // EventType
             Map<String, Object> typeMap = (Map<String, Object>) props.get("eventType");
             if (typeMap == null || typeMap.get("id") == null)
@@ -70,7 +112,11 @@ public class EventController {
             String description = (String) props.getOrDefault("description", "");
             event.setDescription(description);
 
-            // Photos Base64
+            // Lieu de l'événement
+            String place = (String) props.get("place");
+            if (place == null) throw new RuntimeException("Place is required");
+            event.setPlace(place);
+
             // Fichiers (Base64 + type)
             List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
             if (files != null) {
@@ -78,25 +124,39 @@ public class EventController {
                 for (Map<String, String> f : files) {
                     EventFile ef = new EventFile();
                     ef.setBase64(f.get("base64"));
-                    ef.setType(f.get("type")); // ex: "image/png" ou "application/pdf"
+                    ef.setType(f.get("type"));
+                    ef.setEvent(event); // important pour la relation bidirectionnelle
                     eventFiles.add(ef);
                 }
                 event.setFiles(eventFiles);
             }
 
+            // Participants (Mère, Enfant, Famille)
+            List<Map<String, Object>> participantsData = (List<Map<String, Object>>) props.get("participants");
+            if (participantsData != null) {
+                List<EventParticipant> participants = new ArrayList<>();
+                for (Map<String, Object> p : participantsData) {
+                    EventParticipant ep = new EventParticipant();
+                    ep.setEvent(event);
+                    ep.setParticipantType(ParticipantType.valueOf((String) p.get("type")));
+                    ep.setPresent((Boolean) p.getOrDefault("present", true));
+                    ep.setAbsenceReason((String) p.getOrDefault("absenceReason", null));
 
-            // Mères participants
-            List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
-            if (meresIds != null) {
-                List<Mere> meres = eventService.getMeresByIds(meresIds);
-                event.setMeresParticipants(meres);
-            }
+                    // Lien vers l'entité correspondante si nécessaire
+                    if (ep.getParticipantType() == ParticipantType.MERE) {
+                        Long mereId = Long.valueOf(p.get("mereId").toString());
+                        ep.setMere(eventService.getMereById(mereId));
+                    } else if (ep.getParticipantType() == ParticipantType.ENFANT) {
+                        Long enfantId = Long.valueOf(p.get("enfantId").toString());
+                        ep.setEnfant(eventService.getEnfantById(enfantId));
+                    } else if (ep.getParticipantType() == ParticipantType.FAMILLE) {
+                        Long familleId = Long.valueOf(p.get("familleId").toString());
+                        ep.setFamille(eventService.getFamilleById(familleId));
+                    }
 
-            // Enfants participants
-            List<Integer> enfantsIds = (List<Integer>) props.get("enfantsParticipants");
-            if (enfantsIds != null) {
-                List<Enfant> enfants = eventService.getEnfantsByIds(enfantsIds);
-                event.setEnfantsParticipants(enfants);
+                    participants.add(ep);
+                }
+                event.setParticipants(participants);
             }
 
             Event saved = eventService.saveEvent(event);
@@ -108,13 +168,67 @@ public class EventController {
         }
     }
 
+
     // --------------------- GET BY ID ---------------------
     @GetMapping("/{id}")
-    public ResponseEntity<Event> getEventById(@PathVariable Long id) {
+    public ResponseEntity<Map<String, Object>> getEventById(@PathVariable Long id) {
         return eventService.getEventById(id)
-                .map(ResponseEntity::ok)
+                .map(ev -> {
+                    Map<String, Object> map = new java.util.HashMap<>();
+                    map.put("id", ev.getId());
+                    map.put("title", ev.getTitle());
+                    map.put("startDate", ev.getStartDate());
+                    map.put("endDate", ev.getEndDate());
+                    map.put("calendar", ev.getCalendarLevel());
+                    map.put("place", ev.getPlace());
+                    map.put("ageMin", ev.getAgeMin());
+                    map.put("ageMax", ev.getAgeMax());
+                    map.put("cibles", ev.getCibles() != null ? ev.getCibles().stream().map(Enum::name).toList() : null);
+
+                    // EventType
+                    if (ev.getEventType() != null) {
+                        Map<String, Object> typeMap = new java.util.HashMap<>();
+                        typeMap.put("id", ev.getEventType().getId());
+                        typeMap.put("name", ev.getEventType().getName());
+                        map.put("eventType", typeMap);
+                    } else {
+                        map.put("eventType", null);
+                    }
+
+                    // Participants
+                    map.put("meresParticipants", ev.getParticipants().stream()
+                            .filter(p -> p.getParticipantType() == ParticipantType.MERE && p.getMere() != null)
+                            .map(p -> Map.of(
+                                    "id", p.getId(),
+                                    "nom", p.getMere().getNom(),
+                                    "prenom", p.getMere().getPrenom(),
+                                    "present", p.getPresent(),
+                                    "motif", p.getAbsenceReason()
+                            )).toList());
+
+                    map.put("enfantsParticipants", ev.getParticipants().stream()
+                            .filter(p -> p.getParticipantType() == ParticipantType.ENFANT && p.getEnfant() != null)
+                            .map(p -> Map.of(
+                                    "id", p.getId(),
+                                    "nom", p.getEnfant().getNom(),
+                                    "prenom", p.getEnfant().getPrenom(),
+                                    "age", p.getEnfant().getAge(),
+                                    "present", p.getPresent(),
+                                    "motif", p.getAbsenceReason()
+                            )).toList());
+
+                    map.put("famillesParticipants", ev.getParticipants().stream()
+                            .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE && p.getFamille() != null)
+                            .map(p -> Map.of(
+                                    "id", p.getId()
+                            )).toList());
+
+
+                    return ResponseEntity.ok(map);
+                })
                 .orElse(ResponseEntity.notFound().build());
     }
+
 
     // --------------------- DELETE ---------------------
     @DeleteMapping("/{id}")
@@ -137,20 +251,28 @@ public class EventController {
             Map<String, Object> props = (Map<String, Object>) payload.get("extendedProps");
 
             // Cible
-            String cibleStr = (String) props.get("cible");
-            if (cibleStr == null) throw new RuntimeException("Cible is required");
-            existingEvent.setCible(Cible.valueOf(cibleStr));
+            // Cible
+            List<String> ciblesStr = (List<String>) props.get("cibles");
+            if (ciblesStr != null && !ciblesStr.isEmpty()) {
+                List<Cible> cibles = new ArrayList<>();
+                for (String c : ciblesStr) {
+                    cibles.add(Cible.valueOf(c));
+                }
+                existingEvent.setCibles(cibles);
 
-            // Age min/max si ENFANT
-            if (existingEvent.getCible() == Cible.ENFANT) {
-                Object ageMinObj = props.get("ageMin");
-                Object ageMaxObj = props.get("ageMax");
-                existingEvent.setAgeMin(ageMinObj != null ? ((Number) ageMinObj).intValue() : null);
-                existingEvent.setAgeMax(ageMaxObj != null ? ((Number) ageMaxObj).intValue() : null);
-            } else {
-                existingEvent.setAgeMin(null);
-                existingEvent.setAgeMax(null);
+                // <-- PLACE ICI LE BLOCS AGE MIN/MAX
+                if (cibles.contains(Cible.ENFANT)) {
+                    Object ageMinObj = props.get("ageMin");
+                    Object ageMaxObj = props.get("ageMax");
+                    existingEvent.setAgeMin(ageMinObj != null ? ((Number) ageMinObj).intValue() : null);
+                    existingEvent.setAgeMax(ageMaxObj != null ? ((Number) ageMaxObj).intValue() : null);
+                } else {
+                    existingEvent.setAgeMin(null);
+                    existingEvent.setAgeMax(null);
+                }
             }
+
+
 
             // EventType
             Map<String, Object> typeMap = (Map<String, Object>) props.get("eventType");
@@ -161,11 +283,14 @@ public class EventController {
                     .orElseThrow(() -> new RuntimeException("Event type not found"));
             existingEvent.setEventType(type);
 
+            // Lieu de l'événement
+            String place = (String) props.get("place");
+            if (place != null) existingEvent.setPlace(place);
+
             // Description
             String description = (String) props.getOrDefault("description", existingEvent.getDescription());
             existingEvent.setDescription(description);
 
-            // Photos Base64
             // Fichiers
             List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
             if (files != null) {
@@ -174,27 +299,32 @@ public class EventController {
                     EventFile ef = new EventFile();
                     ef.setBase64(f.get("base64"));
                     ef.setType(f.get("type"));
-                    ef.setEvent(existingEvent); // ⚠️ très important !
+                    ef.setEvent(existingEvent);
                     eventFiles.add(ef);
                 }
                 existingEvent.setFiles(eventFiles);
-
             }
 
-
-            // Mères participants
+            // --------------------- PARTICIPANTS ---------------------
+            // Mères
+            // Mères
             List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
             if (meresIds != null) {
-                List<Mere> meres = eventService.getMeresByIds(meresIds);
-                existingEvent.setMeresParticipants(meres);
+                existingEvent.setMereParticipants(eventService.getMeresByIds(meresIds)); // <-- setMereParticipants et non setMeresParticipants
             }
 
-            // Enfants participants
+// Enfants
             List<Integer> enfantsIds = (List<Integer>) props.get("enfantsParticipants");
             if (enfantsIds != null) {
-                List<Enfant> enfants = eventService.getEnfantsByIds(enfantsIds);
-                existingEvent.setEnfantsParticipants(enfants);
+                existingEvent.setEnfantsParticipants(eventService.getEnfantsByIds(enfantsIds));
             }
+
+// Familles
+            List<Integer> famillesIds = (List<Integer>) props.get("famillesParticipants");
+            if (famillesIds != null) {
+                existingEvent.setFamilleParticipants(eventService.getFamillesByIds(famillesIds)); // reste ok
+            }
+
 
             Event saved = eventService.saveEvent(existingEvent);
             return ResponseEntity.ok(saved);
@@ -204,6 +334,7 @@ public class EventController {
             return ResponseEntity.status(500).body(null);
         }
     }
+
     @PutMapping("/details/{id}")
     public ResponseEntity<Event> updateEvent1(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
         try {
@@ -225,27 +356,29 @@ public class EventController {
                         EventFile ef = new EventFile();
                         ef.setBase64(f.get("base64"));
                         ef.setType(f.get("type"));
-                        ef.setEvent(existingEvent); // ⚠️ très important !
+                        ef.setEvent(existingEvent);
                         eventFiles.add(ef);
                     }
                     existingEvent.setFiles(eventFiles);
-
                 }
-
-
-                // PDF
-
 
                 // Mères participants
                 List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
                 if (meresIds != null) {
-                    existingEvent.setMeresParticipants(eventService.getMeresByIds(meresIds));
+                    existingEvent.setMereParticipants(eventService.getMeresByIds(meresIds));
                 }
 
                 // Enfants participants
                 List<Integer> enfantsIds = (List<Integer>) props.get("enfantsParticipants");
                 if (enfantsIds != null) {
                     existingEvent.setEnfantsParticipants(eventService.getEnfantsByIds(enfantsIds));
+                }
+
+                // Familles participants
+                List<Integer> famillesIds = (List<Integer>) props.get("famillesParticipants");
+                if (famillesIds != null) {
+                    List<Famille> familles = eventService.getFamillesByIds(famillesIds);
+                    existingEvent.setFamilleParticipants(familles); // <-- corrigé
                 }
             }
 
@@ -257,6 +390,8 @@ public class EventController {
             return ResponseEntity.status(500).body(null);
         }
     }
+
+
 
     // --------------------- GET BY TYPE ---------------------
     @GetMapping("/by-type/{typeId}")

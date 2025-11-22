@@ -4,6 +4,7 @@ package com.example.backend.model;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -65,9 +66,17 @@ public class Mere {
     public Boolean getEstTravaille() { return estTravaille; }
     public void setEstTravaille(Boolean estTravaille) { this.estTravaille = estTravaille; }
 
-    @ManyToMany(mappedBy = "meresParticipants")
+    @OneToMany(mappedBy = "mere", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonIgnore
-    private List<Event> events;
+    private List<EventParticipant> eventParticipants = new ArrayList<>();
+
+    @Transient
+    public List<Event> getEvents() {
+        return eventParticipants.stream()
+                .map(EventParticipant::getEvent)
+                .toList();
+    }
+
     @Override
     public String toString() {
         return "Mere{" +

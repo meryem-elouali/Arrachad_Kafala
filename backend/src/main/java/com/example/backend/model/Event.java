@@ -1,6 +1,7 @@
 package com.example.backend.model;
 
 import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -22,16 +23,27 @@ public class Event {
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
-
+    @Column(name = "place", nullable = false)
+    private String place;
     @Column(name = "end_date")
     private LocalDate endDate;
 
+    @ElementCollection(targetClass = Cible.class)
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Cible cible;
+    @Column(name = "cible")
+    private List<Cible> cibles = new ArrayList<>();
+
+
 
     @Column(name = "calendar_level", nullable = false)
     private String calendarLevel;
+    public String getPlace() {
+        return place;
+    }
+
+    public void setPlace(String place) {
+        this.place = place;
+    }
 
     @Column(name = "age_min")
     private Integer ageMin;
@@ -53,20 +65,12 @@ public class Event {
 
 
 
-    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
-    @JoinTable(
-            name = "event_meres",
-            joinColumns = @JoinColumn(name = "event_id"),
-            inverseJoinColumns = @JoinColumn(name = "mere_id")
-    )
-    private List<Mere> meresParticipants = new ArrayList<>();
-    @ManyToMany(fetch = FetchType.EAGER, cascade = {CascadeType.PERSIST, CascadeType.MERGE})
-    @JoinTable(
-            name = "event_enfants",
-            joinColumns = @JoinColumn(name = "event_id"),
-            inverseJoinColumns = @JoinColumn(name = "enfant_id")
-    )
-    private List<Enfant> enfantsParticipants = new ArrayList<>();
+    @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<EventParticipant> participants = new ArrayList<>();
+
+    public List<EventParticipant> getParticipants() { return participants; }
+    public void setParticipants(List<EventParticipant> participants) { this.participants = participants; }
+
 
     // ------------------------------------
     // Type de l'événement
@@ -91,8 +95,14 @@ public class Event {
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
 
-    public Cible getCible() { return cible; }
-    public void setCible(Cible cible) { this.cible = cible; }
+    @JsonProperty("cible")  // ✅ Ajouté ici
+    public List<Cible> getCibles() {
+        return cibles;
+    }
+
+    public void setCibles(List<Cible> cibles) {
+        this.cibles = cibles;
+    }
 
     public String getCalendarLevel() { return calendarLevel; }
     public void setCalendarLevel(String calendarLevel) { this.calendarLevel = calendarLevel; }
@@ -114,12 +124,62 @@ public class Event {
         this.files = files;
     }
 
-    public List<Mere> getMeresParticipants() { return meresParticipants; }
-    public void setMeresParticipants(List<Mere> meresParticipants) { this.meresParticipants = meresParticipants; }
-
-    public List<Enfant> getEnfantsParticipants() { return enfantsParticipants; }
-    public void setEnfantsParticipants(List<Enfant> enfantsParticipants) { this.enfantsParticipants = enfantsParticipants; }
 
     public EventType getEventType() { return eventType; }
     public void setEventType(EventType eventType) { this.eventType = eventType; }
+    public List<EventParticipant> getMereParticipants() {
+        return participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.MERE)
+                .toList();
+    }
+
+    public List<EventParticipant> getEnfantParticipants() {
+        return participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.ENFANT)
+                .toList();
+    }
+
+    public List<EventParticipant> getFamilleParticipants() {
+        return participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE)
+                .toList();
+    }
+    public void setMereParticipants(List<Mere> meres) {
+        // Supprime les anciens participants de type MERE
+        participants.removeIf(p -> p.getParticipantType() == ParticipantType.MERE);
+
+        // Ajoute les nouveaux
+        for (Mere m : meres) {
+            EventParticipant ep = new EventParticipant();
+            ep.setParticipantType(ParticipantType.MERE);
+            ep.setMere(m);
+            ep.setEvent(this);
+            participants.add(ep);
+        }
+    }
+
+    public void setEnfantsParticipants(List<Enfant> enfants) {
+        participants.removeIf(p -> p.getParticipantType() == ParticipantType.ENFANT);
+
+        for (Enfant e : enfants) {
+            EventParticipant ep = new EventParticipant();
+            ep.setParticipantType(ParticipantType.ENFANT);
+            ep.setEnfant(e);
+            ep.setEvent(this);
+            participants.add(ep);
+        }
+    }
+
+    public void setFamilleParticipants(List<Famille> familles) {
+        participants.removeIf(p -> p.getParticipantType() == ParticipantType.FAMILLE);
+
+        for (Famille f : familles) {
+            EventParticipant ep = new EventParticipant();
+            ep.setParticipantType(ParticipantType.FAMILLE);
+            ep.setFamille(f);
+            ep.setEvent(this);
+            participants.add(ep);
+        }
+    }
+
 }

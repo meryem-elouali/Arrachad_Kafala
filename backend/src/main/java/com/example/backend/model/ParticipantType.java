@@ -1,6 +1,6 @@
 package com.example.backend.model;
 
-public enum Cible {
+public enum ParticipantType {
     MERE,
     ENFANT,
     FAMILLE

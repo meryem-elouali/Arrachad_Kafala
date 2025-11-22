@@ -1,5 +1,6 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import java.util.ArrayList;
@@ -56,7 +57,16 @@ public class Famille {
     @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     private List<Enfant> enfants = new ArrayList<>();
+    @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private List<EventParticipant> eventParticipants = new ArrayList<>();
 
+    @Transient
+    public List<Event> getEvents() {
+        return eventParticipants.stream()
+                .map(EventParticipant::getEvent)
+                .toList();
+    }
     // Getters / Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

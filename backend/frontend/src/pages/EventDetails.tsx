@@ -1,11 +1,21 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Modal } from "../components/ui/modal";
+import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import PageMeta from "../components/common/PageMeta";
+import DropzoneComponent1 from "../components/form/form-elements/DropZone1";
+import Button from "../components/ui/button/Button";
+import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import "jspdf-autotable";
+
 interface Participant {
   id: number;
   nom: string;
   prenom: string;
   age?: number;
+  present?: boolean;
+  motif?: string;
+  uniqueKey?: string; // Added for unique React keys
 }
 
 interface EventDetail {
@@ -13,112 +23,155 @@ interface EventDetail {
   title: string;
   startDate: string;
   endDate: string;
-  cible: string;
+  cibles: string[];
   description?: string;
   photos?: string[];
   ageMin?: number;
   ageMax?: number;
+  meresParticipants?: Participant[];
+  enfantsParticipants?: Participant[];
+  famillesParticipants?: Participant[];
+  place?: string;
 }
 
 const EventDetails: React.FC = () => {
   const { id } = useParams();
   const [event, setEvent] = useState<EventDetail | null>(null);
+  const [participantsList, setParticipantsList] = useState<Participant[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
-const convertToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = error => reject(error);
-  });
-};
-
   const [description, setDescription] = useState<string>("");
-const [isModalOpen, setIsModalOpen] = useState(false);
-const openParticipantModal = async () => {
-  if (!event) return;
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectAll, setSelectAll] = useState(false);
 
-  const url =
-    event.cible === "MERE"
-      ? "http://localhost:8080/api/meres"
-      : `http://localhost:8080/api/enfants?minAge=${event.ageMin}&maxAge=${event.ageMax}`;
+  const [allMeres, setAllMeres] = useState<Participant[]>([]);
+  const [allEnfants, setAllEnfants] = useState<Participant[]>([]);
+  const [allFamilles, setAllFamilles] = useState<Participant[]>([]);
 
-  try {
-    const res = await fetch(url);
-    const data: Participant[] = await res.json();
-    setParticipants(data);
-
-    // Préselectionner ceux déjà présents dans l'événement
-    if (event.cible === "MERE" && (event as any).meresParticipants) {
-      setSelectedParticipants((event as any).meresParticipants.map((p: any) => p.id));
-    } else if (event.cible === "ENFANT" && (event as any).enfantsParticipants) {
-      setSelectedParticipants((event as any).enfantsParticipants.map((p: any) => p.id));
-    }
-
-    setIsModalOpen(true);
-  } catch (err) {
-    console.error(err);
-  }
-};
-
-  // Charger les infos de l'événement
-  useEffect(() => {
-    fetch(`http://localhost:8080/api/events/${id}`)
-      .then((res) => res.json())
-      .then((data) => {
-        setEvent(data);
-        setDescription(data.description || "");
-      })
-      .catch(console.error);
-  }, [id]);
-
-  // Charger les participants selon cible
-  useEffect(() => {
-    if (!event) return;
-
-    const url =
-      event.cible === "MERE"
-        ? "http://localhost:8080/api/meres"
-        : `http://localhost:8080/api/enfants?minAge=${event.ageMin}&maxAge=${event.ageMax}`;
-
-    fetch(url)
-      .then((res) => res.json())
-      .then(setParticipants)
-      .catch(console.error);
-  }, [event]);
-
-  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setPhotos(Array.from(e.target.files));
-  };
-
-  const handlePdfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) setPdf(e.target.files[0]);
-  };
+  const convertToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
 
   const toggleParticipant = (id: number) => {
     setSelectedParticipants((prev) =>
       prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
     );
   };
+
+  const toggleSelectAll = () => {
+    if (selectAll) {
+      setSelectedParticipants([]);
+      setSelectAll(false);
+    } else {
+      const allIds = participants.map((p) => p.id);
+      setSelectedParticipants(allIds);
+      setSelectAll(true);
+    }
+  };
+
+  // Fetch data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const meresData = await fetch("http://localhost:8080/api/meres").then((res) => res.json());
+        setAllMeres(Array.isArray(meresData) ? meresData : []);
+      } catch {
+        setAllMeres([]);
+      }
+      try {
+        const enfantsData = await fetch("http://localhost:8080/api/enfant").then((res) => res.json());
+        setAllEnfants(Array.isArray(enfantsData) ? enfantsData : []);
+      } catch {
+        setAllEnfants([]);
+      }
+      try {
+        const famillesData = await fetch("http://localhost:8080/api/famille").then((res) => res.json());
+        setAllFamilles(Array.isArray(famillesData) ? famillesData : []);
+      } catch {
+        setAllFamilles([]);
+      }
+    };
+    fetchData();
+  }, []);
+
+  useEffect(() => {
+    fetch(`http://localhost:8080/api/events/${id}`)
+      .then((res) => res.json())
+      .then((data) => {
+        setEvent(data);
+        setDescription(data.description || "");
+
+        // Populate participantsList with unique keys
+        const eventList: Participant[] = [];
+        if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
+        if (data.enfantsParticipants) eventList.push(...data.enfantsParticipants.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
+        if (data.famillesParticipants) eventList.push(...data.famillesParticipants.map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
+        setParticipantsList(eventList);
+      })
+      .catch(console.error);
+  }, [id]);
+
+  const openParticipantModal = () => {
+    if (!event) return;
+
+    const cibles = event.cibles || [];
+    let preselected: number[] = [];
+    if (cibles.includes("MERE")) preselected.push(...(event.meresParticipants?.map((p) => p.id) || []));
+    if (cibles.includes("ENFANT")) preselected.push(...(event.enfantsParticipants?.map((p) => p.id) || []));
+    if (cibles.includes("FAMILLE")) preselected.push(...(event.famillesParticipants?.map((p) => p.id) || []));
+
+    setSelectedParticipants(preselected);
+
+    const list: Participant[] = [];
+    if (cibles.includes("MERE")) list.push(...allMeres.map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
+    if (cibles.includes("ENFANT")) {
+      const ageMin = event.ageMin ?? 0;
+      const ageMax = event.ageMax ?? 100;
+      const filtered = allEnfants.filter(e => e.age !== undefined && e.age >= ageMin && e.age <= ageMax);
+      list.push(...filtered.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
+    }
+    if (cibles.includes("FAMILLE")) list.push(...allFamilles.map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
+    setParticipants(list);
+
+    setSelectAll(preselected.length === list.length);
+    setIsModalOpen(true);
+  };
+
+  const confirmParticipants = () => {
+    const selected: Participant[] = [];
+    selected.push(...allMeres.filter(m => selectedParticipants.includes(m.id)).map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
+    selected.push(...allEnfants.filter(e => selectedParticipants.includes(e.id)).map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
+    selected.push(...allFamilles.filter(f => selectedParticipants.includes(f.id)).map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
+    setParticipantsList(selected);
+    setIsModalOpen(false);
+  };
+
   const saveEvent = async () => {
     if (!event) return;
 
     const filesBase64 = await Promise.all(
-      files.map(async (file) => ({
-        base64: await convertToBase64(file),
-        type: file.type,
-      }))
+      files.map(async (file) => ({ base64: await convertToBase64(file), type: file.type }))
     );
 
     const payload: any = { extendedProps: {} };
     if (description) payload.extendedProps.description = description;
     if (filesBase64.length) payload.extendedProps.files = filesBase64;
-    if (event.cible === "MERE" && selectedParticipants.length > 0)
-      payload.extendedProps.meresParticipants = selectedParticipants;
-    if (event.cible === "ENFANT" && selectedParticipants.length > 0)
-      payload.extendedProps.enfantsParticipants = selectedParticipants;
+
+    // Split participants by type
+    payload.extendedProps.meresParticipants = participantsList.filter((p) =>
+      allMeres.some((m) => m.id === p.id)
+    );
+    payload.extendedProps.enfantsParticipants = participantsList.filter((p) =>
+      allEnfants.some((e) => e.id === p.id)
+    );
+    payload.extendedProps.famillesParticipants = participantsList.filter((p) =>
+      allFamilles.some((f) => f.id === p.id)
+    );
 
     const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
       method: "PUT",
@@ -127,8 +180,7 @@ const openParticipantModal = async () => {
     });
 
     if (!res.ok) {
-      const text = await res.text();
-      console.error("Erreur serveur :", text);
+      console.error(await res.text());
       return;
     }
 
@@ -136,158 +188,262 @@ const openParticipantModal = async () => {
     setEvent(updated);
   };
 
+  const exportToExcel = () => {
+    if (!participantsList.length) return;
+    const wsData = participantsList.map((p) => ({
+      الاسم: p.nom,
+      اللقب: p.prenom,
+      الحضور: p.present ? "نعم" : "لا",
+      "سبب الغياب": p.motif || "",
+    }));
+    const ws = XLSX.utils.json_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "المشاركين");
+    XLSX.writeFile(wb, `${event?.title || "participants"}.xlsx`);
+  };
 
+  const exportToPDF = () => {
+    if (!participantsList.length) return;
+    const doc = new jsPDF();
+    const tableColumn = ["الاسم", "اللقب", "الحضور", "سبب الغياب"];
+    const tableRows = participantsList.map((p) => [p.nom, p.prenom, p.present ? "نعم" : "لا", p.motif || ""]);
+    doc.autoTable({ head: [tableColumn], body: tableRows, styles: { font: "helvetica", fontSize: 10, halign: "right" } });
+    doc.save(`${event?.title || "participants"}.pdf`);
+  };
 
-
-  if (!event) return <p>Chargement...</p>;
+  if (!event) return <p>جاري التحميل...</p>;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 bg-white shadow rounded">
-      <h2 className="text-3xl font-bold mb-4">{event.title}</h2>
-      <p><strong>Cible :</strong> {event.cible}</p>
-      <p><strong>Début :</strong> {event.startDate}</p>
-      <p><strong>Fin :</strong> {event.endDate}</p>
+    <div className="rtl px-6 py-4">
+      <PageMeta title="تفاصيل النشاط" description="تفاصيل وإدارة المشاركين للنشاط" />
+      <PageBreadcrumb pageTitle="تفاصيل النشاط" />
+
+      {/* Event Info */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 lg:p-6 mb-6 text-right">
+        <h3 className="mb-5 text-lg font-bold text-gray-800 dark:text-white">{event.title}</h3>
+        <p className="text-gray-500 dark:text-gray-400">
+          <strong>الفئة المستهدفة :</strong> {event.cibles?.join(", ")} <br />
+          <strong>من :</strong> {event.startDate} <strong>إلى :</strong> {event.endDate} <br />
+          <strong>Place :</strong> {event.place}
+        </p>
+      </div>
 
       {/* Description */}
-      <div className="mt-6">
-        <h3 className="text-xl font-bold mb-2">Description</h3>
+      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
+        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">معلومات حول النشاط</h4>
         <textarea
-          className="border p-2 w-full rounded"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Ajouter une description..."
-          rows={4}
+          placeholder="اكتب هنا وصف النشاط أو النتائج..."
+          className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 dark:text-white dark:bg-gray-900"
+          rows={6}
         />
       </div>
 
-      {/* Importer PDF */}
-      <div className="mt-6">
-        <h3 className="text-xl font-bold mb-2">Importer fichiers</h3>
-        <input
-          type="file"
+      {/* Fichiers */}
+      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
+        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">صور النشاط</h4>
+        <DropzoneComponent1
+          label="استيراد ملفات النشاط"
+          id="eventFiles"
+          accept={{
+            "image/*": [],
+            "application/pdf": [],
+            "application/msword": [],
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [],
+            "application/vnd.ms-excel": [],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [],
+          }}
           multiple
-          accept="image/*,application/pdf"
-          onChange={(e) => {
-            if (e.target.files) setFiles(Array.from(e.target.files));
+          onFileSelect={(fileOrFiles) => {
+            if (Array.isArray(fileOrFiles)) {
+              setFiles((prev) => [...prev, ...fileOrFiles]);
+            } else {
+              setFiles((prev) => [...prev, fileOrFiles]);
+            }
           }}
         />
 
-
-      </div>
-
-
-
-      {/* Participants */}
-      <div className="mt-6">
-        <h3 className="text-xl font-bold mb-2">Participants</h3><button
-                                                                  onClick={openParticipantModal}
-                                                                  className="px-4 py-2 bg-green-500 text-white rounded"
-                                                                >
-                                                                  Ajouter des participants
-                                                                </button>
- {/* Ici on met le modal */}
-    {isModalOpen && (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-        <div className="bg-white p-6 rounded shadow max-h-[80vh] overflow-y-auto w-96">
-          <h3 className="text-xl font-bold mb-4">Sélectionner des participants</h3>
-
-          <div className="grid grid-cols-2 gap-2">
-            {participants.map((p) => (
-              <label key={p.id} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedParticipants.includes(p.id)}
-                  onChange={() => toggleParticipant(p.id)}
-                />
-                {p.nom} {p.prenom}
-              </label>
-            ))}
-          </div>
-
-          <div className="mt-4 flex justify-end gap-2">
-            <button
-              className="px-4 py-2 bg-gray-300 rounded"
-              onClick={() => setIsModalOpen(false)}
-            >
-              Annuler
-            </button>
-            <button
-              className="px-4 py-2 bg-blue-500 text-white rounded"
-              onClick={() => {
-                setIsModalOpen(false);
-                // Ici on pourrait faire une action locale si nécessaire
-              }}
-            >
-              Confirmer
-            </button>
-
-          </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {files.map((file, idx) => {
+            const fileUrl = URL.createObjectURL(file);
+            const renderPreview = () => {
+              if (file.type.startsWith("image/"))
+                return <img src={fileUrl} alt={file.name} className="max-w-full max-h-full object-contain" />;
+              if (file.type === "application/pdf") return <span>PDF: {file.name}</span>;
+              if (
+                file.type === "application/msword" ||
+                file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              )
+                return <span>DOC: {file.name}</span>;
+              if (
+                file.type === "application/vnd.ms-excel" ||
+                file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              )
+                return <span>XLS: {file.name}</span>;
+              return <span>FILE: {file.name}</span>;
+            };
+            return (
+              <div key={idx} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
+                <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
+                  {renderPreview()}
+                </div>
+                <div className="flex gap-1 mt-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFiles((prev) => prev.filter((_, i) => i !== idx));
+                    }}
+                    className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
+                  >
+                    ×
+                  </button>
+                  <a
+                    href={fileUrl}
+                    download={file.name}
+                    className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    ⬇
+                  </a>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
-    )}
 
-      </div>
-      <div className="mt-2">
-        {selectedParticipants.length > 0 && (
-          <p>Participants sélectionnés : {participants
-            .filter(p => selectedParticipants.includes(p.id))
-            .map(p => `${p.nom} ${p.prenom}`)
-            .join(", ")}</p>
+      {/* Participants */}
+      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
+        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
+          الحاضرين
+        </h4>
+
+        <div className="flex gap-2 mb-4">
+          <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
+          <Button onClick={exportToPDF} className="bg-red-500 text-white">تصدير PDF</Button>
+        </div>
+
+        <Button onClick={openParticipantModal} className="mb-4 bg-blue-500 text-white">
+          إضافة المشاركين
+        </Button>
+
+        {/* Modal */}
+        {isModalOpen && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-white p-6 rounded shadow max-h-[80vh] overflow-y-auto w-96 text-right">
+              <h3 className="text-xl font-bold mb-4">اختيار المشاركين</h3>
+
+              <div className="mb-2 flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={selectAll}
+                  onChange={toggleSelectAll}
+                />
+                <span>اختيار الكل</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {participants.map((p) => (
+                  <label key={p.uniqueKey || p.id} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedParticipants.includes(p.id)}
+                      onChange={() => toggleParticipant(p.id)}
+                    />
+                    {p.nom} {p.prenom}
+                  </label>
+                ))}
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setIsModalOpen(false)}>إلغاء</button>
+                <button className="px-4 py-2 bg-blue-500 text-white rounded" onClick={confirmParticipants}>تأكيد</button>
+              </div>
+            </div>
+          </div>
         )}
-      </div>
 
-      <div className="mt-6">
-        <button
-          onClick={saveEvent}
-          className="px-4 py-2 bg-blue-500 text-white rounded"
-        >
-          Sauvegarder
-        </button>
-      </div>
-      {/* Participants déjà associés */}
-      <div className="mt-6">
-        <h3 className="text-xl font-bold mb-2">Participants</h3>
+        {participantsList.length > 0 ? (
+          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">
+            <thead className="bg-gray-100 font-semibold text-gray-800">
+              <tr>
+                <th className="p-3 border">الاسم</th>
+                <th className="p-3 border">اللقب</th>
+                <th className="p-3 border">الحضور</th>
+                <th className="p-3 border">سبب الغياب</th>
+              </tr>
+            </thead>
+            <tbody>
+              {participantsList.map((p) => {
+                const isPresent = p.present ?? true;
+                return (
+                  <tr key={p.uniqueKey || p.id} className="border-b">
+                    <td className="p-2 border">{p.nom}</td>
+                    <td className="p-2 border">{p.prenom}</td>
+                    <td className="p-2 border text-center">
+                      <select
+                        value={isPresent ? "oui" : "non"}
+                        onChange={(e) => {
+                          const updated = participantsList.map((part) =>
+                            part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
+                          );
+                          // Déterminer quelle liste mettre à jour en fonction de l'ID
+                          if (event.meresParticipants?.some(mp => mp.id === p.id)) {
+                            setEvent({ ...event, meresParticipants: updated.filter(u => event.meresParticipants?.some(mp => mp.id === u.id)) });
+                          } else if (event.enfantsParticipants?.some(ep => ep.id === p.id)) {
+                            setEvent({ ...event, enfantsParticipants: updated.filter(u => event.enfantsParticipants?.some(ep => ep.id === u.id)) });
+                          } else if (event.famillesParticipants?.some(fp => fp.id === p.id)) {
+                                                      setEvent({ ...event, famillesParticipants: updated.filter(u => event.famillesParticipants?.some(fp => fp.id === u.id)) });
+                                                    }
+                                                  }}
+                                                  className="w-full rounded border px-2 py-1 text-sm"
+                                                >
+                                                  <option value="oui">نعم</option>
+                                                  <option value="non">لا</option>
+                                                </select>
+                                              </td>
+                                              <td className="p-2 border">
+                                                {!isPresent && (
+                                                  <input
+                                                    type="text"
+                                                    placeholder="سبب الغياب"
+                                                    value={p.motif || ""}
+                                                    onChange={(e) => {
+                                                      const updated = participantsList.map((part) =>
+                                                        part.id === p.id ? { ...part, motif: e.target.value } : part
+                                                      );
+                                                      // Même logique pour mettre à jour la bonne liste
+                                                      if (event.meresParticipants?.some(mp => mp.id === p.id)) {
+                                                        setEvent({ ...event, meresParticipants: updated.filter(u => event.meresParticipants?.some(mp => mp.id === u.id)) });
+                                                      } else if (event.enfantsParticipants?.some(ep => ep.id === p.id)) {
+                                                        setEvent({ ...event, enfantsParticipants: updated.filter(u => event.enfantsParticipants?.some(ep => ep.id === u.id)) });
+                                                      } else if (event.famillesParticipants?.some(fp => fp.id === p.id)) {
+                                                        setEvent({ ...event, famillesParticipants: updated.filter(u => event.famillesParticipants?.some(fp => fp.id === u.id)) });
+                                                      }
+                                                    }}
+                                                    className="w-full rounded border px-2 py-1 text-sm"
+                                                  />
+                                                )}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  ) : (
+                                    <p>لا يوجد مشاركين حتى الآن.</p>
+                                  )}
+                                </div>
 
-        {event.cible === "MERE" && event.meresParticipants?.length > 0 && (
-          <ul className="list-disc list-inside">
-            {event.meresParticipants.map((p) => (
-              <li key={p.id}>{p.nom} {p.prenom}</li>
-            ))}
-          </ul>
-        )}
+                                {/* Save Button */}
+                                <div className="mt-6 text-right">
+                                  <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
+                                    حفظ
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          };
 
-        {event.cible === "ENFANT" && event.enfantsParticipants?.length > 0 && (
-          <ul className="list-disc list-inside">
-            {event.enfantsParticipants.map((p) => (
-              <li key={p.id}>{p.nom} {p.prenom} (Âge: {p.age ?? "N/A"})</li>
-            ))}
-          </ul>
-        )}
-
-        {((event.cible === "MERE" && event.meresParticipants?.length === 0) ||
-          (event.cible === "ENFANT" && event.enfantsParticipants?.length === 0)) && (
-          <p>Aucun participant pour le moment.</p>
-        )}
-      </div>
-<div className="mt-4 flex flex-wrap gap-2">
-  {files.map((file, idx) => (
-    <div key={idx} className="border p-2 rounded">
-      {file.type.startsWith("image/") ? (
-        <img
-          src={URL.createObjectURL(file)}
-          alt={file.name}
-          className="w-24 h-24 object-cover"
-        />
-      ) : (
-        <p>{file.name}</p>
-      )}
-    </div>
-  ))}
-</div>
-
-    </div>
-  );
-};
-
-
-export default EventDetails;
+                          export default EventDetails;

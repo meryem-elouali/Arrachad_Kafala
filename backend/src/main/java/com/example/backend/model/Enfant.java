@@ -25,10 +25,13 @@ public class Enfant {
     @JoinColumn(name = "famille_id")
     @JsonIgnore
     private Famille famille;
-    @ManyToMany(mappedBy = "enfantsParticipants")
-    @JsonIgnore
-    private java.util.List<Event> events;
 
+    // Relation avec EventParticipant (bidirectionnelle)
+    @OneToMany(mappedBy = "enfant", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore
+    private java.util.List<EventParticipant> eventParticipants = new java.util.ArrayList<>();
+
+    @JsonIgnore
     @Lob
     private byte[] photoEnfant;
 
@@ -98,12 +101,29 @@ public class Enfant {
         this.photoEnfant = photoEnfant;
     }
 
+    public java.util.List<EventParticipant> getEventParticipants() { return eventParticipants; }
+    public void setEventParticipants(java.util.List<EventParticipant> eventParticipants) { this.eventParticipants = eventParticipants; }
+
+    // ----------------------------
+    // Accès direct aux Events
+    // ----------------------------
     @Transient
+    public java.util.List<Event> getEvents() {
+        return eventParticipants.stream()
+                .map(EventParticipant::getEvent)
+                .toList();
+    }
+
+    // ----------------------------
+    // Calcul de l'âge
+    // ----------------------------
+    @Transient
+
     public int getAge() {
         if (dateNaissance == null || dateNaissance.isEmpty()) return 0;
-        // Convertir le string "dd/MM/yyyy" en LocalDate
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd"); // <-- corrigé
         LocalDate birthDate = LocalDate.parse(dateNaissance, formatter);
         return Period.between(birthDate, LocalDate.now()).getYears();
     }
+
 }
