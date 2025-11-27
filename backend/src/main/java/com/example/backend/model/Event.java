@@ -64,9 +64,10 @@ public class Event {
 
 
 
-
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonManagedReference("event-participants")
     private List<EventParticipant> participants = new ArrayList<>();
+
 
     public List<EventParticipant> getParticipants() { return participants; }
     public void setParticipants(List<EventParticipant> participants) { this.participants = participants; }

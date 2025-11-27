@@ -15,7 +15,12 @@ interface Participant {
   age?: number;
   present?: boolean;
   motif?: string;
-  uniqueKey?: string; // Added for unique React keys
+  uniqueKey?: string; // For unique React keys
+}
+
+interface EventFile {
+  base64: string;
+  type: string;
 }
 
 interface EventDetail {
@@ -25,7 +30,7 @@ interface EventDetail {
   endDate: string;
   cibles: string[];
   description?: string;
-  photos?: string[];
+  photos?: EventFile[]; // Updated to match backend
   ageMin?: number;
   ageMax?: number;
   meresParticipants?: Participant[];
@@ -41,6 +46,7 @@ const EventDetails: React.FC = () => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<number[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [existingFiles, setExistingFiles] = useState<EventFile[]>([]); // To hold loaded files
   const [description, setDescription] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
@@ -56,6 +62,18 @@ const EventDetails: React.FC = () => {
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = (error) => reject(error);
     });
+
+  // Convert Base64 back to File for display
+  const base64ToFile = (base64: string, type: string, filename: string): File => {
+    const byteString = atob(base64.split(',')[1]);
+    const mimeString = base64.split(',')[0].split(':')[1].split(';')[0];
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new File([ab], filename, { type: mimeString });
+  };
 
   const toggleParticipant = (id: number) => {
     setSelectedParticipants((prev) =>
@@ -105,6 +123,7 @@ const EventDetails: React.FC = () => {
       .then((data) => {
         setEvent(data);
         setDescription(data.description || "");
+        setExistingFiles(data.photos || []); // Load existing files
 
         // Populate participantsList with unique keys
         const eventList: Participant[] = [];
@@ -132,7 +151,7 @@ const EventDetails: React.FC = () => {
     if (cibles.includes("ENFANT")) {
       const ageMin = event.ageMin ?? 0;
       const ageMax = event.ageMax ?? 100;
-      const filtered = allEnfants.filter(e => e.age !== undefined && e.age >= ageMin && e.age <= ageMax);
+      const filtered = allEnfants.filter(e => e.age != null && e.age >= ageMin && e.age <= ageMax); // Fixed: use != null
       list.push(...filtered.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
     }
     if (cibles.includes("FAMILLE")) list.push(...allFamilles.map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
@@ -154,38 +173,49 @@ const EventDetails: React.FC = () => {
   const saveEvent = async () => {
     if (!event) return;
 
-    const filesBase64 = await Promise.all(
-      files.map(async (file) => ({ base64: await convertToBase64(file), type: file.type }))
-    );
+    // Merge new files with existing ones (append, don't overwrite)
+    const allFilesBase64 = [
+      ...existingFiles.map(f => ({ base64: f.base64, type: f.type })),
+      ...(await Promise.all(files.map(async (file) => ({ base64: await convertToBase64(file), type: file.type }))))
+    ];
 
     const payload: any = { extendedProps: {} };
     if (description) payload.extendedProps.description = description;
-    if (filesBase64.length) payload.extendedProps.files = filesBase64;
+    if (allFilesBase64.length) payload.extendedProps.files = allFilesBase64;
 
-    // Split participants by type
-    payload.extendedProps.meresParticipants = participantsList.filter((p) =>
-      allMeres.some((m) => m.id === p.id)
-    );
-    payload.extendedProps.enfantsParticipants = participantsList.filter((p) =>
-      allEnfants.some((e) => e.id === p.id)
-    );
-    payload.extendedProps.famillesParticipants = participantsList.filter((p) =>
-      allFamilles.some((f) => f.id === p.id)
-    );
+    // Send participants with entity IDs
+    payload.extendedProps.meresParticipants = participantsList
+      .filter((p) => allMeres.some((m) => m.id === p.id))
+      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
 
-    const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    payload.extendedProps.enfantsParticipants = participantsList
+      .filter((p) => allEnfants.some((e) => e.id === p.id))
+      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
 
-    if (!res.ok) {
-      console.error(await res.text());
-      return;
+    payload.extendedProps.famillesParticipants = participantsList
+      .filter((p) => allFamilles.some((f) => f.id === p.id))
+      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
+
+    try {
+      const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        console.error(await res.text());
+        return;
+      }
+
+      const updated = await res.json();
+      setEvent(updated);
+      setExistingFiles(updated.photos || []); // Update loaded files
+      setFiles([]); // Clear new uploads after save
+      alert("Événement mis à jour avec succès !");
+    } catch (err) {
+      console.error("Erreur lors de la sauvegarde de l'événement :", err);
     }
-
-    const updated = await res.json();
-    setEvent(updated);
   };
 
   const exportToExcel = () => {
@@ -265,6 +295,54 @@ const EventDetails: React.FC = () => {
         />
 
         <div className="mt-4 flex flex-wrap gap-2">
+          // Existing files (loaded from backend)
+          {existingFiles.map((file, idx) => {
+            const blobFile = base64ToFile(file.base64, file.type, `file-${idx}`);
+            const fileUrl = URL.createObjectURL(blobFile);
+            const renderPreview = () => {
+              if (file.type.startsWith("image/"))
+                return <img src={fileUrl} alt={`file-${idx}`} className="max-w-full max-h-full object-contain" />;
+              if (file.type === "application/pdf") return <span>PDF: file-{idx}</span>;
+              if (
+                file.type === "application/msword" ||
+                file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              )
+                return <span>DOC: file-{idx}</span>;
+              if (
+                file.type === "application/vnd.ms-excel" ||
+                file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              )
+                return <span>XLS: file-{idx}</span>;
+              return <span>FILE: file-{idx}</span>;
+            };
+            return (
+              <div key={`existing-${idx}`} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
+                <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
+                  {renderPreview()}
+                </div>
+                <div className="flex gap-1 mt-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExistingFiles((prev) => prev.filter((_, i) => i !== idx));
+                    }}
+                    className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
+                  >
+                    ×
+                  </button>
+                  <a
+                    href={fileUrl}
+                    download={`file-${idx}`}
+                    className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    ⬇
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+          // New uploaded files
           {files.map((file, idx) => {
             const fileUrl = URL.createObjectURL(file);
             const renderPreview = () => {
@@ -385,65 +463,53 @@ const EventDetails: React.FC = () => {
                       <select
                         value={isPresent ? "oui" : "non"}
                         onChange={(e) => {
-                          const updated = participantsList.map((part) =>
-                            part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
+                          setParticipantsList((prev) =>
+                            prev.map((part) =>
+                              part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
+                            )
                           );
-                          // Déterminer quelle liste mettre à jour en fonction de l'ID
-                          if (event.meresParticipants?.some(mp => mp.id === p.id)) {
-                            setEvent({ ...event, meresParticipants: updated.filter(u => event.meresParticipants?.some(mp => mp.id === u.id)) });
-                          } else if (event.enfantsParticipants?.some(ep => ep.id === p.id)) {
-                            setEvent({ ...event, enfantsParticipants: updated.filter(u => event.enfantsParticipants?.some(ep => ep.id === u.id)) });
-                          } else if (event.famillesParticipants?.some(fp => fp.id === p.id)) {
-                                                      setEvent({ ...event, famillesParticipants: updated.filter(u => event.famillesParticipants?.some(fp => fp.id === u.id)) });
-                                                    }
-                                                  }}
-                                                  className="w-full rounded border px-2 py-1 text-sm"
-                                                >
-                                                  <option value="oui">نعم</option>
-                                                  <option value="non">لا</option>
-                                                </select>
-                                              </td>
-                                              <td className="p-2 border">
-                                                {!isPresent && (
-                                                  <input
-                                                    type="text"
-                                                    placeholder="سبب الغياب"
-                                                    value={p.motif || ""}
-                                                    onChange={(e) => {
-                                                      const updated = participantsList.map((part) =>
-                                                        part.id === p.id ? { ...part, motif: e.target.value } : part
-                                                      );
-                                                      // Même logique pour mettre à jour la bonne liste
-                                                      if (event.meresParticipants?.some(mp => mp.id === p.id)) {
-                                                        setEvent({ ...event, meresParticipants: updated.filter(u => event.meresParticipants?.some(mp => mp.id === u.id)) });
-                                                      } else if (event.enfantsParticipants?.some(ep => ep.id === p.id)) {
-                                                        setEvent({ ...event, enfantsParticipants: updated.filter(u => event.enfantsParticipants?.some(ep => ep.id === u.id)) });
-                                                      } else if (event.famillesParticipants?.some(fp => fp.id === p.id)) {
-                                                        setEvent({ ...event, famillesParticipants: updated.filter(u => event.famillesParticipants?.some(fp => fp.id === u.id)) });
-                                                      }
-                                                    }}
-                                                    className="w-full rounded border px-2 py-1 text-sm"
-                                                  />
-                                                )}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  ) : (
-                                    <p>لا يوجد مشاركين حتى الآن.</p>
-                                  )}
-                                </div>
-
-                                {/* Save Button */}
-                                <div className="mt-6 text-right">
-                                  <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
-                                    حفظ
-                                  </button>
-                                </div>
-                              </div>
+                        }}
+                        className="w-full rounded border px-2 py-1 text-sm"
+                      >
+                        <option value="oui">نعم</option>
+                        <option value="non">لا</option>
+                      </select>
+                    </td>
+                    <td className="p-2 border">
+                      {!isPresent && (
+                        <input
+                          type="text"
+                          placeholder="سبب الغياب"
+                          value={p.motif || ""}
+                          onChange={(e) => {
+                            setParticipantsList((prev) =>
+                              prev.map((part) =>
+                                part.id === p.id ? { ...part, motif: e.target.value } : part
+                              )
                             );
-                          };
+                          }}
+                          className="w-full rounded border px-2 py-1 text-sm"
+                        />
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        ) : (
+          <p>لا يوجد مشاركين حتى الآن.</p>
+        )}
+      </div>
 
-                          export default EventDetails;
+      {/* Save Button */}
+      <div className="mt-6 text-right">
+        <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
+          حفظ
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default EventDetails;

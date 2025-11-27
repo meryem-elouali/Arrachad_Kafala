@@ -1,5 +1,6 @@
 package  com.example.backend.model;
 import com.example.backend.model.Event;
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import java.io.Serializable;
 
@@ -12,8 +13,9 @@ public class EventParticipant implements Serializable {
     private Long id;
 
     // lien vers l'événement
-    @ManyToOne
-    @JoinColumn(name = "event_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "event_id")
+    @JsonBackReference // IMPORTANT
     private Event event;
 
     // références facultatives selon type

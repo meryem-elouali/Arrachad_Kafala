@@ -1,5 +1,6 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 
@@ -20,11 +21,11 @@ public class Enfant {
     private String dateNaissance;
     private String typeMaladie;
     private Boolean estMalade = false;
-
+    @JsonBackReference
     @ManyToOne
     @JoinColumn(name = "famille_id")
-    @JsonIgnore
     private Famille famille;
+
 
     // Relation avec EventParticipant (bidirectionnelle)
     @OneToMany(mappedBy = "enfant", cascade = CascadeType.ALL, orphanRemoval = true)

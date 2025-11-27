@@ -348,38 +348,73 @@ public class EventController {
                     existingEvent.setDescription((String) props.get("description"));
                 }
 
-                // Fichiers
+                // Fichiers - Updated to clear and add to avoid orphan deletion issues
                 List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
                 if (files != null) {
-                    List<EventFile> eventFiles = new ArrayList<>();
+                    // Clear existing files (triggers orphan deletion for old ones)
+                    existingEvent.getFiles().clear();
+                    // Add new files
                     for (Map<String, String> f : files) {
                         EventFile ef = new EventFile();
                         ef.setBase64(f.get("base64"));
                         ef.setType(f.get("type"));
-                        ef.setEvent(existingEvent);
-                        eventFiles.add(ef);
+                        ef.setEvent(existingEvent);  // Ensure bidirectional link
+                        existingEvent.getFiles().add(ef);
                     }
-                    existingEvent.setFiles(eventFiles);
                 }
 
-                // Mères participants
-                List<Integer> meresIds = (List<Integer>) props.get("meresParticipants");
-                if (meresIds != null) {
-                    existingEvent.setMereParticipants(eventService.getMeresByIds(meresIds));
+                // Participants (unchanged, as it's already using clear/addAll safely)
+                List<Map<String, Object>> meresParticipants = (List<Map<String, Object>>) props.get("meresParticipants");
+                List<Map<String, Object>> enfantsParticipants = (List<Map<String, Object>>) props.get("enfantsParticipants");
+                List<Map<String, Object>> famillesParticipants = (List<Map<String, Object>>) props.get("famillesParticipants");
+
+                List<EventParticipant> updatedParticipants = new ArrayList<>();
+
+                // Traiter les mères
+                if (meresParticipants != null) {
+                    for (Map<String, Object> p : meresParticipants) {
+                        EventParticipant ep = new EventParticipant();
+                        ep.setEvent(existingEvent);
+                        ep.setParticipantType(ParticipantType.MERE);
+                        ep.setPresent((Boolean) p.getOrDefault("present", true));
+                        ep.setAbsenceReason((String) p.getOrDefault("motif", null));
+                        Long mereId = Long.valueOf(p.get("id").toString());
+                        ep.setMere(eventService.getMereById(mereId));
+                        updatedParticipants.add(ep);
+                    }
                 }
 
-                // Enfants participants
-                List<Integer> enfantsIds = (List<Integer>) props.get("enfantsParticipants");
-                if (enfantsIds != null) {
-                    existingEvent.setEnfantsParticipants(eventService.getEnfantsByIds(enfantsIds));
+                // Traiter les enfants
+                if (enfantsParticipants != null) {
+                    for (Map<String, Object> p : enfantsParticipants) {
+                        EventParticipant ep = new EventParticipant();
+                        ep.setEvent(existingEvent);
+                        ep.setParticipantType(ParticipantType.ENFANT);
+                        ep.setPresent((Boolean) p.getOrDefault("present", true));
+                        ep.setAbsenceReason((String) p.getOrDefault("motif", null));
+                        Long enfantId = Long.valueOf(p.get("id").toString());
+                        ep.setEnfant(eventService.getEnfantById(enfantId));
+                        updatedParticipants.add(ep);
+                    }
                 }
 
-                // Familles participants
-                List<Integer> famillesIds = (List<Integer>) props.get("famillesParticipants");
-                if (famillesIds != null) {
-                    List<Famille> familles = eventService.getFamillesByIds(famillesIds);
-                    existingEvent.setFamilleParticipants(familles); // <-- corrigé
+                // Traiter les familles
+                if (famillesParticipants != null) {
+                    for (Map<String, Object> p : famillesParticipants) {
+                        EventParticipant ep = new EventParticipant();
+                        ep.setEvent(existingEvent);
+                        ep.setParticipantType(ParticipantType.FAMILLE);
+                        ep.setPresent((Boolean) p.getOrDefault("present", true));
+                        ep.setAbsenceReason((String) p.getOrDefault("motif", null));
+                        Long familleId = Long.valueOf(p.get("id").toString());
+                        ep.setFamille(eventService.getFamilleById(familleId));
+                        updatedParticipants.add(ep);
+                    }
                 }
+
+                // ✅ Mettre à jour les participants de manière safe
+                existingEvent.getParticipants().clear();
+                existingEvent.getParticipants().addAll(updatedParticipants);
             }
 
             Event saved = eventService.saveEvent(existingEvent);
@@ -390,6 +425,7 @@ public class EventController {
             return ResponseEntity.status(500).body(null);
         }
     }
+
 
 
 
