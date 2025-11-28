@@ -30,7 +30,7 @@ interface EventDetail {
   endDate: string;
   cibles: string[];
   description?: string;
-  photos?: EventFile[]; // Updated to match backend
+  photos?: EventFile[]; // Now properly returned by backend
   ageMin?: number;
   ageMax?: number;
   meresParticipants?: Participant[];
@@ -44,7 +44,8 @@ const EventDetails: React.FC = () => {
   const [event, setEvent] = useState<EventDetail | null>(null);
   const [participantsList, setParticipantsList] = useState<Participant[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
-  const [selectedParticipants, setSelectedParticipants] = useState<number[]>([]);
+  const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
+
   const [files, setFiles] = useState<File[]>([]);
   const [existingFiles, setExistingFiles] = useState<EventFile[]>([]); // To hold loaded files
   const [description, setDescription] = useState<string>("");
@@ -74,12 +75,42 @@ const EventDetails: React.FC = () => {
     }
     return new File([ab], filename, { type: mimeString });
   };
+  const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
+    const key = `${type}-${id}`;
 
-  const toggleParticipant = (id: number) => {
-    setSelectedParticipants((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+    setSelectedParticipants(prev => {
+      const isSelected = prev.includes(key);
+      let newSelected: string[];
+
+      if (isSelected) {
+        newSelected = prev.filter(k => k !== key);
+        setParticipantsList(current => current.filter(p => p.uniqueKey !== key));
+      } else {
+        newSelected = [...prev, key];
+
+        let toAdd: Participant[] = [];
+        if (type === "MERE") {
+          const mere = allMeres.find(m => m.id === id);
+          if (mere) toAdd.push({ ...mere, uniqueKey: key, type: "MERE" });
+        }
+        if (type === "ENFANT") {
+          const enfant = allEnfants.find(e => e.id === id);
+          if (enfant) toAdd.push({ ...enfant, uniqueKey: key, type: "ENFANT" });
+        }
+        if (type === "FAMILLE") {
+          const famille = allFamilles.find(f => f.id === id);
+          if (famille) toAdd.push({ ...famille, uniqueKey: key, type: "FAMILLE" });
+        }
+
+        setParticipantsList(current => [...current, ...toAdd]);
+      }
+
+      return newSelected;
+    });
   };
+
+
+
 
   const toggleSelectAll = () => {
     if (selectAll) {
@@ -123,9 +154,9 @@ const EventDetails: React.FC = () => {
       .then((data) => {
         setEvent(data);
         setDescription(data.description || "");
-        setExistingFiles(data.photos || []); // Load existing files
+        setExistingFiles(data.photos || []); // Now properly loaded from backend
 
-        // Populate participantsList with unique keys
+        // Populate participantsList with unique keys (using entity IDs)
         const eventList: Participant[] = [];
         if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
         if (data.enfantsParticipants) eventList.push(...data.enfantsParticipants.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
@@ -140,50 +171,102 @@ const EventDetails: React.FC = () => {
 
     const cibles = event.cibles || [];
     let preselected: number[] = [];
-    if (cibles.includes("MERE")) preselected.push(...(event.meresParticipants?.map((p) => p.id) || []));
-    if (cibles.includes("ENFANT")) preselected.push(...(event.enfantsParticipants?.map((p) => p.id) || []));
-    if (cibles.includes("FAMILLE")) preselected.push(...(event.famillesParticipants?.map((p) => p.id) || []));
-
-    setSelectedParticipants(preselected);
 
     const list: Participant[] = [];
-    if (cibles.includes("MERE")) list.push(...allMeres.map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
+
+    // Mères
+    if (cibles.includes("MERE")) {
+      preselected.push(...(event.meresParticipants?.map(p => p.id) || []));
+      list.push(...allMeres.map(p => ({
+        ...p,
+        uniqueKey: `mere-${p.id}`,
+        type: "MERE",
+        present: event.meresParticipants?.some(mp => mp.id === p.id) ? true : undefined
+      })));
+    }
+
+    // Enfants
     if (cibles.includes("ENFANT")) {
+      preselected.push(...(event.enfantsParticipants?.map(p => p.id) || []));
       const ageMin = event.ageMin ?? 0;
       const ageMax = event.ageMax ?? 100;
-      const filtered = allEnfants.filter(e => e.age != null && e.age >= ageMin && e.age <= ageMax); // Fixed: use != null
-      list.push(...filtered.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
+      const filtered = allEnfants.filter(e => e.age != null && e.age >= ageMin && e.age <= ageMax);
+      list.push(...filtered.map(p => ({
+        ...p,
+        uniqueKey: `enfant-${p.id}`,
+        type: "ENFANT",
+        present: event.enfantsParticipants?.some(ep => ep.id === p.id) ? true : undefined
+      })));
     }
-    if (cibles.includes("FAMILLE")) list.push(...allFamilles.map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
-    setParticipants(list);
 
+    // Familles
+    if (cibles.includes("FAMILLE")) {
+      preselected.push(...(event.famillesParticipants?.map(p => p.id) || []));
+      list.push(...allFamilles.map(p => ({
+        ...p,
+        uniqueKey: `famille-${p.id}`,
+        type: "FAMILLE",
+        present: event.famillesParticipants?.some(fp => fp.id === p.id) ? true : undefined
+      })));
+    }
+
+    setSelectedParticipants(preselected);
+    setParticipants(list);
     setSelectAll(preselected.length === list.length);
     setIsModalOpen(true);
   };
 
+
   const confirmParticipants = () => {
     const selected: Participant[] = [];
-    selected.push(...allMeres.filter(m => selectedParticipants.includes(m.id)).map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
-    selected.push(...allEnfants.filter(e => selectedParticipants.includes(e.id)).map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
-    selected.push(...allFamilles.filter(f => selectedParticipants.includes(f.id)).map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
+
+    selected.push(...allMeres
+      .filter(m => selectedParticipants.includes(`MERE-${m.id}`))
+      .map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" }))
+    );
+
+    selected.push(...allEnfants
+      .filter(e => selectedParticipants.includes(`ENFANT-${e.id}`))
+      .map(p => ({ ...p, uniqueKey: `ENFANT-${p.id}`, type: "ENFANT" }))
+    );
+
+    selected.push(...allFamilles
+      .filter(f => selectedParticipants.includes(`FAMILLE-${f.id}`))
+      .map(p => ({ ...p, uniqueKey: `FAMILLE-${p.id}`, type: "FAMILLE" }))
+    );
+
     setParticipantsList(selected);
+
     setIsModalOpen(false);
   };
 
   const saveEvent = async () => {
     if (!event) return;
 
-    // Merge new files with existing ones (append, don't overwrite)
+    // Convert new files to base64 safely
+    const newFilesBase64 = await Promise.all(
+      files.map(async (file) => {
+        try {
+          const base64 = await convertToBase64(file);
+          return { base64, type: file.type };
+        } catch (err) {
+          console.error("Erreur conversion fichier en Base64 :", file.name, err);
+          return null; // Ignorer ce fichier
+        }
+      })
+    );
+
+    // Merge with existing files, filter out invalid ones
     const allFilesBase64 = [
       ...existingFiles.map(f => ({ base64: f.base64, type: f.type })),
-      ...(await Promise.all(files.map(async (file) => ({ base64: await convertToBase64(file), type: file.type }))))
+      ...newFilesBase64.filter(f => f !== null) // keep only valid
     ];
 
     const payload: any = { extendedProps: {} };
     if (description) payload.extendedProps.description = description;
     if (allFilesBase64.length) payload.extendedProps.files = allFilesBase64;
 
-    // Send participants with entity IDs
+    // Participants
     payload.extendedProps.meresParticipants = participantsList
       .filter((p) => allMeres.some((m) => m.id === p.id))
       .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
@@ -197,6 +280,7 @@ const EventDetails: React.FC = () => {
       .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
 
     try {
+      console.log("Payload envoyé :", payload); // Pour debug avant envoi
       const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -204,7 +288,9 @@ const EventDetails: React.FC = () => {
       });
 
       if (!res.ok) {
-        console.error(await res.text());
+        const errorText = await res.text();
+        console.error("Save error:", errorText);
+        alert(`Erreur lors de la sauvegarde: ${errorText}`);
         return;
       }
 
@@ -215,8 +301,10 @@ const EventDetails: React.FC = () => {
       alert("Événement mis à jour avec succès !");
     } catch (err) {
       console.error("Erreur lors de la sauvegarde de l'événement :", err);
+      alert("Erreur réseau lors de la sauvegarde.");
     }
   };
+
 
   const exportToExcel = () => {
     if (!participantsList.length) return;
@@ -295,7 +383,7 @@ const EventDetails: React.FC = () => {
         />
 
         <div className="mt-4 flex flex-wrap gap-2">
-          // Existing files (loaded from backend)
+          {/* Existing files (loaded from backend) */}
           {existingFiles.map((file, idx) => {
             const blobFile = base64ToFile(file.base64, file.type, `file-${idx}`);
             const fileUrl = URL.createObjectURL(blobFile);
@@ -342,7 +430,7 @@ const EventDetails: React.FC = () => {
               </div>
             );
           })}
-          // New uploaded files
+          {/* New uploaded files */}
           {files.map((file, idx) => {
             const fileUrl = URL.createObjectURL(file);
             const renderPreview = () => {
@@ -351,165 +439,168 @@ const EventDetails: React.FC = () => {
               if (file.type === "application/pdf") return <span>PDF: {file.name}</span>;
               if (
                 file.type === "application/msword" ||
-                file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              )
-                return <span>DOC: {file.name}</span>;
-              if (
-                file.type === "application/vnd.ms-excel" ||
-                file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              )
-                return <span>XLS: {file.name}</span>;
-              return <span>FILE: {file.name}</span>;
-            };
-            return (
-              <div key={idx} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
-                <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
-                  {renderPreview()}
-                </div>
-                <div className="flex gap-1 mt-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFiles((prev) => prev.filter((_, i) => i !== idx));
-                    }}
-                    className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
-                  >
-                    ×
-                  </button>
-                  <a
-                    href={fileUrl}
-                    download={file.name}
-                    className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    ⬇
-                  </a>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+                               file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                             )
+                               return <span>DOC: {file.name}</span>;
+                             if (
+                               file.type === "application/vnd.ms-excel" ||
+                               file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                             )
+                               return <span>XLS: {file.name}</span>;
+                             return <span>FILE: {file.name}</span>;
+                           };
+                           return (
+                             <div key={idx} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
+                               <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
+                                 {renderPreview()}
+                               </div>
+                               <div className="flex gap-1 mt-1">
+                                 <button
+                                   onClick={(e) => {
+                                     e.stopPropagation();
+                                     setFiles((prev) => prev.filter((_, i) => i !== idx));
+                                   }}
+                                   className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
+                                 >
+                                   ×
+                                 </button>
+                                 <a
+                                   href={fileUrl}
+                                   download={file.name}
+                                   className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
+                                   onClick={(e) => e.stopPropagation()}
+                                 >
+                                   ⬇
+                                 </a>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     </div>
 
-      {/* Participants */}
-      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
-        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
-          الحاضرين
-        </h4>
+                     {/* Participants */}
+                     <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
+                       <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
+                         الحاضرين
+                       </h4>
 
-        <div className="flex gap-2 mb-4">
-          <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
-          <Button onClick={exportToPDF} className="bg-red-500 text-white">تصدير PDF</Button>
-        </div>
+                       <div className="flex gap-2 mb-4">
+                         <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
+                         <Button onClick={exportToPDF} className="bg-red-500 text-white">تصدير PDF</Button>
+                       </div>
 
-        <Button onClick={openParticipantModal} className="mb-4 bg-blue-500 text-white">
-          إضافة المشاركين
-        </Button>
+                       <Button onClick={openParticipantModal} className="mb-4 bg-blue-500 text-white">
+                         إضافة المشاركين
+                       </Button>
 
-        {/* Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-white p-6 rounded shadow max-h-[80vh] overflow-y-auto w-96 text-right">
-              <h3 className="text-xl font-bold mb-4">اختيار المشاركين</h3>
+                       {/* Modal */}
+                       {isModalOpen && (
+                         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+                           <div className="bg-white p-6 rounded shadow max-h-[80vh] overflow-y-auto w-96 text-right">
+                             <h3 className="text-xl font-bold mb-4">اختيار المشاركين</h3>
 
-              <div className="mb-2 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={toggleSelectAll}
-                />
-                <span>اختيار الكل</span>
-              </div>
+                             <div className="mb-2 flex items-center gap-2">
+                               <input
+                                 type="checkbox"
+                                 checked={selectAll}
+                                 onChange={toggleSelectAll}
+                               />
+                               <span>اختيار الكل</span>
+                             </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {participants.map((p) => (
-                  <label key={p.uniqueKey || p.id} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={selectedParticipants.includes(p.id)}
-                      onChange={() => toggleParticipant(p.id)}
-                    />
-                    {p.nom} {p.prenom}
-                  </label>
-                ))}
-              </div>
+                             <div className="grid grid-cols-2 gap-2">
+                           {participants.map((p) => (
+                             <label key={p.uniqueKey} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
+                               <input
+                                 type="checkbox"
+                                checked={selectedParticipants.includes(`${p.type}-${p.id}`)}
+                                onChange={() => toggleParticipant(p.id, p.type as "MERE" | "ENFANT" | "FAMILLE")}
 
-              <div className="mt-4 flex justify-end gap-2">
-                <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setIsModalOpen(false)}>إلغاء</button>
-                <button className="px-4 py-2 bg-blue-500 text-white rounded" onClick={confirmParticipants}>تأكيد</button>
-              </div>
-            </div>
-          </div>
-        )}
+                               />
+                               {p.nom} {p.prenom}
+                             </label>
+                           ))}
 
-        {participantsList.length > 0 ? (
-          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">
-            <thead className="bg-gray-100 font-semibold text-gray-800">
-              <tr>
-                <th className="p-3 border">الاسم</th>
-                <th className="p-3 border">اللقب</th>
-                <th className="p-3 border">الحضور</th>
-                <th className="p-3 border">سبب الغياب</th>
-              </tr>
-            </thead>
-            <tbody>
-              {participantsList.map((p) => {
-                const isPresent = p.present ?? true;
-                return (
-                  <tr key={p.uniqueKey || p.id} className="border-b">
-                    <td className="p-2 border">{p.nom}</td>
-                    <td className="p-2 border">{p.prenom}</td>
-                    <td className="p-2 border text-center">
-                      <select
-                        value={isPresent ? "oui" : "non"}
-                        onChange={(e) => {
-                          setParticipantsList((prev) =>
-                            prev.map((part) =>
-                              part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
-                            )
-                          );
-                        }}
-                        className="w-full rounded border px-2 py-1 text-sm"
-                      >
-                        <option value="oui">نعم</option>
-                        <option value="non">لا</option>
-                      </select>
-                    </td>
-                    <td className="p-2 border">
-                      {!isPresent && (
-                        <input
-                          type="text"
-                          placeholder="سبب الغياب"
-                          value={p.motif || ""}
-                          onChange={(e) => {
-                            setParticipantsList((prev) =>
-                              prev.map((part) =>
-                                part.id === p.id ? { ...part, motif: e.target.value } : part
-                              )
-                            );
-                          }}
-                          className="w-full rounded border px-2 py-1 text-sm"
-                        />
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        ) : (
-          <p>لا يوجد مشاركين حتى الآن.</p>
-        )}
-      </div>
 
-      {/* Save Button */}
-      <div className="mt-6 text-right">
-        <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
-          حفظ
-        </button>
-      </div>
-    </div>
-  );
-};
+                             </div>
 
-export default EventDetails;
+                             <div className="mt-4 flex justify-end gap-2">
+                               <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setIsModalOpen(false)}>إلغاء</button>
+                               <button className="px-4 py-2 bg-blue-500 text-white rounded" onClick={confirmParticipants}>تأكيد</button>
+                             </div>
+                           </div>
+                         </div>
+                       )}
+
+                       {participantsList.length > 0 ? (
+                         <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">
+                           <thead className="bg-gray-100 font-semibold text-gray-800">
+                             <tr>
+                               <th className="p-3 border">الاسم</th>
+                               <th className="p-3 border">اللقب</th>
+                               <th className="p-3 border">الحضور</th>
+                               <th className="p-3 border">سبب الغياب</th>
+                             </tr>
+                           </thead>
+                           <tbody>
+                             {participantsList.map((p) => {
+                               const isPresent = p.present ?? true;
+                               return (
+                                 <tr key={p.uniqueKey || p.id} className="border-b">
+                                   <td className="p-2 border">{p.nom}</td>
+                                   <td className="p-2 border">{p.prenom}</td>
+                                   <td className="p-2 border text-center">
+                                     <select
+                                       value={isPresent ? "oui" : "non"}
+                                       onChange={(e) => {
+                                         setParticipantsList((prev) =>
+                                           prev.map((part) =>
+                                             part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
+                                           )
+                                         );
+                                       }}
+                                       className="w-full rounded border px-2 py-1 text-sm"
+                                     >
+                                       <option value="oui">نعم</option>
+                                       <option value="non">لا</option>
+                                     </select>
+                                   </td>
+                                   <td className="p-2 border">
+                                     {!isPresent && (
+                                       <input
+                                         type="text"
+                                         placeholder="سبب الغياب"
+                                         value={p.motif || ""}
+                                         onChange={(e) => {
+                                           setParticipantsList((prev) =>
+                                             prev.map((part) =>
+                                               part.id === p.id ? { ...part, motif: e.target.value } : part
+                                             )
+                                           );
+                                         }}
+                                         className="w-full rounded border px-2 py-1 text-sm"
+                                       />
+                                     )}
+                                   </td>
+                                 </tr>
+                               );
+                             })}
+                           </tbody>
+                         </table>
+                       ) : (
+                         <p>لا يوجد مشاركين حتى الآن.</p>
+                       )}
+                     </div>
+
+                     {/* Save Button */}
+                     <div className="mt-6 text-right">
+                       <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
+                         حفظ
+                       </button>
+                     </div>
+                   </div>
+                 );
+               };
+
+               export default EventDetails;

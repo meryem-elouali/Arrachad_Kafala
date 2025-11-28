@@ -1,5 +1,7 @@
 package com.example.backend.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIdentityReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
@@ -46,20 +48,24 @@ public class Famille {
     @JoinColumn(name = "habitation_id")
     private Habitation habitationFamille;
 
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "mere_id", referencedColumnName = "id")
+    @ManyToOne
+    @JoinColumn(name = "mere_id")
+    @JsonIdentityReference(alwaysAsId = true) // sérialiser juste l'ID
     private Mere mere;
 
-    @OneToOne(cascade = CascadeType.ALL)
-    @JoinColumn(name = "pere_id", referencedColumnName = "id")
-    private Pere pere; // <-- changer la majuscule ici
+    @ManyToOne
+    @JoinColumn(name = "pere_id")
+    @JsonIdentityReference(alwaysAsId = true) // sérialiser juste l'ID
+    private Pere pere;
+
+    @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL)
+    @JsonManagedReference  // pour Enfant
+    private List<Enfant> enfants;
 
     @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference
-    private List<Enfant> enfants = new ArrayList<>();
-    @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore
-    private List<EventParticipant> eventParticipants = new ArrayList<>();
+    @JsonIgnore // éviter les cycles via EventParticipant
+    private List<EventParticipant> eventParticipants;
+
 
     @Transient
     public List<Event> getEvents() {

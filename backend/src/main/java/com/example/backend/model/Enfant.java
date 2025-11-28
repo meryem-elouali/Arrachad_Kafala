@@ -21,9 +21,9 @@ public class Enfant {
     private String dateNaissance;
     private String typeMaladie;
     private Boolean estMalade = false;
-    @JsonBackReference
     @ManyToOne
     @JoinColumn(name = "famille_id")
+    @JsonBackReference  // Prevents serialization of Famille from Enfant (breaks cycle)
     private Famille famille;
 
 

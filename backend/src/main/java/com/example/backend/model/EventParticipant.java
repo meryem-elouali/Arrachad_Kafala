@@ -1,6 +1,8 @@
-package  com.example.backend.model;
+package com.example.backend.model;
+
 import com.example.backend.model.Event;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.io.Serializable;
 
@@ -12,23 +14,24 @@ public class EventParticipant implements Serializable {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // lien vers l'événement
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "event_id")
-    @JsonBackReference // IMPORTANT
+    @ManyToOne
+    @JoinColumn(name = "event_id", nullable = false)
+    @JsonBackReference("event_participants") // OK
     private Event event;
 
-    // références facultatives selon type
     @ManyToOne
     @JoinColumn(name = "mere_id")
+    @JsonIgnore
     private Mere mere;
 
     @ManyToOne
     @JoinColumn(name = "enfant_id")
+    @JsonIgnore
     private Enfant enfant;
 
     @ManyToOne
     @JoinColumn(name = "famille_id")
+    @JsonIgnore
     private Famille famille;
 
     // type de participant (MERE, ENFANT, FAMILLE)

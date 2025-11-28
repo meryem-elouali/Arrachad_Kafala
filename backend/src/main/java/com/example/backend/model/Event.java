@@ -23,27 +23,20 @@ public class Event {
 
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
-    @Column(name = "place", nullable = false)
+    @Column(name = "place", nullable = true)
     private String place;
     @Column(name = "end_date")
     private LocalDate endDate;
 
     @ElementCollection(targetClass = Cible.class)
     @Enumerated(EnumType.STRING)
+    @CollectionTable(name = "event_cibles", joinColumns = @JoinColumn(name = "event_id"))
     @Column(name = "cible")
     private List<Cible> cibles = new ArrayList<>();
 
 
-
     @Column(name = "calendar_level", nullable = false)
     private String calendarLevel;
-    public String getPlace() {
-        return place;
-    }
-
-    public void setPlace(String place) {
-        this.place = place;
-    }
 
     @Column(name = "age_min")
     private Integer ageMin;
@@ -57,21 +50,16 @@ public class Event {
     @Column(columnDefinition = "TEXT")
     private String description = "";
 
-
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
     @JsonManagedReference
     private List<EventFile> files = new ArrayList<>();
 
-
-
     @OneToMany(mappedBy = "event", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonManagedReference("event-participants")
+    @JsonManagedReference("event_participants")
     private List<EventParticipant> participants = new ArrayList<>();
-
 
     public List<EventParticipant> getParticipants() { return participants; }
     public void setParticipants(List<EventParticipant> participants) { this.participants = participants; }
-
 
     // ------------------------------------
     // Type de l'événement
@@ -79,7 +67,6 @@ public class Event {
     @ManyToOne
     @JoinColumn(name = "event_type_id", nullable = false)
     private EventType eventType;
-
 
     // ------------------------------------
     // Getters & Setters
@@ -95,6 +82,10 @@ public class Event {
 
     public LocalDate getEndDate() { return endDate; }
     public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
+
+    public String getPlace() { return place; }
+    public void setPlace(String place) { this.place = place; }
+
 
     @JsonProperty("cible")  // ✅ Ajouté ici
     public List<Cible> getCibles() {
@@ -125,9 +116,9 @@ public class Event {
         this.files = files;
     }
 
-
     public EventType getEventType() { return eventType; }
     public void setEventType(EventType eventType) { this.eventType = eventType; }
+
     public List<EventParticipant> getMereParticipants() {
         return participants.stream()
                 .filter(p -> p.getParticipantType() == ParticipantType.MERE)
@@ -145,6 +136,7 @@ public class Event {
                 .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE)
                 .toList();
     }
+
     public void setMereParticipants(List<Mere> meres) {
         // Supprime les anciens participants de type MERE
         participants.removeIf(p -> p.getParticipantType() == ParticipantType.MERE);
@@ -182,5 +174,4 @@ public class Event {
             participants.add(ep);
         }
     }
-
 }

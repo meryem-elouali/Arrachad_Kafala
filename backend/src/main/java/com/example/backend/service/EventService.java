@@ -5,15 +5,13 @@ import com.example.backend.Repository.EventRepository;
 import com.example.backend.Repository.EventTypeRepository;
 import com.example.backend.Repository.MereRepository;
 import com.example.backend.Repository.FamilleRepository;
-import com.example.backend.model.Enfant;
-import com.example.backend.model.Event;
-import com.example.backend.model.EventType;
-import com.example.backend.model.Mere;
-import com.example.backend.model.Famille;
+import com.example.backend.dto.EventDetailsDTO;
+import com.example.backend.model.*;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -99,4 +97,87 @@ public class EventService {
         return familleRepository.findById(Long.valueOf(id))
                 .orElseThrow(() -> new RuntimeException("Famille not found"));
     }
+
+
+    public Optional<EventDetailsDTO> getEventDetailsById(Long id) {
+        Optional<Event> eventOpt = eventRepository.findEventWithDetailsById(id);
+        if (eventOpt.isEmpty()) return Optional.empty();
+
+        Event event = eventOpt.get();
+        List<EventParticipant> participants = eventRepository.findParticipantsByEventId(id);
+
+        // MERES
+        List<Map<String, Object>> meresParticipants = participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.MERE && p.getMere() != null)
+                .map(p -> Map.<String, Object>of(
+                        "id", (Object) p.getMere().getId(),
+                        "nom", (Object) p.getMere().getNom(),
+                        "prenom", (Object) p.getMere().getPrenom(),
+                        "present", (Object) p.getPresent(),
+                        "motif", (Object) p.getAbsenceReason()
+                ))
+                .collect(Collectors.toList());
+
+        // ENFANTS
+        List<Map<String, Object>> enfantsParticipants = participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.ENFANT && p.getEnfant() != null)
+                .map(p -> Map.<String, Object>of(
+                        "id", (Object) p.getEnfant().getId(),
+                        "nom", (Object) p.getEnfant().getNom(),
+                        "prenom", (Object) p.getEnfant().getPrenom(),
+                        "present", (Object) p.getPresent(),
+                        "motif", (Object) p.getAbsenceReason()
+                ))
+                .collect(Collectors.toList());
+
+        // FAMILLES
+        List<Map<String, Object>> famillesParticipants = participants.stream()
+                .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE && p.getFamille() != null)
+                .map(p -> Map.<String, Object>of(
+                        "id", (Object) p.getFamille().getId(),
+                        "present", (Object) p.getPresent(),
+                        "motif", (Object) p.getAbsenceReason()
+                ))
+                .collect(Collectors.toList());
+
+        // FILES
+        List<Map<String, Object>> files = event.getFiles().stream()
+                .map(f -> Map.<String, Object>of(
+                        "base64", (Object) f.getBase64(),
+                        "type", (Object) f.getType()
+                ))
+                .collect(Collectors.toList());
+
+        // EventType
+        Map<String, Object> eventTypeMap = null;
+        if (event.getEventType() != null) {
+            eventTypeMap = Map.<String, Object>of(
+                    "id", (Object) event.getEventType().getId(),
+                    "name", (Object) event.getEventType().getName()
+            );
+        }
+
+        // Construire le DTO
+        EventDetailsDTO dto = new EventDetailsDTO(
+                event.getId(),
+                event.getTitle(),
+                event.getStartDate(),
+                event.getEndDate(),
+                event.getCalendarLevel(),
+                event.getPlace(),
+                event.getAgeMin(),
+                event.getAgeMax(),
+                event.getCibles() != null ? event.getCibles().stream().map(Enum::name).collect(Collectors.toList()) : null,
+                eventTypeMap,
+                event.getDescription(),
+                files,
+                meresParticipants,
+                enfantsParticipants,
+                famillesParticipants
+        );
+
+        return Optional.of(dto);
+    }
+
+
 }

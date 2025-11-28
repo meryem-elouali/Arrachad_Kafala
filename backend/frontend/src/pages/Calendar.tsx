@@ -152,24 +152,24 @@ const resetModalFields = () => {
 
 
 const handleAddOrUpdateEvent = async () => {
-  if (!eventTitle || cibles.length === 0 || !eventTypeId) {
-    alert("يرجى ملء العنوان، الفئة، ونوع الحدث!");
-    return;
+ if (!eventTitle || cibles.length === 0 || !eventTypeId || !place) {
+   alert("يرجى ملء العنوان، الفئة، ونوع الحدث، والمكان!");
+   return;
+ }
+const eventData = {
+  title: eventTitle,
+  start: eventStartDate,
+  end: eventEndDate,
+  extendedProps: {
+    cibles,
+    ageMin: cibles.includes("ENFANT") ? (ageMin !== "" ? Number(ageMin) : null) : null,
+    ageMax: cibles.includes("ENFANT") ? (ageMax !== "" ? Number(ageMax) : null) : null,
+    eventType: { id: Number(eventTypeId) },
+    place: place || "Inconnu", // <-- valeur par défaut pour éviter null
   }
+};
 
-  const eventData = {
-    title: eventTitle,
-    start: eventStartDate,
-    end: eventEndDate,
-    extendedProps: {
-      cibles: cibles,
-      ...(cibles.includes("ENFANT")
-        ? { ageMin: ageMin !== "" ? Number(ageMin) : null, ageMax: ageMax !== "" ? Number(ageMax) : null }
-        : {}),
-      eventType: { id: Number(eventTypeId) },
-      place,
-    },
-  };
+
 
   try {
     let response;
