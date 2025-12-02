@@ -21,17 +21,18 @@ public class EventParticipant implements Serializable {
 
     @ManyToOne
     @JoinColumn(name = "mere_id")
-    @JsonIgnore
+    @JsonBackReference // au lieu de @JsonIgnore
     private Mere mere;
+
 
     @ManyToOne
     @JoinColumn(name = "enfant_id")
-    @JsonIgnore
+    @JsonBackReference
     private Enfant enfant;
 
     @ManyToOne
     @JoinColumn(name = "famille_id")
-    @JsonIgnore
+    @JsonBackReference
     private Famille famille;
 
     // type de participant (MERE, ENFANT, FAMILLE)

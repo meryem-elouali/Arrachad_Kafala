@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -169,7 +170,7 @@ public class EventController {
     public ResponseEntity<Map<String, Object>> getEventById(@PathVariable Long id) {
         return eventService.getEventById(id)
                 .map(ev -> {
-                    Map<String, Object> map = new java.util.HashMap<>();
+                    Map<String, Object> map = new HashMap<>();
                     map.put("id", ev.getId());
                     map.put("title", ev.getTitle());
                     map.put("startDate", ev.getStartDate());
@@ -184,7 +185,7 @@ public class EventController {
 
                     // EventType
                     if (ev.getEventType() != null) {
-                        Map<String, Object> typeMap = new java.util.HashMap<>();
+                        Map<String, Object> typeMap = new HashMap<>();
                         typeMap.put("id", ev.getEventType().getId());
                         typeMap.put("name", ev.getEventType().getName());
                         map.put("eventType", typeMap);
@@ -196,38 +197,47 @@ public class EventController {
 
                     // Photos
                     map.put("photos", ev.getFiles().stream()
-                            .map(f -> Map.of("base64", f.getBase64(), "type", f.getType()))
-                            .collect(Collectors.toList()));
+                            .map(f -> {
+                                Map<String, Object> photoMap = new HashMap<>();
+                                photoMap.put("base64", f.getBase64());
+                                photoMap.put("type", f.getType());
+                                return photoMap;
+                            }).collect(Collectors.toList()));
 
                     // Participants grouped by type
-                    map.put("meresParticipants", ev.getParticipants().stream()
-                            .filter(p -> p.getParticipantType() == ParticipantType.MERE && p.getMere() != null)
-                            .map(p -> Map.of(
-                                    "id", p.getMere().getId(),
-                                    "nom", p.getMere().getNom(),
-                                    "prenom", p.getMere().getPrenom(),
-                                    "present", p.getPresent(),
-                                    "motif", p.getAbsenceReason()
-                            )).collect(Collectors.toList()));
+                    map.put("meresParticipants", ev.getMereParticipants().stream()
+                            .map(p -> {
+                                Map<String, Object> participantMap = new HashMap<>();
+                                participantMap.put("id", p.getMere() != null ? p.getMere().getId() : null);
+                                participantMap.put("nom", p.getMere() != null ? p.getMere().getNom() : null);
+                                participantMap.put("prenom", p.getMere() != null ? p.getMere().getPrenom() : null);
+                                participantMap.put("present", p.getPresent());
+                                participantMap.put("motif", p.getAbsenceReason());
+                                return participantMap;
+                            }).collect(Collectors.toList()));
 
                     map.put("enfantsParticipants", ev.getParticipants().stream()
                             .filter(p -> p.getParticipantType() == ParticipantType.ENFANT && p.getEnfant() != null)
-                            .map(p -> Map.of(
-                                    "id", p.getEnfant().getId(),
-                                    "nom", p.getEnfant().getNom(),
-                                    "prenom", p.getEnfant().getPrenom(),
-                                    "age", p.getEnfant().getAge(),
-                                    "present", p.getPresent(),
-                                    "motif", p.getAbsenceReason()
-                            )).collect(Collectors.toList()));
+                            .map(p -> {
+                                Map<String, Object> participantMap = new HashMap<>();
+                                participantMap.put("id", p.getEnfant().getId());
+                                participantMap.put("nom", p.getEnfant().getNom());
+                                participantMap.put("prenom", p.getEnfant().getPrenom());
+                                participantMap.put("age", p.getEnfant().getAge());
+                                participantMap.put("present", p.getPresent());
+                                participantMap.put("motif", p.getAbsenceReason());
+                                return participantMap;
+                            }).collect(Collectors.toList()));
 
                     map.put("famillesParticipants", ev.getParticipants().stream()
                             .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE && p.getFamille() != null)
-                            .map(p -> Map.of(
-                                    "id", p.getFamille().getId(),
-                                    "present", p.getPresent(),
-                                    "motif", p.getAbsenceReason()
-                            )).collect(Collectors.toList()));
+                            .map(p -> {
+                                Map<String, Object> participantMap = new HashMap<>();
+                                participantMap.put("id", p.getFamille() != null ? p.getFamille().getId() : null);
+                                participantMap.put("present", p.getPresent());
+                                participantMap.put("motif", p.getAbsenceReason());
+                                return participantMap;
+                            }).collect(Collectors.toList()));
 
                     return ResponseEntity.ok(map);
                 }).orElse(ResponseEntity.notFound().build());

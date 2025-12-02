@@ -75,53 +75,71 @@ const EventDetails: React.FC = () => {
     }
     return new File([ab], filename, { type: mimeString });
   };
-  const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
-    const key = `${type}-${id}`;
+const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
+ const key = `${type.toUpperCase()}-${id}`;
 
-    setSelectedParticipants(prev => {
-      const isSelected = prev.includes(key);
-      let newSelected: string[];
-
-      if (isSelected) {
-        newSelected = prev.filter(k => k !== key);
-        setParticipantsList(current => current.filter(p => p.uniqueKey !== key));
-      } else {
-        newSelected = [...prev, key];
-
-        let toAdd: Participant[] = [];
-        if (type === "MERE") {
-          const mere = allMeres.find(m => m.id === id);
-          if (mere) toAdd.push({ ...mere, uniqueKey: key, type: "MERE" });
-        }
-        if (type === "ENFANT") {
-          const enfant = allEnfants.find(e => e.id === id);
-          if (enfant) toAdd.push({ ...enfant, uniqueKey: key, type: "ENFANT" });
-        }
-        if (type === "FAMILLE") {
-          const famille = allFamilles.find(f => f.id === id);
-          if (famille) toAdd.push({ ...famille, uniqueKey: key, type: "FAMILLE" });
-        }
-
-        setParticipantsList(current => [...current, ...toAdd]);
-      }
-
-      return newSelected;
-    });
-  };
-
-
-
-
-  const toggleSelectAll = () => {
-    if (selectAll) {
-      setSelectedParticipants([]);
-      setSelectAll(false);
+  setSelectedParticipants(prev => {
+    const isSelected = prev.includes(key);
+    let newSelected: string[];
+    if (isSelected) {
+      newSelected = prev.filter(k => k !== key);
+      setParticipantsList(current => current.filter(p => p.uniqueKey !== key));
     } else {
-      const allIds = participants.map((p) => p.id);
-      setSelectedParticipants(allIds);
-      setSelectAll(true);
+      newSelected = [...prev, key];
+      let toAdd: Participant[] = [];
+      if (type === "MERE") {
+        const mere = allMeres.find(m => m.id === id);
+        if (mere) toAdd.push({ ...mere, uniqueKey: key, type: "MERE" });
+      }
+      if (type === "ENFANT") {
+        const enfant = allEnfants.find(e => e.id === id);
+        if (enfant) toAdd.push({ ...enfant, uniqueKey: key, type: "ENFANT" });
+      }
+      if (type === "FAMILLE") {
+        const famille = allFamilles.find(f => f.id === id);
+        if (famille) toAdd.push({ ...famille, uniqueKey: key, type: "FAMILLE" });
+      }
+      setParticipantsList(current => {
+        const alreadyExists = current.some(p => p.uniqueKey === key);
+        if (alreadyExists) return current;
+        return [...current, ...toAdd];
+      });
     }
-  };
+    return newSelected;
+  });
+};
+
+
+
+
+
+
+
+ const toggleSelectAll = () => {
+   if (selectAll) {
+     // Décocher tout
+     setSelectedParticipants([]);
+     setParticipantsList([]);
+     setSelectAll(false);
+   } else {
+     // Cocher tout
+     const allKeys = participants.map(p => p.uniqueKey!);
+     setSelectedParticipants(allKeys);
+
+     // Mettre à jour participantsList avec tous les participants (éviter doublons)
+     setParticipantsList(prev => {
+       const newList = [...prev];
+       participants.forEach(p => {
+         if (!newList.some(np => np.uniqueKey === p.uniqueKey)) {
+           newList.push(p);
+         }
+       });
+       return newList;
+     });
+
+     setSelectAll(true);
+   }
+ };
 
   // Fetch data
   useEffect(() => {
@@ -166,79 +184,81 @@ const EventDetails: React.FC = () => {
       .catch(console.error);
   }, [id]);
 
+
   const openParticipantModal = () => {
     if (!event) return;
 
     const cibles = event.cibles || [];
-    let preselected: number[] = [];
+    // Au lieu de pré-sélectionner depuis event (données sauvegardées), utilise participantsList actuel (changements non sauvegardés)
+    const currentKeys = participantsList.map(p => p.uniqueKey!);
+    let preselectedKeys: string[] = currentKeys; // Pré-sélectionne ce qui est déjà dans participantsList
 
     const list: Participant[] = [];
 
     // Mères
     if (cibles.includes("MERE")) {
-      preselected.push(...(event.meresParticipants?.map(p => p.id) || []));
       list.push(...allMeres.map(p => ({
         ...p,
-        uniqueKey: `mere-${p.id}`,
+        uniqueKey: `MERE-${p.id}`,
         type: "MERE",
-        present: event.meresParticipants?.some(mp => mp.id === p.id) ? true : undefined
+        present: participantsList.some(mp => mp.id === p.id && mp.type === "MERE") ? true : undefined
       })));
     }
 
     // Enfants
     if (cibles.includes("ENFANT")) {
-      preselected.push(...(event.enfantsParticipants?.map(p => p.id) || []));
       const ageMin = event.ageMin ?? 0;
       const ageMax = event.ageMax ?? 100;
       const filtered = allEnfants.filter(e => e.age != null && e.age >= ageMin && e.age <= ageMax);
       list.push(...filtered.map(p => ({
         ...p,
-        uniqueKey: `enfant-${p.id}`,
+        uniqueKey: `ENFANT-${p.id}`,
         type: "ENFANT",
-        present: event.enfantsParticipants?.some(ep => ep.id === p.id) ? true : undefined
+        present: participantsList.some(ep => ep.id === p.id && ep.type === "ENFANT") ? true : undefined
       })));
     }
 
     // Familles
     if (cibles.includes("FAMILLE")) {
-      preselected.push(...(event.famillesParticipants?.map(p => p.id) || []));
       list.push(...allFamilles.map(p => ({
         ...p,
-        uniqueKey: `famille-${p.id}`,
+        uniqueKey: `FAMILLE-${p.id}`,
         type: "FAMILLE",
-        present: event.famillesParticipants?.some(fp => fp.id === p.id) ? true : undefined
+        present: participantsList.some(fp => fp.id === p.id && fp.type === "FAMILLE") ? true : undefined
       })));
     }
 
-    setSelectedParticipants(preselected);
+    setSelectedParticipants(preselectedKeys);
     setParticipants(list);
-    setSelectAll(preselected.length === list.length);
+    setSelectAll(preselectedKeys.length === list.length);
     setIsModalOpen(true);
   };
+
 
 
   const confirmParticipants = () => {
     const selected: Participant[] = [];
 
+    // Ajouter uniquement les mères sélectionnées
     selected.push(...allMeres
       .filter(m => selectedParticipants.includes(`MERE-${m.id}`))
       .map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" }))
     );
 
+    // Ajouter les enfants si tu veux
     selected.push(...allEnfants
       .filter(e => selectedParticipants.includes(`ENFANT-${e.id}`))
       .map(p => ({ ...p, uniqueKey: `ENFANT-${p.id}`, type: "ENFANT" }))
     );
 
-    selected.push(...allFamilles
-      .filter(f => selectedParticipants.includes(`FAMILLE-${f.id}`))
-      .map(p => ({ ...p, uniqueKey: `FAMILLE-${p.id}`, type: "FAMILLE" }))
-    );
+    // ❌ On supprime la partie familles
+    // selected.push(...allFamilles ... ) => supprimer cette partie
 
     setParticipantsList(selected);
-
     setIsModalOpen(false);
   };
+
+
 
   const saveEvent = async () => {
     if (!event) return;
@@ -275,10 +295,10 @@ const EventDetails: React.FC = () => {
       .filter((p) => allEnfants.some((e) => e.id === p.id))
       .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
 
-    payload.extendedProps.famillesParticipants = participantsList
+ /**    payload.extendedProps.famillesParticipants = participantsList
       .filter((p) => allFamilles.some((f) => f.id === p.id))
       .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
-
+*/
     try {
       console.log("Payload envoyé :", payload); // Pour debug avant envoi
       const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
@@ -510,17 +530,17 @@ const EventDetails: React.FC = () => {
                              </div>
 
                              <div className="grid grid-cols-2 gap-2">
-                           {participants.map((p) => (
-                             <label key={p.uniqueKey} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
-                               <input
-                                 type="checkbox"
-                                checked={selectedParticipants.includes(`${p.type}-${p.id}`)}
-                                onChange={() => toggleParticipant(p.id, p.type as "MERE" | "ENFANT" | "FAMILLE")}
+                          {participants.map((p) => (
+                            <label key={p.uniqueKey} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selectedParticipants.includes(p.uniqueKey!)}
+                                onChange={() => toggleParticipant(p.id, p.type!)}
+                              />
+                              {p.nom} {p.prenom}
+                            </label>
+                          ))}
 
-                               />
-                               {p.nom} {p.prenom}
-                             </label>
-                           ))}
 
 
                              </div>
