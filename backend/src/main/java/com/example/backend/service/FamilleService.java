@@ -50,14 +50,15 @@ public class FamilleService {
             }
         }
 
-        // 🔹 Gestion enfants
+        // 🔹 Gestion des enfants
         if (famille.getEnfants() != null) {
             famille.getEnfants().forEach(enfant -> enfant.setFamille(famille));
         }
 
-        // 🔹 Sauvegarde finale (cascade s'occupe des enfants)
+        // 🔹 Sauvegarde finale de la famille (cascade s'occupe des enfants)
         return familleRepo.save(famille);
     }
+
 
     public List<TypeFamille> getAllTypes() {
         return typeRepo.findAll();

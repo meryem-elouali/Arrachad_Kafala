@@ -1,5 +1,6 @@
 package com.example.backend.Controller;
 
+import com.example.backend.model.Ecole;
 import com.example.backend.model.Enfant;
 import com.example.backend.model.Famille;
 import com.example.backend.model.NiveauScolaire;
@@ -26,13 +27,14 @@ public class EnfantController {
         this.familleRepository = familleRepository;
     }
 
-    // 🔹 Ajouter un enfant avec MultipartFile pour la photo
     @PostMapping
     public ResponseEntity<Enfant> addEnfant(
             @RequestParam("prenom") String prenom,
             @RequestParam("nom") String nom,
             @RequestParam("dateNaissance") String dateNaissance,
             @RequestParam("familleId") Long familleId,
+            @RequestParam("niveauscolaireId") Long niveauscolaireId,
+            @RequestParam("ecoleId") Long ecoleId,
             @RequestParam(value = "typeMaladie", required = false) String typeMaladie,
             @RequestParam(value = "estMalade", required = false) Boolean estMalade,
             @RequestParam(value = "photoEnfant", required = false) MultipartFile photoEnfant
@@ -40,6 +42,12 @@ public class EnfantController {
 
         Famille famille = familleRepository.findById(familleId)
                 .orElseThrow(() -> new RuntimeException("Famille non trouvée"));
+
+        // 👉 Récupération du niveau scolaire
+        NiveauScolaire niveau = enfantService.getNiveauById(niveauscolaireId);
+
+        // 👉 Récupération de l'école
+        var ecole = enfantService.getEcoleById(ecoleId);
 
         Enfant enfant = new Enfant();
         enfant.setPrenom(prenom);
@@ -49,11 +57,17 @@ public class EnfantController {
         enfant.setEstMalade(estMalade != null ? estMalade : false);
         enfant.setFamille(famille);
 
+        // 👉 Association des relations
+        enfantService.getNiveauById(niveauscolaireId);
+        enfantService.getEcoleById(ecoleId);
+
+
         if (photoEnfant != null && !photoEnfant.isEmpty()) {
             enfant.setPhotoEnfant(photoEnfant.getBytes());
         }
 
         Enfant savedEnfant = enfantService.saveEnfant(enfant, familleId);
+
 
         return ResponseEntity.ok(savedEnfant);
     }
@@ -83,4 +97,15 @@ public class EnfantController {
                 .filter(e -> e.getFamille() != null && e.getFamille().getId().equals(familleId))
                 .toList();
     }
+    @GetMapping("/ecole")
+    public List<Ecole> getEcoles() {
+        return enfantService.getAllEcoles();
+    }
+
+    @PostMapping("/ecole")
+    public ResponseEntity<Ecole> addEcole(@RequestBody Ecole ecole) {
+        return ResponseEntity.ok(enfantService.saveEcole(ecole));
+    }
+
+
 }

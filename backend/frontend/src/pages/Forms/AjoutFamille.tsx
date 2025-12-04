@@ -12,16 +12,15 @@ interface Option {
   value: string | number;
   label: string;
 }
-
 interface Enfant {
   nom: string;
   prenom: string;
   dateNaissance: string;
   niveauscolaire: { id: string | number } | null;
+  ecole: { id: string | number } | null;
   photoEnfant: File | null;
-   typeMaladie: "",
-
-      estMalade: false,
+  typeMaladie: string;
+  estMalade: boolean;
 }
 
 export default function FormElements() {
@@ -32,9 +31,8 @@ export default function FormElements() {
     nombreEnfants: 0,
     phone: "",
     dateInscription: "",
-      personneMalade: "",
-
-        possedeMalade: false,
+    personneMalade: "",
+    possedeMalade: false,
   });
 
   const [mereData, setMereData] = useState({
@@ -71,63 +69,70 @@ export default function FormElements() {
 
   const [enfants, setEnfants] = useState<Enfant[]>([]);
   const [niveauxscolaires, setNiveauxscolaires] = useState<Option[]>([]);
+  const [ecoles, setEcoles] = useState<Option[]>([]);
+
   const [typesFamille, setTypesFamille] = useState<Option[]>([]);
   const [habitations, setHabitations] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
-const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<Blob> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const reader = new FileReader();
 
-    reader.onload = (e) => {
-      if (!e.target) return reject("Erreur lecture fichier");
-      img.src = e.target.result as string;
-    };
-    reader.readAsDataURL(file);
+  const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const reader = new FileReader();
 
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      let width = img.width;
-      let height = img.height;
+      reader.onload = (e) => {
+        if (!e.target) return reject("Erreur lecture fichier");
+        img.src = e.target.result as string;
+      };
+      reader.readAsDataURL(file);
 
-      if (width > maxWidth) {
-        height = (maxWidth / width) * height;
-        width = maxWidth;
-      }
-      if (height > maxHeight) {
-        width = (maxHeight / height) * width;
-        height = maxHeight;
-      }
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
 
-      canvas.width = width;
-      canvas.height = height;
+        if (width > maxWidth) {
+          height = (maxWidth / width) * height;
+          width = maxWidth;
+        }
+        if (height > maxHeight) {
+          width = (maxHeight / height) * width;
+          height = maxHeight;
+        }
 
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject("Erreur canvas");
-      ctx.drawImage(img, 0, 0, width, height);
+        canvas.width = width;
+        canvas.height = height;
 
-      canvas.toBlob(
-        (blob) => {
-          if (blob) resolve(blob);
-        },
-        "image/jpeg",
-        quality
-      );
-    };
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject("Erreur canvas");
+        ctx.drawImage(img, 0, 0, width, height);
 
-    img.onerror = (err) => reject(err);
-  });
-};
+        canvas.toBlob(
+          (blob) => {
+            if (blob) resolve(blob);
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+
+      img.onerror = (err) => reject(err);
+    });
+  };
 
   // Fetch listes initiales
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [typesRes, habitationsRes, niveauxRes] = await Promise.all([
+        const [typesRes, habitationsRes, niveauxRes, ecolesRes] = await Promise.all([
           fetch("http://localhost:8080/api/famille/types"),
           fetch("http://localhost:8080/api/famille/habitations"),
           fetch("http://localhost:8080/api/enfant/niveauScolaire"),
+          fetch("http://localhost:8080/api/enfant/ecole")
         ]);
+
+        const ecolesData = await ecolesRes.json();
+        setEcoles(ecolesData.map((e: any) => ({ value: e.id, label: e.nom })));
 
         const typesData = await typesRes.json();
         setTypesFamille(typesData.map((t: any) => ({ value: t.id, label: t.nom })));
@@ -151,7 +156,16 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
       const updated = [...prev];
       if (n > prev.length) {
         for (let i = prev.length; i < n; i++) {
-          updated.push({ nom: "", prenom: "", dateNaissance: "", niveauscolaire: null, photoEnfant: null });
+          updated.push({
+            nom: "",
+            prenom: "",
+            dateNaissance: "",
+            niveauscolaire: null,
+            ecole: null,
+            photoEnfant: null,
+            typeMaladie: "",
+            estMalade: false
+          });
         }
       } else {
         updated.length = n;
@@ -167,83 +181,113 @@ const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.
     if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
     return val.slice(0, 10);
   };
-const handleSubmitAll = async () => {
-  setLoading(true);
-  try {
-  console.log("===== DÉBUT ENVOI =====");
-      console.log("📦 Données famille :", familleData);
-      console.log("👩‍🦰 Données mère :", mereData);
-      console.log("🧔 Données père :", pereData);
-      console.log("👧 Liste enfants :", enfants);
-    // ✅ Préparer les blobs uniquement si les fichiers existent
-    const mereBlob = mereData.photoMere ? await compressImage(mereData.photoMere) : null;
-    const pereBlob = pereData.photoPere ? await compressImage(pereData.photoPere) : null;
 
-    // FormData mère
-    const formDataMere = new FormData();
-    Object.entries(mereData).forEach(([key, val]) => {
-      if (key === "photoMere" && mereBlob) formDataMere.append("photoMere", mereBlob, mereData.photoMere!.name);
-      else formDataMere.append(key, val as any);
-    });
+  const handleSubmitAll = async () => {
+    setLoading(true);
+    try {
+      // 1️⃣ Validation des champs avant soumission
+      if (!familleData.typeFamille || !familleData.habitationFamille || !familleData.adresseFamille || !familleData.phone) {
+        throw new Error("Certains champs de la famille sont manquants.");
+      }
+      if (!mereData.nom || !mereData.prenom || !mereData.cin || !mereData.phone) {
+        throw new Error("Certains champs de la mère sont manquants.");
+      }
+      if (!pereData.nom || !pereData.prenom || !pereData.cin || !pereData.phone) {
+        throw new Error("Certains champs du père sont manquants.");
+      }
 
-    const responseMere = await fetch("http://localhost:8080/api/mere", {
-      method: "POST",
-      body: formDataMere,
-    });
-    if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
-    const savedMere = await responseMere.json();
+      // 2️⃣ Vérification des dates
+      const validDateInscription = formatDateInput(familleData.dateInscription);
+      if (!validDateInscription) {
+        throw new Error("La date d'inscription est invalide.");
+      }
 
-    // FormData père
-    const formDataPere = new FormData();
-    Object.entries(pereData).forEach(([key, val]) => {
-      if (key === "photoPere" && pereBlob) formDataPere.append("photoPere", pereBlob, pereData.photoPere!.name);
-      else formDataPere.append(key, val as any);
-    });
+      // 3️⃣ Créer la mère
+      const formDataMere = new FormData();
+      formDataMere.append('nom', mereData.nom);
+      formDataMere.append('prenom', mereData.prenom);
+      formDataMere.append('cin', mereData.cin);
+      formDataMere.append('phone', mereData.phone);
+      formDataMere.append('villeNaissance', mereData.villeNaissance);
+      formDataMere.append('dateNaissance', mereData.dateNaissance);
+      formDataMere.append('dateDeces', mereData.dateDeces);
+      formDataMere.append('typeMaladie', mereData.typeMaladie);
+      formDataMere.append('typeTravail', mereData.typeTravail);
+      formDataMere.append('estDecedee', mereData.estDecedee ? 'true' : 'false');
+      formDataMere.append('estMalade', mereData.estMalade ? 'true' : 'false');
+      formDataMere.append('estTravaille', mereData.estTravaille ? 'true' : 'false');
+      if (mereData.photoMere) formDataMere.append('photoMere', mereData.photoMere);
 
-    const responsePere = await fetch("http://localhost:8080/api/pere", {
-      method: "POST",
-      body: formDataPere,
-    });
-    if (!responsePere.ok) throw new Error("Erreur enregistrement père");
-    const savedPere = await responsePere.json();
+      const responseMere = await fetch("http://localhost:8080/api/mere", {
+        method: "POST",
+        body: formDataMere,
+      });
+      if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
+      const savedMere = await responseMere.json();
 
-    // Famille
-    const familleComplet = { ...familleData, mere: { id: savedMere.id }, pere: { id: savedPere.id } };
-    const responseFamille = await fetch("http://localhost:8080/api/famille", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(familleComplet),
-    });
-    if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
-    const savedFamille = await responseFamille.json();
+      // 4️⃣ Créer le père
+      const formDataPere = new FormData();
+      formDataPere.append('nom', pereData.nom);
+      formDataPere.append('prenom', pereData.prenom);
+      formDataPere.append('cin', pereData.cin);
+      formDataPere.append('phone', pereData.phone);
+      formDataPere.append('villeNaissance', pereData.villeNaissance);
+      formDataPere.append('dateNaissance', pereData.dateNaissance);
+      formDataPere.append('dateDeces', pereData.dateDeces);
+      formDataPere.append('typeMaladie', pereData.typeMaladie);
+      formDataPere.append('typeTravail', pereData.typeTravail);
+      formDataPere.append('estDecedee', pereData.estDecedee ? 'true' : 'false');
+      formDataPere.append('estMalade', pereData.estMalade ? 'true' : 'false');
+      formDataPere.append('estTravaille', pereData.estTravaille ? 'true' : 'false');
+      if (pereData.photoPere) formDataPere.append('photoPere', pereData.photoPere);
 
-   for (const enfant of enfants) {
-     const formDataEnfant = new FormData();
-     for (const [key, val] of Object.entries(enfant)) {
-       if (key === "photoEnfant" && val instanceof File) {
-         const blob = await compressImage(val); // ⚡ await
-         formDataEnfant.append("photoEnfant", blob, val.name);
-       } else if (val && typeof val === "object" && "id" in val) {
-         formDataEnfant.append(key, val.id.toString());
-       } else {
-         formDataEnfant.append(key, val as any);
-       }
-     }
-     formDataEnfant.append("familleId", savedFamille.id.toString());
-     const res = await fetch("http://localhost:8080/api/enfant", { method: "POST", body: formDataEnfant });
-     if (!res.ok) throw new Error(await res.text());
-   }
+      const responsePere = await fetch("http://localhost:8080/api/pere", {
+        method: "POST",
+        body: formDataPere,
+      });
+      if (!responsePere.ok) throw new Error("Erreur enregistrement père");
+      const savedPere = await responsePere.json();
 
-    alert("Toutes les données ont été enregistrées avec succès !");
-  } catch (error) {
-    console.error(error);
-    alert("Erreur lors de l'enregistrement : " + error);
-  } finally {
-    setLoading(false);
-  }
-};
+      // 5️⃣ Créer la famille
+      const formDataFamille = new FormData();
+      formDataFamille.append('adresseFamille', familleData.adresseFamille);
+      formDataFamille.append('phone', familleData.phone);
+      formDataFamille.append('dateInscription', familleData.dateInscription);
+      formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
+      formDataFamille.append('personneMalade', familleData.personneMalade);
+      formDataFamille.append('typeFamille', JSON.stringify({ id: familleData.typeFamille?.id }));
+      formDataFamille.append('habitationFamille', JSON.stringify({ id: familleData.habitationFamille?.id }));
+      formDataFamille.append('mereId', savedMere.id.toString());
+      formDataFamille.append('pereId', savedPere.id.toString());
 
+      // Collect enfants into a single array and append as JSON
+      const enfantsArray = enfants.map(enfant => ({
+        nom: enfant.nom,
+        prenom: enfant.prenom,
+        ecole: { id: enfant.ecole?.id },
+        niveauscolaire: { id: enfant.niveauscolaire?.id },
+        dateNaissance: enfant.dateNaissance,
+        typeMaladie: enfant.typeMaladie,
+        estMalade: enfant.estMalade,
+      }));
+      formDataFamille.append('enfantsJson', JSON.stringify(enfantsArray));
 
+      const responseFamille = await fetch("http://localhost:8080/api/famille", {
+        method: "POST",
+        body: formDataFamille,
+      });
+      if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
+      const savedFamille = await responseFamille.json();
+
+      console.log("Famille enregistrée :", savedFamille);
+      alert("Toutes les données ont été enregistrées avec succès !");
+    } catch (error) {
+      console.error(error);
+      alert("Erreur lors de l'enregistrement : " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Composant Select générique
   const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
@@ -318,73 +362,71 @@ const handleSubmitAll = async () => {
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
         {/* Formulaire Famille */}
         <div className="space-y-6">
+          <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
+            <div className="flex gap-4">
+              <div className="w-1/2">
+                <Select
+                  options={typesFamille}
+                  value={familleData.typeFamille?.id || ""}
+                  onChange={(val) =>
+                    setFamilleData({
+                      ...familleData,
+                      typeFamille: { id: val },
+                    })
+                  }
+                  placeholder="نوع الحالة"
+                  apiUrl="http://localhost:8080/api/famille/types"
+                  onNewItem={(newOpt) => setTypesFamille((prev) => [...prev, newOpt])}
+                />
+              </div>
+              <div className="w-1/2">
+                <Select
+                  options={habitations}
+                  value={familleData.habitationFamille?.id || ""}
+                  onChange={(val) =>
+                    setFamilleData({
+                      ...familleData,
+                      habitationFamille: { id: val },
+                    })
+                  }
+                  placeholder="نوع السكن"
+                  apiUrl="http://localhost:8080/api/famille/habitations"
+                  onNewItem={(newOpt) => setHabitations((prev) => [...prev, newOpt])}
+                />
+              </div>
+            </div>
 
- <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
+            <div className="md:col-span-2 mt-4">
+              <Label htmlFor="adresseFamille">عنوان العائلة</Label>
+              <Input
+                type="text"
+                placeholder="عنوان العائلة"
+                value={familleData.adresseFamille}
+                onChange={(e) => setFamilleData({ ...familleData, adresseFamille: e.target.value })}
+                className="border p-2 rounded w-full"
+              />
+            </div>
+            <div className="flex gap-4">
+              <div className="w-1/2">
+                <div className="md:col-span-2 mt-4">
+                  <Label htmlFor="nombreEnfants">عدد الأبناء</Label>
+                  <Input
+                    type="number"
+                    placeholder="عدد الأبناء"
+                    min={0}
+                    value={familleData.nombreEnfants}
+                    onChange={(e) => setFamilleData({ ...familleData, nombreEnfants: parseInt(e.target.value) })}
+                    className="border p-2 rounded w-full"
+                  />
+                </div>
+              </div>
+              <div className="w-1/2">
+                <div className="md:col-span-2 mt-4">
+                  <Label htmlFor="numphone">رقم الهاتف</Label>
+                  <Input
+                    type="text"
+                    placeholder="رقم الهاتف"
 
-             <div className="flex gap-4">
-                <div className="w-1/2">
-      <Select
-        options={typesFamille}
-        value={familleData.typeFamille?.id || ""}
-        onChange={(val) =>
-          setFamilleData({
-            ...familleData,
-            typeFamille: { id: val },
-          })
-        }
-        placeholder="نوع الحالة"
-        apiUrl="http://localhost:8080/api/famille/types"
-        onNewItem={(newOpt) => setTypesFamille((prev) => [...prev, newOpt])} // 🔹 ICI
-      />
-
-   </div>
-
-      <div className="w-1/2">
-       <Select
-         options={habitations}
-         value={familleData.habitationFamille?.id || ""}
-         onChange={(val) =>
-           setFamilleData({
-             ...familleData,
-             habitationFamille: { id: val },
-           })
-         }
-         placeholder="نوع السكن"
-         apiUrl="http://localhost:8080/api/famille/habitations"
-         onNewItem={(newOpt) => setHabitations((prev) => [...prev, newOpt])} // 🔹 ICI
-       />
-</div></div>
-
-
-
-          <div className="md:col-span-2 mt-4">
-                      <Label htmlFor="adresseFamille">عنوان العائلة</Label>
-          <Input
-            type="text"
-            placeholder="عنوان العائلة"
-            value={familleData.adresseFamille}
-            onChange={(e) => setFamilleData({ ...familleData, adresseFamille: e.target.value })}
-            className="border p-2 rounded w-full"
-          /></div>
-             <div className="flex gap-4">
-                <div className="w-1/2">
-           <div className="md:col-span-2 mt-4">
-                                <Label htmlFor="nombreEnfants">عدد الأبناء</Label>
-          <Input
-            type="number"
-            placeholder="عدد الأبناء"
-            min={0}
-            value={familleData.nombreEnfants}
-            onChange={(e) => setFamilleData({ ...familleData, nombreEnfants: parseInt(e.target.value) })}
-            className="border p-2 rounded w-full"
-          /></div>   </div>
-
-                        <div className="w-1/2">
-           <div className="md:col-span-2 mt-4">
-                                <Label htmlFor="numphone">رقم الهاتف</Label>
-          <Input
-            type="text"
-            placeholder="رقم الهاتف"
             value={familleData.phone}
             onChange={(e) => setFamilleData({ ...familleData, phone: e.target.value })}
             className="border p-2 rounded w-full"
@@ -416,7 +458,7 @@ const handleSubmitAll = async () => {
             onChange={(e) => setFamilleData({ ...familleData, possedeMalade: e.target.checked })}
             className="mr-2"
           />
-          <label>هل تعتني بشخص مريض في المنزل?</label>
+          <label>هل تعتني بشخص مريض في المنزل؟</label>
           </div></div>
 
              <div className="w-1/2">
@@ -448,7 +490,7 @@ const handleSubmitAll = async () => {
         onChange={(e) => setPereData({ ...pereData, estDecedee: e.target.checked })}
         className="mr-2"
       />
-      <label>هل الاب متوفي?</label>
+      <label>هل الاب متوفي؟</label>
     </div>
    </div>
 
@@ -563,7 +605,7 @@ const handleSubmitAll = async () => {
             onChange={(e) => setPereData({ ...pereData, estMalade: e.target.checked })}
             className="mr-2"
           />
-          <label>هل الاب مريض?</label>
+          <label>هل الاب مريض؟</label>
           </div></div>
 
              <div className="w-1/2">
@@ -588,7 +630,7 @@ const handleSubmitAll = async () => {
             onChange={(e) => setPereData({ ...pereData, estTravaille: e.target.checked })}
             className="mr-2"
           />
-          <label>هل الاب يعمل?</label>
+          <label>هل الاب يعمل؟</label>
         </div>   </div>
 
                     <div className="w-1/2">
@@ -635,7 +677,7 @@ const handleSubmitAll = async () => {
         onChange={(e) => setMereData({ ...mereData, estDecedee: e.target.checked })}
         className="mr-2"
       />
-      <label>هل الام متوفاة?</label>
+      <label>هل الام متوفاة؟</label>
     </div>
    </div>
 
@@ -750,7 +792,7 @@ const handleSubmitAll = async () => {
             onChange={(e) => setMereData({ ...mereData, estMalade: e.target.checked })}
             className="mr-2"
           />
-          <label>هل الام مريضة?</label>
+          <label>هل الام مريضة؟</label>
           </div></div>
 
              <div className="w-1/2">
@@ -775,7 +817,7 @@ const handleSubmitAll = async () => {
             onChange={(e) => setMereData({ ...mereData, estTravaille: e.target.checked })}
             className="mr-2"
           />
-          <label>هل الام تعمل?</label>
+          <label>هل الام تعمل؟</label>
         </div>   </div>
 
                     <div className="w-1/2">
@@ -892,6 +934,22 @@ const handleSubmitAll = async () => {
                                   onNewItem={(newOpt) => setNiveauxscolaires((prev) => [...prev, newOpt])}
                                 />
                               </div>
+                               <div className="w-1/2">
+                                                              <Label htmlFor={`ecole-${index}`}>المؤسسة</Label>
+                                                             <Select
+                                                               options={ecoles}
+                                                               value={enfants[index]?.ecole?.id || ""}
+                                                               onChange={(val) => {
+                                                                 const newEnfants = [...enfants];
+                                                                 newEnfants[index] = { ...newEnfants[index], ecole: { id: val } };
+                                                                 setEnfants(newEnfants);
+                                                               }}
+                                                               placeholder="اختر المؤسسة"
+                                                               apiUrl="http://localhost:8080/api/enfant/ecole"
+                                                               onNewItem={(newOpt) => setEcoles((prev) => [...prev, newOpt])}
+                                                             />
+
+                                                            </div>
                             </div>
 
                             {/* Checkbox Malade */}
@@ -910,7 +968,7 @@ const handleSubmitAll = async () => {
                                   }}
                                   className="mr-2"
                                 />
-                                <label>هل الابن مريض?</label>
+                                <label>هل الابن مريض؟</label>
                               </div>
 
                               <div className="w-1/2">

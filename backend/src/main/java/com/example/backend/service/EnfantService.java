@@ -4,10 +4,8 @@ import com.example.backend.Repository.EnfantRepository;
 import com.example.backend.Repository.NiveauScolaireRepository;
 import com.example.backend.Repository.FamilleRepository;
 import com.example.backend.Repository.EtudeRepository;
-import com.example.backend.model.Enfant;
-import com.example.backend.model.Famille;
-import com.example.backend.model.NiveauScolaire;
-import com.example.backend.model.Etude;
+import com.example.backend.Repository.EcoleRepository;
+import com.example.backend.model.*;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,21 +14,26 @@ import java.util.List;
 public class EnfantService {
 
     private final EnfantRepository enfantRepository;
-    private final NiveauScolaireRepository niveauScolairerepo;
+    private final NiveauScolaireRepository niveauScolaireRepo;
     private final FamilleRepository familleRepository;
     private final EtudeRepository etudeRepository;
+    private final EcoleRepository ecoleRepository;
 
-    public EnfantService(EnfantRepository enfantRepository,
-                         NiveauScolaireRepository niveauScolairerepo,
-                         FamilleRepository familleRepository,
-                         EtudeRepository etudeRepository) {
+    public EnfantService(
+            EnfantRepository enfantRepository,
+            NiveauScolaireRepository niveauScolaireRepo,
+            FamilleRepository familleRepository,
+            EtudeRepository etudeRepository,
+            EcoleRepository ecoleRepository
+    ) {
         this.enfantRepository = enfantRepository;
-        this.niveauScolairerepo = niveauScolairerepo;
+        this.niveauScolaireRepo = niveauScolaireRepo;
         this.familleRepository = familleRepository;
         this.etudeRepository = etudeRepository;
+        this.ecoleRepository = ecoleRepository;
     }
 
-    // 🔹 Enfants
+    // 🔹 Enregistrer un enfant
     public Enfant saveEnfant(Enfant enfant, Long familleId) {
         Famille famille = familleRepository.findById(familleId)
                 .orElseThrow(() -> new RuntimeException("Famille non trouvée"));
@@ -38,38 +41,50 @@ public class EnfantService {
         enfant.setFamille(famille);
         famille.getEnfants().add(enfant);
 
-        Enfant savedEnfant = enfantRepository.save(enfant);
-
-        // Assigner automatiquement le dernier niveau scolaire
-        NiveauScolaire dernierNiveau = getDernierNiveauScolaire(savedEnfant.getId());
-
-
-        return savedEnfant;
+        return enfantRepository.save(enfant);
     }
 
     public List<Enfant> getAllEnfants() {
         return enfantRepository.findAll();
     }
 
-    // 🔹 NiveauScolaire
+    // 🔹 Niveau scolaire
     public NiveauScolaire saveNiveauScolaire(NiveauScolaire niveauScolaire) {
-        return niveauScolairerepo.save(niveauScolaire);
+        return niveauScolaireRepo.save(niveauScolaire);
     }
 
     public List<NiveauScolaire> getNiveauScolaires() {
-        return niveauScolairerepo.findAll();
+        return niveauScolaireRepo.findAll();
     }
 
     public NiveauScolaire getNiveauScolaireById(Long id) {
-        return niveauScolairerepo.findById(id)
+        return niveauScolaireRepo.findById(id)
                 .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé"));
     }
 
-    // 🔹 Récupérer le dernier niveau scolaire depuis les études
-    // 🔹 Récupérer le dernier niveau scolaire depuis les études
+    // 🔹 Dernier niveau d'étude
     public NiveauScolaire getDernierNiveauScolaire(Long enfantId) {
         Etude derniereEtude = etudeRepository.findLatestEtudeByEnfantId(enfantId);
         return (derniereEtude != null) ? derniereEtude.getNiveauScolaire() : null;
+    }
+
+    public NiveauScolaire getNiveauById(Long id) {
+        return niveauScolaireRepo.findById(id)
+                .orElseThrow(() -> new RuntimeException("Niveau scolaire introuvable"));
+    }
+
+    public Ecole getEcoleById(Long id) {
+        return ecoleRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("École introuvable"));
+    }
+    // 🔹 Enregistrer une école
+    public Ecole saveEcole(Ecole ecole) {
+        return ecoleRepository.save(ecole);
+    }
+
+    // 🔹 Récupérer toutes les écoles
+    public List<Ecole> getAllEcoles() {
+        return ecoleRepository.findAll();
     }
 
 }

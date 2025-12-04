@@ -2,6 +2,8 @@ package com.example.backend.Controller;
 
 import com.example.backend.model.*;
 import com.example.backend.service.FamilleService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
@@ -34,39 +36,99 @@ public class FamilleController {
         return familleService.getAllHabitations();
     }
 
-    // 🔹 Ajouter une nouvelle habitation (👉 nécessaire pour ton frontend)
+    // 🔹 Ajouter une nouvelle habitation
     @PostMapping("/habitations")
     public Habitation addHabitation(@RequestBody Habitation habitation) {
         return familleService.saveHabitation(habitation);
     }
 
-    // 🔹 Ajouter une famille
+    // 🔹 Ajouter une nouvelle famille (corrigée avec gestion d'erreurs et logging)
     @PostMapping
-    public Famille addFamille(@RequestBody Famille famille) {
-        return familleService.saveFamille(famille);
+    public Famille addFamille(
+            @RequestParam("adresseFamille") String adresseFamille,
+            @RequestParam("phone") String phone,
+            @RequestParam("dateInscription") String dateInscription,
+            @RequestParam("possedeMalade") String possedeMalade,
+            @RequestParam("personneMalade") String personneMalade,
+            @RequestParam("typeFamille") String typeFamilleJson,
+            @RequestParam("habitationFamille") String habitationFamilleJson,
+            @RequestParam("mereId") Long mereId,
+            @RequestParam("pereId") Long pereId,
+            @RequestParam("enfantsJson") String enfantsJson) throws Exception {
+
+        try {
+            // Log des paramètres reçus pour débogage
+            System.out.println("Adresse Famille: " + adresseFamille);
+            System.out.println("Phone: " + phone);
+            System.out.println("Date Inscription: " + dateInscription);
+            System.out.println("Possede Malade: " + possedeMalade);
+            System.out.println("Personne Malade: " + personneMalade);
+            System.out.println("Type Famille JSON: " + typeFamilleJson);
+            System.out.println("Habitation Famille JSON: " + habitationFamilleJson);
+            System.out.println("Mere ID: " + mereId);
+            System.out.println("Pere ID: " + pereId);
+            System.out.println("Enfants JSON: " + enfantsJson);
+
+            // Convertir les JSON reçus en objets Java
+            ObjectMapper objectMapper = new ObjectMapper();
+
+            // Conversion des chaînes JSON en objets TypeFamille, Habitation et Liste<Enfant>
+            TypeFamille typeFamille = objectMapper.readValue(typeFamilleJson, TypeFamille.class);
+            Habitation habitationFamille = objectMapper.readValue(habitationFamilleJson, Habitation.class);
+            List<Enfant> enfants = objectMapper.readValue(enfantsJson, new TypeReference<List<Enfant>>() {});
+
+            // Création de la famille
+            Famille famille = new Famille();
+            famille.setAdresseFamille(adresseFamille);
+            famille.setPhone(phone);
+            famille.setDateInscription(dateInscription);
+            famille.setPossedeMalade(Boolean.parseBoolean(possedeMalade));
+            famille.setPersonneMalade(personneMalade);
+            famille.setTypeFamille(typeFamille);
+            famille.setHabitationFamille(habitationFamille);
+
+            // Ajout des relations mère et père
+            famille.setMere(new Mere());
+            famille.getMere().setId(mereId);
+            famille.setPere(new Pere());
+            famille.getPere().setId(pereId);
+
+            // Ajout des enfants
+            famille.setEnfants(enfants);
+
+            // Enregistrer la famille avec les données reçues
+            Famille savedFamille = familleService.saveFamille(famille);
+            System.out.println("Famille enregistrée avec succès: " + savedFamille.getId());
+            return savedFamille;
+        } catch (Exception e) {
+            // Log de l'erreur pour débogage
+            System.err.println("Erreur lors de l'enregistrement de la famille: " + e.getMessage());
+            e.printStackTrace();
+            throw e;  // Re-throw pour retourner 400 au frontend
+        }
     }
+
     // 🔹 Retourner toutes les familles avec enfants, mère et père
     @GetMapping
     public List<Famille> getAllFamilles() {
         return familleService.getAllFamilles();
     }
+
     // 🔹 Obtenir une famille par son ID (avec enfants, mère et père)
     @GetMapping("/{id}")
     public Famille getFamilleById(@PathVariable Long id) {
         return familleService.getFamilleById(id);
     }
+
     // 🔹 Mettre à jour une famille existante
     @PutMapping("/{id}")
     public Famille updateFamille(@PathVariable Long id, @RequestBody Famille updatedFamille) {
-        // Récupérer la famille existante
+        System.out.println("Updating family ID: " + id);
+        Famille existingFamille = familleService.getFamilleById(id);
+        if (existingFamille == null) {
+            throw new RuntimeException("Famille introuvable avec l'id : " + id);
+        }
 
-            System.out.println("Updating family ID: " + id);  // Debug log
-            Famille existingFamille = familleService.getFamilleById(id);
-            if (existingFamille == null) {
-                throw new RuntimeException("Famille introuvable avec l'id : " + id);
-            }
-
-        // Mettre à jour les champs
         existingFamille.setAdresseFamille(updatedFamille.getAdresseFamille());
         existingFamille.setPhone(updatedFamille.getPhone());
         existingFamille.setDateInscription(updatedFamille.getDateInscription());
@@ -75,12 +137,11 @@ public class FamilleController {
         existingFamille.setTypeFamille(updatedFamille.getTypeFamille());
         existingFamille.setHabitationFamille(updatedFamille.getHabitationFamille());
 
-        // Sauvegarder la famille mise à jour
         return familleService.saveFamille(existingFamille);
     }
+
     @PutMapping("/{id}/mere")
     public Mere updateMere(@PathVariable Long id, @RequestBody Mere updatedMere) {
-        // Récupérer la famille existante
         System.out.println("Données reçues pour mise à jour : " + updatedMere);
 
         Famille famille = familleService.getFamilleById(id);
@@ -90,12 +151,10 @@ public class FamilleController {
 
         Mere mere = famille.getMere();
         if (mere == null) {
-            // Si la mère n'existe pas, on crée une nouvelle instance
             mere = new Mere();
             famille.setMere(mere);
         }
 
-        // Mettre à jour les champs de la mère
         mere.setNom(updatedMere.getNom());
         mere.setPrenom(updatedMere.getPrenom());
         mere.setPhone(updatedMere.getPhone());
@@ -119,14 +178,13 @@ public class FamilleController {
             mere.setEstTravaille(updatedMere.getEstTravaille());
             mere.setTypeTravail(updatedMere.getTypeTravail());
         }
-        // Sauvegarder la famille avec la mère mise à jour
-        familleService.saveFamille(famille);
 
+        familleService.saveFamille(famille);
         return mere;
     }
+
     @PutMapping("/{id}/pere")
     public Pere updatePere(@PathVariable Long id, @RequestBody Pere updatedPere) {
-        // Récupérer la famille existante
         System.out.println("Données reçues pour mise à jour : " + updatedPere);
 
         Famille famille = familleService.getFamilleById(id);
@@ -136,12 +194,10 @@ public class FamilleController {
 
         Pere pere = famille.getPere();
         if (pere == null) {
-            // Si la mère n'existe pas, on crée une nouvelle instance
             pere = new Pere();
             famille.setPere(pere);
         }
 
-        // Mettre à jour les champs de la mère
         pere.setNom(updatedPere.getNom());
         pere.setPrenom(updatedPere.getPrenom());
         pere.setPhone(updatedPere.getPhone());
@@ -165,10 +221,8 @@ public class FamilleController {
             pere.setEstTravaille(updatedPere.getEstTravaille());
             pere.setTypeTravail(updatedPere.getTypeTravail());
         }
-        // Sauvegarder la famille avec la mère mise à jour
-        familleService.saveFamille(famille);
 
+        familleService.saveFamille(famille);
         return pere;
     }
-
 }
