@@ -1,6 +1,7 @@
 package com.example.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonBackReference; // Pour éviter les boucles circulaires
+import com.fasterxml.jackson.annotation.JsonManagedReference; // Si nécessaire
 import jakarta.persistence.*;
 
 @Entity
@@ -13,16 +14,18 @@ public class Etude {
 
     @ManyToOne
     @JoinColumn(name = "enfant_id")
+    @JsonBackReference  // Évite la sérialisation du côté "Enfant"
     private Enfant enfant;
 
     @ManyToOne
     @JoinColumn(name = "ecole_id")
+    @JsonManagedReference // Côté géré (ecole) - si nécessaire, sinon cette annotation est optionnelle
     private Ecole ecole;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "niveauscolaire_id")
+    @JsonManagedReference // Côté géré (niveau scolaire) - si nécessaire, sinon cette annotation est optionnelle
     private NiveauScolaire niveauScolaire;
-
 
     private String anneeScolaire; // 🔹 Nouvelle colonne pour l'année scolaire
     private Double noteSemestre1;

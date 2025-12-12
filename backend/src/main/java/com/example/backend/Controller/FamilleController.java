@@ -1,10 +1,15 @@
 package com.example.backend.Controller;
 
+import com.example.backend.Repository.*;
 import com.example.backend.model.*;
 import com.example.backend.service.FamilleService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 @RestController
@@ -14,8 +19,31 @@ public class FamilleController {
 
     private final FamilleService familleService;
 
-    public FamilleController(FamilleService familleService) {
+
+    private final MereRepository mereRepo;
+    private final PereRepository pereRepo;
+    private final TypeFamilleRepository typeRepo;
+    private final HabitationRepository habitationRepo;
+    private final EcoleRepository ecoleRepo;
+    private final NiveauScolaireRepository niveauScolaireRepo;
+    private final EtudeRepository etudeRepo;
+
+    public FamilleController(FamilleService familleService,
+                             MereRepository mereRepo,
+                             PereRepository pereRepo,
+                             TypeFamilleRepository typeRepo,
+                             HabitationRepository habitationRepo,
+                             EcoleRepository ecoleRepo,
+                             NiveauScolaireRepository niveauScolaireRepo,
+                             EtudeRepository etudeRepo) {
         this.familleService = familleService;
+        this.mereRepo = mereRepo;
+        this.pereRepo = pereRepo;
+        this.typeRepo = typeRepo;
+        this.habitationRepo = habitationRepo;
+        this.ecoleRepo = ecoleRepo;
+        this.niveauScolaireRepo = niveauScolaireRepo;
+        this.etudeRepo = etudeRepo;
     }
 
     // 🔹 Obtenir tous les types de familles
@@ -45,39 +73,32 @@ public class FamilleController {
     // 🔹 Ajouter une nouvelle famille (corrigée avec gestion d'erreurs et logging)
     @PostMapping
     public Famille addFamille(
-            @RequestParam("adresseFamille") String adresseFamille,
-            @RequestParam("phone") String phone,
-            @RequestParam("dateInscription") String dateInscription,
-            @RequestParam("possedeMalade") String possedeMalade,
-            @RequestParam("personneMalade") String personneMalade,
-            @RequestParam("typeFamille") String typeFamilleJson,
-            @RequestParam("habitationFamille") String habitationFamilleJson,
-            @RequestParam("mereId") Long mereId,
-            @RequestParam("pereId") Long pereId,
-            @RequestParam("enfantsJson") String enfantsJson) throws Exception {
-
+            @RequestParam String adresseFamille,
+            @RequestParam String phone,
+            @RequestParam String dateInscription,
+            @RequestParam String possedeMalade,
+            @RequestParam String personneMalade,
+            @RequestParam String typeFamilleId,
+            @RequestParam String habitationFamilleId,
+            @RequestParam Long mereId,
+            @RequestParam Long pereId,
+            @RequestParam String enfantsJson,
+            @RequestParam String etudesJson,  // <- liste des études pour chaque enfant
+            @RequestPart(value = "photoEnfant", required = false) List<MultipartFile> photoEnfants
+    ) throws Exception {
         try {
-            // Log des paramètres reçus pour débogage
-            System.out.println("Adresse Famille: " + adresseFamille);
-            System.out.println("Phone: " + phone);
-            System.out.println("Date Inscription: " + dateInscription);
-            System.out.println("Possede Malade: " + possedeMalade);
-            System.out.println("Personne Malade: " + personneMalade);
-            System.out.println("Type Famille JSON: " + typeFamilleJson);
-            System.out.println("Habitation Famille JSON: " + habitationFamilleJson);
-            System.out.println("Mere ID: " + mereId);
-            System.out.println("Pere ID: " + pereId);
-            System.out.println("Enfants JSON: " + enfantsJson);
-
-            // Convertir les JSON reçus en objets Java
             ObjectMapper objectMapper = new ObjectMapper();
 
-            // Conversion des chaînes JSON en objets TypeFamille, Habitation et Liste<Enfant>
-            TypeFamille typeFamille = objectMapper.readValue(typeFamilleJson, TypeFamille.class);
-            Habitation habitationFamille = objectMapper.readValue(habitationFamilleJson, Habitation.class);
+            // 🔹 Récupérer TypeFamille et Habitation
+            TypeFamille typeFamille = typeRepo.findById(Long.parseLong(typeFamilleId))
+                    .orElseThrow(() -> new RuntimeException("TypeFamille non trouvé"));
+            Habitation habitationFamille = habitationRepo.findById(Long.parseLong(habitationFamilleId))
+                    .orElseThrow(() -> new RuntimeException("Habitation non trouvée"));
+
+            // 🔹 Désérialiser les enfants depuis le JSON
             List<Enfant> enfants = objectMapper.readValue(enfantsJson, new TypeReference<List<Enfant>>() {});
 
-            // Création de la famille
+            // 🔹 Créer la famille
             Famille famille = new Famille();
             famille.setAdresseFamille(adresseFamille);
             famille.setPhone(phone);
@@ -86,27 +107,58 @@ public class FamilleController {
             famille.setPersonneMalade(personneMalade);
             famille.setTypeFamille(typeFamille);
             famille.setHabitationFamille(habitationFamille);
+            famille.setMere(mereRepo.findById(mereId).orElseThrow(() -> new RuntimeException("Mère non trouvée")));
+            famille.setPere(pereRepo.findById(pereId).orElseThrow(() -> new RuntimeException("Père non trouvé")));
 
-            // Ajout des relations mère et père
-            famille.setMere(new Mere());
-            famille.getMere().setId(mereId);
-            famille.setPere(new Pere());
-            famille.getPere().setId(pereId);
+            // 🔹 Associer les enfants à la famille et gérer les photos
+            for (int i = 0; i < enfants.size(); i++) {
+                Enfant enfant = enfants.get(i);
+                enfant.setFamille(famille);
 
-            // Ajout des enfants
+                if (photoEnfants != null && photoEnfants.size() > i) {
+                    MultipartFile photo = photoEnfants.get(i);
+                    if (photo != null && !photo.isEmpty()) {
+                        enfant.setPhotoEnfant(photo.getBytes());
+                    }
+                }
+            }
             famille.setEnfants(enfants);
 
-            // Enregistrer la famille avec les données reçues
+            // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
-            System.out.println("Famille enregistrée avec succès: " + savedFamille.getId());
+
+            // 🔹 Désérialiser les études depuis le JSON
+            List<Etude> etudes = objectMapper.readValue(etudesJson, new TypeReference<List<Etude>>() {});
+
+            // 🔹 Associer chaque étude à son enfant et sauvegarder
+            for (Etude etude : etudes) {
+                Enfant enfant = savedFamille.getEnfants().stream()
+                        .filter(e -> e.getId().equals(etude.getEnfant().getId()))
+                        .findFirst()
+                        .orElseThrow(() -> new RuntimeException("Enfant non trouvé"));
+
+                etude.setEnfant(enfant);
+
+                Ecole ecole = ecoleRepo.findById(etude.getEcole().getId())
+                        .orElseThrow(() -> new RuntimeException("École non trouvée"));
+                etude.setEcole(ecole);
+
+                NiveauScolaire niveau = niveauScolaireRepo.findById(etude.getNiveauScolaire().getId())
+                        .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé"));
+                etude.setNiveauScolaire(niveau);
+
+                etudeRepo.save(etude);
+            }
+
             return savedFamille;
+
         } catch (Exception e) {
-            // Log de l'erreur pour débogage
-            System.err.println("Erreur lors de l'enregistrement de la famille: " + e.getMessage());
             e.printStackTrace();
-            throw e;  // Re-throw pour retourner 400 au frontend
+            throw e;
         }
     }
+
+
 
     // 🔹 Retourner toutes les familles avec enfants, mère et père
     @GetMapping

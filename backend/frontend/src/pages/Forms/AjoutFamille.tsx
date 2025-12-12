@@ -182,112 +182,142 @@ export default function FormElements() {
     return val.slice(0, 10);
   };
 
-  const handleSubmitAll = async () => {
-    setLoading(true);
-    try {
-      // 1️⃣ Validation des champs avant soumission
-      if (!familleData.typeFamille || !familleData.habitationFamille || !familleData.adresseFamille || !familleData.phone) {
-        throw new Error("Certains champs de la famille sont manquants.");
-      }
-      if (!mereData.nom || !mereData.prenom || !mereData.cin || !mereData.phone) {
-        throw new Error("Certains champs de la mère sont manquants.");
-      }
-      if (!pereData.nom || !pereData.prenom || !pereData.cin || !pereData.phone) {
-        throw new Error("Certains champs du père sont manquants.");
-      }
+ const convertDate = (dateStr: string): string => {
+   if (!dateStr) return '';
 
-      // 2️⃣ Vérification des dates
-      const validDateInscription = formatDateInput(familleData.dateInscription);
-      if (!validDateInscription) {
-        throw new Error("La date d'inscription est invalide.");
-      }
+   // Si déjà au format yyyy-MM-dd (HTML input), on renvoie tel quel
+   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
 
-      // 3️⃣ Créer la mère
-      const formDataMere = new FormData();
-      formDataMere.append('nom', mereData.nom);
-      formDataMere.append('prenom', mereData.prenom);
-      formDataMere.append('cin', mereData.cin);
-      formDataMere.append('phone', mereData.phone);
-      formDataMere.append('villeNaissance', mereData.villeNaissance);
-      formDataMere.append('dateNaissance', mereData.dateNaissance);
-      formDataMere.append('dateDeces', mereData.dateDeces);
-      formDataMere.append('typeMaladie', mereData.typeMaladie);
-      formDataMere.append('typeTravail', mereData.typeTravail);
-      formDataMere.append('estDecedee', mereData.estDecedee ? 'true' : 'false');
-      formDataMere.append('estMalade', mereData.estMalade ? 'true' : 'false');
-      formDataMere.append('estTravaille', mereData.estTravaille ? 'true' : 'false');
-      if (mereData.photoMere) formDataMere.append('photoMere', mereData.photoMere);
+   // Supprime tout sauf chiffres (pour dd/MM/yyyy)
+   const clean = dateStr.replace(/\D/g, '');
+   if (clean.length !== 8) return '';
 
-      const responseMere = await fetch("http://localhost:8080/api/mere", {
-        method: "POST",
-        body: formDataMere,
-      });
-      if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
-      const savedMere = await responseMere.json();
+   const dd = clean.slice(0, 2);
+   const mm = clean.slice(2, 4);
+   const yyyy = clean.slice(4, 8);
 
-      // 4️⃣ Créer le père
-      const formDataPere = new FormData();
-      formDataPere.append('nom', pereData.nom);
-      formDataPere.append('prenom', pereData.prenom);
-      formDataPere.append('cin', pereData.cin);
-      formDataPere.append('phone', pereData.phone);
-      formDataPere.append('villeNaissance', pereData.villeNaissance);
-      formDataPere.append('dateNaissance', pereData.dateNaissance);
-      formDataPere.append('dateDeces', pereData.dateDeces);
-      formDataPere.append('typeMaladie', pereData.typeMaladie);
-      formDataPere.append('typeTravail', pereData.typeTravail);
-      formDataPere.append('estDecedee', pereData.estDecedee ? 'true' : 'false');
-      formDataPere.append('estMalade', pereData.estMalade ? 'true' : 'false');
-      formDataPere.append('estTravaille', pereData.estTravaille ? 'true' : 'false');
-      if (pereData.photoPere) formDataPere.append('photoPere', pereData.photoPere);
+   const day = parseInt(dd, 10);
+   const month = parseInt(mm, 10);
+   const year = parseInt(yyyy, 10);
 
-      const responsePere = await fetch("http://localhost:8080/api/pere", {
-        method: "POST",
-        body: formDataPere,
-      });
-      if (!responsePere.ok) throw new Error("Erreur enregistrement père");
-      const savedPere = await responsePere.json();
+   if (
+     isNaN(day) || day < 1 || day > 31 ||
+     isNaN(month) || month < 1 || month > 12 ||
+     isNaN(year) || year < 1900 || year > 2100
+   ) {
+     return '';
+   }
 
-      // 5️⃣ Créer la famille
-      const formDataFamille = new FormData();
-      formDataFamille.append('adresseFamille', familleData.adresseFamille);
-      formDataFamille.append('phone', familleData.phone);
-      formDataFamille.append('dateInscription', familleData.dateInscription);
-      formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
-      formDataFamille.append('personneMalade', familleData.personneMalade);
-      formDataFamille.append('typeFamille', JSON.stringify({ id: familleData.typeFamille?.id }));
-      formDataFamille.append('habitationFamille', JSON.stringify({ id: familleData.habitationFamille?.id }));
-      formDataFamille.append('mereId', savedMere.id.toString());
-      formDataFamille.append('pereId', savedPere.id.toString());
+   return `${yyyy}-${mm}-${dd}`;
+ };const handleSubmitAll = async () => {
+     setLoading(true);
+     try {
+       // 🔹 Validation famille
+       if (!familleData.typeFamille || !familleData.habitationFamille || !familleData.adresseFamille || !familleData.phone) {
+         throw new Error("Certains champs de la famille sont manquants.");
+       }
 
-      // Collect enfants into a single array and append as JSON
-      const enfantsArray = enfants.map(enfant => ({
-        nom: enfant.nom,
-        prenom: enfant.prenom,
-        ecole: { id: enfant.ecole?.id },
-        niveauscolaire: { id: enfant.niveauscolaire?.id },
-        dateNaissance: enfant.dateNaissance,
-        typeMaladie: enfant.typeMaladie,
-        estMalade: enfant.estMalade,
-      }));
-      formDataFamille.append('enfantsJson', JSON.stringify(enfantsArray));
+       // 🔹 Validation mère
+       if (!mereData.nom || !mereData.prenom || (!mereData.estDecedee && (!mereData.cin || !mereData.phone))) {
+         throw new Error("Certains champs de la mère sont manquants.");
+       }
 
-      const responseFamille = await fetch("http://localhost:8080/api/famille", {
-        method: "POST",
-        body: formDataFamille,
-      });
-      if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
-      const savedFamille = await responseFamille.json();
+       // 🔹 Validation père
+       if (!pereData.nom || !pereData.prenom || (!pereData.estDecedee && (!pereData.cin || !pereData.phone))) {
+         throw new Error("Certains champs du père sont manquants.");
+       }
 
-      console.log("Famille enregistrée :", savedFamille);
-      alert("Toutes les données ont été enregistrées avec succès !");
-    } catch (error) {
-      console.error(error);
-      alert("Erreur lors de l'enregistrement : " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+       // 🔹 Conversion date inscription
+       const convertedDateInscription = convertDate(familleData.dateInscription);
+       if (!convertedDateInscription) throw new Error("La date d'inscription est invalide.");
+
+       // 🔹 Création mère
+       const formDataMere = new FormData();
+       Object.entries(mereData).forEach(([key, value]) => {
+         if (value !== null && key !== "photoMere") formDataMere.append(key, value.toString());
+       });
+       if (mereData.photoMere) formDataMere.append('photoMere', mereData.photoMere);
+
+       const responseMere = await fetch("http://localhost:8080/api/mere", { method: "POST", body: formDataMere });
+       if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
+       const savedMere = await responseMere.json();
+
+       // 🔹 Création père
+       const formDataPere = new FormData();
+       Object.entries(pereData).forEach(([key, value]) => {
+         if (value !== null && key !== "photoPere") formDataPere.append(key, value.toString());
+       });
+       if (pereData.photoPere) formDataPere.append('photoPere', pereData.photoPere);
+
+       const responsePere = await fetch("http://localhost:8080/api/pere", { method: "POST", body: formDataPere });
+       if (!responsePere.ok) throw new Error("Erreur enregistrement père");
+       const savedPere = await responsePere.json();
+
+       // 🔹 Préparer les études pour chaque enfant
+       const etudesArray = enfants.map((enfant) => ({
+         enfantId: enfant.nom, // Tu peux remplacer `nom` par `enfant.id` si chaque enfant a un identifiant unique
+         ecoleId: enfant.ecole?.id,
+         niveauScolaireId: enfant.niveauscolaire?.id,
+         anneeScolaire: enfant.dateNaissance, // Remplace par le champ approprié ou un champ vide si nécessaire
+       }));
+
+       // 🔹 Création famille
+       const formDataFamille = new FormData();
+       formDataFamille.append('adresseFamille', familleData.adresseFamille);
+       formDataFamille.append('phone', familleData.phone);
+       formDataFamille.append('dateInscription', convertedDateInscription);
+       formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
+       formDataFamille.append('personneMalade', familleData.personneMalade || '');
+       formDataFamille.append('typeFamilleId', familleData.typeFamille?.id.toString() || '');
+       formDataFamille.append('habitationFamilleId', familleData.habitationFamille?.id.toString() || '');
+       formDataFamille.append('mereId', savedMere.id.toString());
+       formDataFamille.append('pereId', savedPere.id.toString());
+       formDataFamille.append('enfantsJson', JSON.stringify(enfants)); // Envoi du tableau des enfants
+
+       // 🔹 Ajout des études au FormData
+       formDataFamille.append('etudesJson', JSON.stringify(etudesArray)); // Ajouter les études des enfants
+
+       // 🔹 Photos enfants
+       enfants.forEach((enfant) => {
+         if (enfant.photoEnfant) formDataFamille.append('photoEnfants', enfant.photoEnfant);
+       });
+
+       const responseFamille = await fetch("http://localhost:8080/api/famille", {
+         method: "POST",
+         body: formDataFamille
+       });
+       if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
+       const savedFamille = await responseFamille.json();
+
+       // 🔹 Création des études pour chaque enfant
+       for (let i = 0; i < enfants.length; i++) {
+         const enfant = enfants[i];
+         const etudeData = {
+           enfantId: savedFamille.enfants[i].id,
+           ecoleId: enfant.ecole?.id,
+           niveauScolaireId: enfant.niveauscolaire?.id,
+           anneeScolaire: enfant.dateNaissance || '', // Remplace par le champ approprié
+         };
+         await fetch("http://localhost:8080/api/etude", {
+           method: "POST",
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify(etudeData),
+         });
+       }
+
+       alert("Toutes les données ont été enregistrées avec succès !");
+       console.log("Famille enregistrée :", savedFamille);
+
+     } catch (error: any) {
+       console.error(error);
+       alert("Erreur lors de l'enregistrement : " + error.message);
+     } finally {
+       setLoading(false);
+     }
+   };
+
+
+
 
   // Composant Select générique
   const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
@@ -435,19 +465,19 @@ export default function FormElements() {
                 <div className="w-1/2">
           <div className="flex flex-col md:col-span-2">
             <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
-            <Input
-              type="text"
-              id="dateInscription"
-              placeholder="__/__/____"
-              value={familleData.dateInscription}
-              onChange={(e) => {
-                let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
-                if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                if (val.length > 10) val = val.slice(0, 10);
-                setFamilleData((prev) => ({ ...prev, dateInscription: val }));
-              }}
-            />
+           <Input
+             type="text"
+             id="dateInscription"
+             placeholder="__/__/____"
+             value={familleData.dateInscription}
+             onChange={(e) => {
+               let val = e.target.value.replace(/\D/g, ""); // Keep only digits
+               if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
+               if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
+               if (val.length > 10) val = val.slice(0, 10);
+               setFamilleData((prev) => ({ ...prev, dateInscription: val }));
+             }}
+           />
           </div></div></div>
   <div className="flex gap-4">
              <div className="w-1/2">
@@ -923,10 +953,10 @@ export default function FormElements() {
                                 <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
                                 <Select
                                   options={niveauxscolaires}
-                                  value={enfants[index]?.niveauscolaire || ""}
+                                  value={enfants[index]?.niveauscolaire?.id || ""}
                                   onChange={(val) => {
                                     const newEnfants = [...enfants];
-                                    newEnfants[index] = { ...newEnfants[index], niveauscolaire: val };
+                                    newEnfants[index] = { ...newEnfants[index], niveauscolaire: val ? { id: val } : null };
                                     setEnfants(newEnfants);
                                   }}
                                   placeholder="اختر المستوى الدراسي"
