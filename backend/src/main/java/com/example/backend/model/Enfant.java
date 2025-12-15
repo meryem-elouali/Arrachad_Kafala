@@ -2,6 +2,7 @@ package com.example.backend.model;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;  // <-- AJOUTER CET IMPORT
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
@@ -10,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 
 @Entity
 @Table(name = "enfants")
+@JsonIgnoreProperties(ignoreUnknown = true)  // <-- AJOUTER CETTE ANNOTATION À LA CLASSE
 public class Enfant {
 
     @Id
@@ -21,11 +23,11 @@ public class Enfant {
     private String dateNaissance;
     private String typeMaladie;
     private Boolean estMalade = false;
+
     @ManyToOne
     @JoinColumn(name = "famille_id")
-    @JsonBackReference  // Prevents serialization of Famille from Enfant (breaks cycle)
+    @JsonIgnore
     private Famille famille;
-
 
     // Relation avec EventParticipant (bidirectionnelle)
     @OneToMany(mappedBy = "enfant", cascade = CascadeType.ALL, orphanRemoval = true)
@@ -97,13 +99,17 @@ public class Enfant {
         return photoEnfant;
     }
 
-
     public void setPhotoEnfant(byte[] photoEnfant) {
         this.photoEnfant = photoEnfant;
     }
 
-    public java.util.List<EventParticipant> getEventParticipants() { return eventParticipants; }
-    public void setEventParticipants(java.util.List<EventParticipant> eventParticipants) { this.eventParticipants = eventParticipants; }
+    public java.util.List<EventParticipant> getEventParticipants() {
+        return eventParticipants;
+    }
+
+    public void setEventParticipants(java.util.List<EventParticipant> eventParticipants) {
+        this.eventParticipants = eventParticipants;
+    }
 
     // ----------------------------
     // Accès direct aux Events
@@ -119,12 +125,10 @@ public class Enfant {
     // Calcul de l'âge
     // ----------------------------
     @Transient
-
     public int getAge() {
         if (dateNaissance == null || dateNaissance.isEmpty()) return 0;
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd"); // <-- corrigé
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate birthDate = LocalDate.parse(dateNaissance, formatter);
         return Period.between(birthDate, LocalDate.now()).getYears();
     }
-
 }

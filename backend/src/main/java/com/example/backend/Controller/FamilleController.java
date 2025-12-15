@@ -10,7 +10,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/famille")
@@ -95,8 +97,21 @@ public class FamilleController {
             Habitation habitationFamille = habitationRepo.findById(Long.parseLong(habitationFamilleId))
                     .orElseThrow(() -> new RuntimeException("Habitation non trouvée"));
 
-            // 🔹 Désérialiser les enfants depuis le JSON
-            List<Enfant> enfants = objectMapper.readValue(enfantsJson, new TypeReference<List<Enfant>>() {});
+            // 🔹 Désérialiser les enfants depuis le JSON en tant que List<Map> (évite les conflits Jackson)
+            List<Map<String, Object>> enfantsData = objectMapper.readValue(enfantsJson, new TypeReference<List<Map<String, Object>>>() {});
+
+            // 🔹 Créer les enfants manuellement
+            List<Enfant> enfants = new ArrayList<>();
+            for (Map<String, Object> enfantData : enfantsData) {
+                Enfant enfant = new Enfant();
+                enfant.setNom((String) enfantData.get("nom"));
+                enfant.setPrenom((String) enfantData.get("prenom"));
+                enfant.setDateNaissance((String) enfantData.get("dateNaissance"));
+                enfant.setTypeMaladie((String) enfantData.getOrDefault("typeMaladie", ""));
+                enfant.setEstMalade((Boolean) enfantData.getOrDefault("estMalade", false));
+                // Ignore les champs comme "niveauscolaire" et "ecole" car ils sont gérés via Etude
+                enfants.add(enfant);
+            }
 
             // 🔹 Créer la famille
             Famille famille = new Famille();
@@ -127,26 +142,40 @@ public class FamilleController {
             // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
 
-            // 🔹 Désérialiser les études depuis le JSON
-            List<Etude> etudes = objectMapper.readValue(etudesJson, new TypeReference<List<Etude>>() {});
+            // 🔹 Désérialiser les études depuis le JSON en tant que List<Map> (évite les conflits Jackson)
+            List<Map<String, Object>> etudesData = objectMapper.readValue(etudesJson, new TypeReference<List<Map<String, Object>>>() {});
 
-            // 🔹 Associer chaque étude à son enfant et sauvegarder
-            for (Etude etude : etudes) {
-                Enfant enfant = savedFamille.getEnfants().stream()
-                        .filter(e -> e.getId().equals(etude.getEnfant().getId()))
-                        .findFirst()
-                        .orElseThrow(() -> new RuntimeException("Enfant non trouvé"));
+            // 🔹 Traiter chaque étude manuellement
+            for (int i = 0; i < etudesData.size(); i++) {
+                Map<String, Object> etudeData = etudesData.get(i);
+                Etude etude = new Etude();
 
-                etude.setEnfant(enfant);
+                // Associer l'enfant par index (puisque les enfants sont sauvegardés dans l'ordre)
+                if (i < savedFamille.getEnfants().size()) {
+                    Enfant enfant = savedFamille.getEnfants().get(i);
+                    etude.setEnfant(enfant);
+                } else {
+                    throw new RuntimeException("Index d'enfant invalide pour l'étude à l'index " + i);
+                }
 
-                Ecole ecole = ecoleRepo.findById(etude.getEcole().getId())
-                        .orElseThrow(() -> new RuntimeException("École non trouvée"));
+                // Récupérer et définir Ecole
+                Long ecoleId = ((Number) etudeData.get("ecoleId")).longValue();
+                Ecole ecole = ecoleRepo.findById(ecoleId)
+                        .orElseThrow(() -> new RuntimeException("École non trouvée pour ID: " + ecoleId));
                 etude.setEcole(ecole);
 
-                NiveauScolaire niveau = niveauScolaireRepo.findById(etude.getNiveauScolaire().getId())
-                        .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé"));
+                // Récupérer et définir NiveauScolaire
+                Long niveauId = ((Number) etudeData.get("niveauScolaireId")).longValue();
+                NiveauScolaire niveau = niveauScolaireRepo.findById(niveauId)
+                        .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé pour ID: " + niveauId));
                 etude.setNiveauScolaire(niveau);
 
+                // Définir anneeScolaire (si présent dans le JSON)
+                if (etudeData.containsKey("anneeScolaire")) {
+                    etude.setAnneeScolaire((String) etudeData.get("anneeScolaire"));
+                }
+
+                // Sauvegarder l'étude
                 etudeRepo.save(etude);
             }
 

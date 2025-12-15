@@ -63,16 +63,21 @@ public class Famille {
     private List<Enfant> enfants;
 
     @OneToMany(mappedBy = "famille", cascade = CascadeType.ALL, orphanRemoval = true)
-    @JsonIgnore // éviter les cycles via EventParticipant
-    private List<EventParticipant> eventParticipants;
+    @JsonIgnore
+    private List<EventParticipant> eventParticipants = new ArrayList<>();
+
 
 
     @Transient
     public List<Event> getEvents() {
+        if (eventParticipants == null) {
+            return List.of(); // retourne une liste vide
+        }
         return eventParticipants.stream()
                 .map(EventParticipant::getEvent)
                 .toList();
     }
+
     // Getters / Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }

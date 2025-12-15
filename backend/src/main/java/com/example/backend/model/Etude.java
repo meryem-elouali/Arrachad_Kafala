@@ -1,11 +1,13 @@
 package com.example.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference; // Pour éviter les boucles circulaires
-import com.fasterxml.jackson.annotation.JsonManagedReference; // Si nécessaire
+import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;  // <-- AJOUTER CET IMPORT
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 
 @Entity
 @Table(name = "etudes")
+@JsonIgnoreProperties(ignoreUnknown = true)  // <-- AJOUTER CETTE ANNOTATION À LA CLASSE
 public class Etude {
 
     @Id
@@ -19,15 +21,15 @@ public class Etude {
 
     @ManyToOne
     @JoinColumn(name = "ecole_id")
-    @JsonManagedReference // Côté géré (ecole) - si nécessaire, sinon cette annotation est optionnelle
+    // @JsonManagedReference supprimé car non nécessaire (pas de relation bidirectionnelle évidente)
     private Ecole ecole;
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "niveauscolaire_id")
-    @JsonManagedReference // Côté géré (niveau scolaire) - si nécessaire, sinon cette annotation est optionnelle
+    // @JsonManagedReference supprimé car non nécessaire (pas de relation bidirectionnelle évidente)
     private NiveauScolaire niveauScolaire;
 
-    private String anneeScolaire; // 🔹 Nouvelle colonne pour l'année scolaire
+    private String anneeScolaire;
     private Double noteSemestre1;
     private Double noteSemestre2;
     private Boolean redoublon;

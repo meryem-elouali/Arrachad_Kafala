@@ -7,7 +7,6 @@ import Input from "../../components/form/input/InputField";
 import ComponentCard from "../../components/common/ComponentCard";
 import DropzoneComponent from "../../components/form/form-elements/DropZone";
 
-// TypeScript interfaces
 interface Option {
   value: string | number;
   label: string;
@@ -209,7 +208,27 @@ export default function FormElements() {
    }
 
    return `${yyyy}-${mm}-${dd}`;
- };const handleSubmitAll = async () => {
+ };
+// Conversion des dates mère et père
+const mereDataConverted = {
+  ...mereData,
+  dateNaissance: convertDate(mereData.dateNaissance),
+  dateDeces: convertDate(mereData.dateDeces),
+};
+
+const pereDataConverted = {
+  ...pereData,
+  dateNaissance: convertDate(pereData.dateNaissance),
+  dateDeces: convertDate(pereData.dateDeces),
+};
+
+// Conversion des dates des enfants
+const enfantsConverted = enfants.map((enfant) => ({
+  ...enfant,
+  dateNaissance: convertDate(enfant.dateNaissance),
+}));
+
+ const handleSubmitAll = async () => {
      setLoading(true);
      try {
        // 🔹 Validation famille
@@ -232,34 +251,49 @@ export default function FormElements() {
        if (!convertedDateInscription) throw new Error("La date d'inscription est invalide.");
 
        // 🔹 Création mère
-       const formDataMere = new FormData();
-       Object.entries(mereData).forEach(([key, value]) => {
-         if (value !== null && key !== "photoMere") formDataMere.append(key, value.toString());
-       });
-       if (mereData.photoMere) formDataMere.append('photoMere', mereData.photoMere);
-
-       const responseMere = await fetch("http://localhost:8080/api/mere", { method: "POST", body: formDataMere });
-       if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
-       const savedMere = await responseMere.json();
+       const formDataMere = new FormData();  // <-- Définition de formDataMere
+     // FormData mère
+     Object.entries(mereDataConverted).forEach(([key, value]) => {
+       if (value !== null && key !== "photoMere") formDataMere.append(key, value.toString());
+     });
+     if (mereDataConverted.photoMere) formDataMere.append('photoMere', mereDataConverted.photoMere);
 
        // 🔹 Création père
-       const formDataPere = new FormData();
-       Object.entries(pereData).forEach(([key, value]) => {
-         if (value !== null && key !== "photoPere") formDataPere.append(key, value.toString());
-       });
-       if (pereData.photoPere) formDataPere.append('photoPere', pereData.photoPere);
+       const formDataPere = new FormData();  // <-- Définition de formDataPere
+      Object.entries(pereDataConverted).forEach(([key, value]) => {
+        if (value !== null && key !== "photoPere") formDataPere.append(key, value.toString());
+      });
+      if (pereDataConverted.photoPere) formDataPere.append('photoPere', pereDataConverted.photoPere);
 
-       const responsePere = await fetch("http://localhost:8080/api/pere", { method: "POST", body: formDataPere });
+ console.log("Données mère à envoyer :");
+           for (let pair of formDataMere.entries()) {
+             console.log(pair[0], pair[1]);
+           }
+       // Avant le fetch père
+       console.log("Données père à envoyer :");
+       for (let pair of formDataPere.entries()) {
+         console.log(pair[0], pair[1]);
+       }
+       const [responseMere, responsePere] = await Promise.all([
+
+         fetch("http://localhost:8080/api/mere", { method: "POST", body: formDataMere }),
+         fetch("http://localhost:8080/api/pere", { method: "POST", body: formDataPere })
+       ]);
+       if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
        if (!responsePere.ok) throw new Error("Erreur enregistrement père");
+
+       const savedMere = await responseMere.json();
        const savedPere = await responsePere.json();
 
        // 🔹 Préparer les études pour chaque enfant
-       const etudesArray = enfants.map((enfant) => ({
-         enfantId: enfant.nom, // Tu peux remplacer `nom` par `enfant.id` si chaque enfant a un identifiant unique
-         ecoleId: enfant.ecole?.id,
-         niveauScolaireId: enfant.niveauscolaire?.id,
-         anneeScolaire: enfant.dateNaissance, // Remplace par le champ approprié ou un champ vide si nécessaire
-       }));
+     // 🔹 Préparer les études pour chaque enfant
+     const etudesArray = enfantsConverted.map((enfant) => ({
+       enfantId: enfant.id,
+       ecoleId: enfant.ecole?.id,
+       niveauScolaireId: enfant.niveauscolaire?.id,
+       anneeScolaire: enfant.dateNaissance, // maintenant au format yyyy-MM-dd
+     }));
+
 
        // 🔹 Création famille
        const formDataFamille = new FormData();
@@ -272,38 +306,30 @@ export default function FormElements() {
        formDataFamille.append('habitationFamilleId', familleData.habitationFamille?.id.toString() || '');
        formDataFamille.append('mereId', savedMere.id.toString());
        formDataFamille.append('pereId', savedPere.id.toString());
-       formDataFamille.append('enfantsJson', JSON.stringify(enfants)); // Envoi du tableau des enfants
-
-       // 🔹 Ajout des études au FormData
-       formDataFamille.append('etudesJson', JSON.stringify(etudesArray)); // Ajouter les études des enfants
+      formDataFamille.append('enfantsJson', JSON.stringify(enfantsConverted));
+       formDataFamille.append('etudesJson', JSON.stringify(etudesArray));
 
        // 🔹 Photos enfants
        enfants.forEach((enfant) => {
-         if (enfant.photoEnfant) formDataFamille.append('photoEnfants', enfant.photoEnfant);
+         if (enfant.photoEnfant) {
+           formDataFamille.append('photoEnfants', enfant.photoEnfant);
+         }
        });
+console.log("Données famille à envoyer :");
+for (let pair of formDataFamille.entries()) {
+  console.log(pair[0], pair[1]);
+}
 
-       const responseFamille = await fetch("http://localhost:8080/api/famille", {
-         method: "POST",
-         body: formDataFamille
-       });
+       const responseFamille = await fetch("http://localhost:8080/api/famille", { method: "POST", body: formDataFamille });
        if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
        const savedFamille = await responseFamille.json();
 
-       // 🔹 Création des études pour chaque enfant
-       for (let i = 0; i < enfants.length; i++) {
-         const enfant = enfants[i];
-         const etudeData = {
-           enfantId: savedFamille.enfants[i].id,
-           ecoleId: enfant.ecole?.id,
-           niveauScolaireId: enfant.niveauscolaire?.id,
-           anneeScolaire: enfant.dateNaissance || '', // Remplace par le champ approprié
-         };
-         await fetch("http://localhost:8080/api/etude", {
-           method: "POST",
-           headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify(etudeData),
-         });
-       }
+
+// Pour voir aussi les enfants et études JSON
+console.log("Enfants JSON : ", JSON.stringify(enfants, null, 2));
+console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
+       // 🔹 Enregistrement des études en une seule requête
+
 
        alert("Toutes les données ont été enregistrées avec succès !");
        console.log("Famille enregistrée :", savedFamille);
@@ -319,7 +345,8 @@ export default function FormElements() {
 
 
 
-  // Composant Select générique
+
+
   const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
     const [open, setOpen] = useState(false);
     const [adding, setAdding] = useState(false);
@@ -331,6 +358,7 @@ export default function FormElements() {
       onChange(opt.value);
       setOpen(false);
     };
+
     const handleAddOption = async () => {
       if (!newOption.trim()) return;
       try {
@@ -350,27 +378,53 @@ export default function FormElements() {
 
     return (
       <div className="relative w-full">
-        <div className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
+        <div
+          className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer bg-white hover:bg-gray-50 transition duration-200 ease-in-out"
+          onClick={() => setOpen(!open)}
+        >
           {opts.find((o) => o.value === value)?.label || placeholder}
         </div>
+
         {open && (
-          <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto">
+          <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto transition-all duration-300 ease-out">
             {opts.map((opt) => (
-              <div key={opt.value} className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={() => handleSelect(opt)}>
+              <div
+                key={opt.value}
+                className="px-4 py-2 hover:bg-gray-100 cursor-pointer transition duration-150 ease-in-out"
+                onClick={() => handleSelect(opt)}
+              >
                 {opt.label}
               </div>
             ))}
+
             {!adding ? (
-              <div className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100" onClick={() => setAdding(true)}>
+              <div
+                className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100 transition duration-150 ease-in-out"
+                onClick={() => setAdding(true)}
+              >
                 + Ajouter un élément
               </div>
             ) : (
-              <div className="flex px-4 py-2 gap-2 items-center">
-                <Input type="text" placeholder="Nouvel élément" value={newOption} onChange={(e) => setNewOption(e.target.value)} className="border p-1 rounded w-full" />
-                <button type="button" className="px-3 py-1 bg-blue-600 text-white rounded" onClick={handleAddOption}>
+              <div className="flex px-4 py-2 gap-2 items-center animate__animated animate__fadeIn animate__fast">
+                <input
+                  type="text"
+                  placeholder="Nouvel élément"
+                  value={newOption}
+                  onChange={(e) => setNewOption(e.target.value)}
+                  className="border p-2 rounded-lg w-full shadow-sm focus:ring-2 focus:ring-blue-500 transition duration-300 ease-in-out"
+                />
+                <button
+                  type="button"
+                  className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 ease-in-out"
+                  onClick={handleAddOption}
+                >
                   <FaCheck />
                 </button>
-                <button type="button" className="px-3 py-1 bg-gray-300 text-black rounded" onClick={() => setAdding(false)}>
+                <button
+                  type="button"
+                  className="px-3 py-1 bg-gray-300 text-black rounded-lg hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200 ease-in-out"
+                  onClick={() => setAdding(false)}
+                >
                   <FaTimes />
                 </button>
               </div>

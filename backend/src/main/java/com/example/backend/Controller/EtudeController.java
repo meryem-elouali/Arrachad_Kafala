@@ -1,8 +1,11 @@
 package com.example.backend.Controller;
 
 import com.example.backend.Repository.EtudeRepository;
+import com.example.backend.model.Ecole;
+import com.example.backend.model.Enfant;
 import com.example.backend.model.Etude;
 
+import com.example.backend.model.NiveauScolaire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,8 +32,28 @@ public class EtudeController {
     /* ---------------- POST ---------------- */
     @PostMapping
     public Etude createEtude(@RequestBody Etude etude) {
+        if (etude.getEnfant() != null && etude.getEnfant().getId() != null) {
+            Enfant enfant = new Enfant();
+            enfant.setId(etude.getEnfant().getId());
+            etude.setEnfant(enfant);
+        }
+
+        if (etude.getEcole() != null && etude.getEcole().getId() != null) {
+            Ecole ecole = new Ecole();
+            ecole.setId(etude.getEcole().getId());
+            etude.setEcole(ecole);
+        }
+
+        if (etude.getNiveauScolaire() != null && etude.getNiveauScolaire().getId() != null) {
+            NiveauScolaire niveau = new NiveauScolaire();
+            niveau.setId(etude.getNiveauScolaire().getId());
+            etude.setNiveauScolaire(niveau);
+        }
+
         return etudeRepository.save(etude);
     }
+
+
 
     /* ---------------- PUT ---------------- */
     @PutMapping("/{id}")
