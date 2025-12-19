@@ -26,15 +26,33 @@ type NavItem = {
 };
 
 const navItems: NavItem[] = [
-  {
+ /** {
     icon: <GridIcon />,
     name: "Dashboard",
     subItems: [{ name: "Ecommerce", path: "/", pro: false }],
-  },
+  },*/
+   {
+      icon: <ListIcon />,
+      name: "اضافة عائلة",
+      path: "/form-elements",
+    },
   {
     icon: <CalenderIcon />,
-    name: "Calendar",
+    name: "events",
     path: "/calendar",
+
+  },
+  {
+      icon: <CalenderIcon />,
+      name: "liste events",
+      path: "/listeevents",
+
+    },
+{
+    name: "Liste familles",
+    icon: <TableIcon />,
+      path: "/basic-tables",
+
   },
   {
     icon: <UserCircleIcon />,
@@ -285,7 +303,7 @@ const AppSidebar: React.FC = () => {
 
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 left-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
+      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 right-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
         ${
           isExpanded || isMobileOpen
             ? "w-[290px]"
