@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+
 import { FilterMatchMode } from 'primereact/api';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
@@ -18,6 +20,8 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import MultiSelect1 from "../../components/form/MultiSelect1";
 export default function EtudesTable() {
+    const navigate = useNavigate();
+
   const [etudes, setEtudes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [globalFilterValue, setGlobalFilterValue] = useState('');
@@ -40,6 +44,7 @@ export default function EtudesTable() {
   const [exportEcoles, setExportEcoles] = useState([]);
   const [noteMin, setNoteMin] = useState('');
   const [noteMax, setNoteMax] = useState('');
+const [selectedEtude, setSelectedEtude] = useState(null);
 
   const exportableFields = [
     { text: "الاسم الكامل", value: "nomEnfant" },
@@ -207,24 +212,33 @@ const ecoleFilterTemplate = (options) => (
         <p className="text-gray-500 dark:text-gray-400">عرض جميع بيانات الطلاب والمستويات والمؤسسات مع خيارات البحث والتصفية.</p>
       </div>
 
-      <DataTable
-        value={etudes}
-        paginator
-        rows={10}
-        dataKey="id"
-        filters={filters}
-        filterDisplay="row"
-        loading={loading}
-        globalFilterFields={["nomEnfant", "prenomEnfant", "nomEcole", "niveauNom"]}
-        header={header}
-        emptyMessage="لا توجد بيانات."
-        responsiveLayout="scroll"
-        rowHover
-        className="p-datatable-striped p-datatable-gridlines rounded-xl shadow-lg border border-gray-200 dark:border-gray-700"
-       selectionMode="single"
-       onSelectionChange={(e) => navigate(`/EtudesProfile/${e.value.enfant?.id}`)}
+   <DataTable
+     value={etudes}
+     paginator
+     rows={10}
+     dataKey="id"
+     filters={filters}
+     filterDisplay="row"
+     loading={loading}
+     globalFilterFields={["nomEnfant", "prenomEnfant", "nomEcole", "niveauNom"]}
+     header={header}
+     emptyMessage="لا توجد بيانات."
+     responsiveLayout="scroll"
+     rowHover
+     className="p-datatable-striped p-datatable-gridlines rounded-xl shadow-lg border border-gray-200 dark:border-gray-700"
 
-      >
+     selectionMode="single"
+     selection={selectedEtude}
+     metaKeySelection={false}   // ✅ TRÈS IMPORTANT
+    onSelectionChange={(e) => {
+      console.log("Ligne cliquée :", e.value);
+      setSelectedEtude(e.value);
+      navigate(`/EtudesProfile/${e.value.id}`);
+    }}
+
+   >
+
+
         <Column field="nomEnfant" header="الاسم الكامل" filter filterPlaceholder="بحث بالاسم" sortable  showFilterMenu={false} style={{ textAlign: 'right' }}/>
         <Column field="niveauNom" header="المستوى" filter filterElement={niveauFilterTemplate} sortable showFilterMenu={false} style={{ textAlign: 'right' }}/>
         <Column field="nomEcole" header="المؤسسة" filter filterElement={ecoleFilterTemplate} sortable showFilterMenu={false} style={{ textAlign: 'right' }}/>

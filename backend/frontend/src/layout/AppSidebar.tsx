@@ -55,6 +55,12 @@ const navItems: NavItem[] = [
 
   },
   {
+      name: "Suivi etudes",
+      icon: <TableIcon />,
+        path: "/suivi-etudes",
+
+    },
+  {
     icon: <UserCircleIcon />,
     name: "User Profile",
     path: "/profile",

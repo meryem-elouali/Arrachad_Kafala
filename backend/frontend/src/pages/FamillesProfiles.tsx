@@ -7,6 +7,8 @@ import Button from "../components/ui/button/Button";
 import Input from "../components/form/input/InputField";
 import Label from "../components/form/Label";
 import { FaCheck, FaTimes } from "react-icons/fa";
+import jsPDF from "jspdf";
+import html2canvas from 'html2canvas';
 
 interface Option {
   value: number;
@@ -52,7 +54,6 @@ const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem 
       alert("Erreur lors de l'ajout de l'élément. Vérifiez la connexion.");
     }
   };
-
   return (
     <div className="relative w-full">
       <div className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer" onClick={() => setOpen(!open)}>
@@ -553,8 +554,25 @@ const handleSavePere = async () => {
 
     closeModal();
   };
-
+  const [showPdf, setShowPdf] = useState(false);
+   const pdfRef = useRef<HTMLDivElement>(null);
   if (!famille || loadingOptions) return <p>Chargement...</p>;
+ // TOUJOURS déclaré ici
+
+const handleExportPDF = async () => {
+  if (!pdfRef.current) return;
+
+  const canvas = await html2canvas(pdfRef.current, { scale: 2 });
+  const imgData = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF("p", "mm", "a4");
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+  pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
+  pdf.save("famille.pdf");
+}; // <-- Bien fermer la fonction
+
 
   const renderModalContent = () => {
     if (modalType === "العائلة") {
@@ -1028,6 +1046,9 @@ if (modalType === "Enfant" && currentEnfant) {
 
                  return null;
                 };
+
+
+
   return (
     <>
       <PageMeta
@@ -1035,7 +1056,7 @@ if (modalType === "Enfant" && currentEnfant) {
         description="This is React.js Profile Dashboard page for TailAdmin - React.js Tailwind CSS Admin Dashboard Template"
       />
       <PageBreadcrumb pageTitle="Profile" />
-      <div  dir="rtl" className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
+      <div ref={pdfRef} dir="rtl" className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-7">
           Profile
         </h3>
@@ -1487,13 +1508,21 @@ if (modalType === "Enfant" && currentEnfant) {
 
                </div>
              ))
+
            ) : (
              <p className="text-sm text-gray-500 dark:text-gray-400">لا توجد معلومات عن الأطفال</p>
+
            )}
          </div>
+
        </div>
 
-
+ <button
+             onClick={handleExportPDF}
+             className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
+           >
+             Exporter en PDF
+           </button>
 
 
              </div>
@@ -1507,5 +1536,6 @@ if (modalType === "Enfant" && currentEnfant) {
             </Modal>
 
     </>
+
   );
 }

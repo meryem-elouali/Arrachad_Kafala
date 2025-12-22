@@ -16,8 +16,9 @@ public class Etude {
 
     @ManyToOne
     @JoinColumn(name = "enfant_id")
-    @JsonBackReference  // Évite la sérialisation du côté "Enfant"
+    @JsonIgnoreProperties({"famille","eventParticipants","photoEnfant"})
     private Enfant enfant;
+
 
     @ManyToOne
     @JoinColumn(name = "ecole_id")
@@ -33,7 +34,17 @@ public class Etude {
     private Double noteSemestre1;
     private Double noteSemestre2;
     private Boolean redoublon;
-
+    @Transient  // <-- ne sera pas stocké en base
+    private Boolean anneeCourante;
+    public Boolean getAnneeCourante() {
+        // Si redoublon == null -> null
+        if (redoublon == null) {
+            return null;
+        }
+        // Si redoublon == false (non redoublé) -> année courante = true
+        // Si redoublon == true (redoublon) -> année courante = false
+        return !redoublon;
+    }
     public Boolean getPasseAnnee() {
         return redoublon != null ? !redoublon : null;
     }
