@@ -37,6 +37,16 @@ public class Enfant {
     @JsonIgnore
     @Lob
     private byte[] photoEnfant;
+    // ----------------------------
+// Retour de la photo en Base64 pour le frontend
+// ----------------------------
+    @Transient
+    public String getPhotoEnfantBase64() {
+        if (photoEnfant != null) {
+            return java.util.Base64.getEncoder().encodeToString(photoEnfant);
+        }
+        return null;
+    }
 
     // getters & setters
     public Long getId() {

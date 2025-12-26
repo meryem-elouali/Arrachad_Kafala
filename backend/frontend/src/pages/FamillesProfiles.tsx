@@ -466,42 +466,60 @@ const handleSavePere = async () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
+const handleSaveEnfant = async () => {
+  if (!famille) return;
 
- const handleSaveEnfant = async () => {
-   try {
-     const formData = new FormData();
-     formData.append("prenom", enfantForm.prenom || "");
-     formData.append("nom", enfantForm.nom || "");
-     formData.append("dateNaissance", enfantForm.dateNaissance || "");
-     formData.append("estMalade", enfantForm.estMalade ? "true" : "false");
-     formData.append("typeMaladie", enfantForm.typeMaladie || "");
-     if (enfantForm.niveauscolaireId > 0) {
-       formData.append("niveauScolaireId", enfantForm.niveauscolaireId.toString());
-     }
-     // Note: photoEnfant is sent as base64 string, backend will handle decoding
-     formData.append("photoEnfantBase64", enfantForm.photoEnfant || "");
+  try {
+    // Construire le payload JSON
+    const payload = {
+      prenom: enfantForm.prenom || "",
+      nom: enfantForm.nom || "",
+      dateNaissance: enfantForm.dateNaissance || "",
+      estMalade: enfantForm.estMalade || false,
+      typeMaladie: enfantForm.typeMaladie || "",
+      niveauScolaireId: enfantForm.niveauscolaireId || null,
+      photoEnfantBase64: enfantForm.photoEnfant || null, // Base64
+    };
 
-     const response = await fetch(`http://localhost:8080/api/enfant/${enfantForm.id}`, {
-       method: "PUT",
-       body: formData,
-     });
+    console.log("Payload JSON à envoyer :", payload);
 
-     if (!response.ok) {
-       throw new Error("Erreur lors de la mise à jour de l'enfant");
-     }
+    const response = await fetch(
+      `http://localhost:8080/api/enfant/${enfantForm.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include", // si backend utilise session
+        body: JSON.stringify(payload),
+      }
+    );
 
-     const updatedEnfant = await response.json();
-     console.log("Enfant mis à jour :", updatedEnfant);
-     // Update the famille state with the updated enfant
-     setFamille(prev => prev ? {
-       ...prev,
-       enfants: prev.enfants?.map(e => e.id === updatedEnfant.id ? updatedEnfant : e) || []
-     } : prev);
-     closeModal();
-   } catch (error) {
-     console.error("Erreur lors de la mise à jour de l'enfant:", error);
-   }
- };
+    if (!response.ok) throw new Error(`Erreur HTTP ${response.status}`);
+
+    const updatedEnfant = await response.json();
+    console.log("Enfant mis à jour :", updatedEnfant);
+
+    // Mise à jour du state famille
+    setFamille((prev) =>
+      prev
+        ? {
+            ...prev,
+            enfants:
+              prev.enfants?.map((e) =>
+                e.id === updatedEnfant.id ? updatedEnfant : e
+              ) || [],
+          }
+        : prev
+    );
+
+    closeModal();
+  } catch (error) {
+    console.error("Erreur lors de la mise à jour de l'enfant :", error);
+    alert("Erreur lors de la mise à jour de l'enfant");
+  }
+};
+
 
   const handleSave = async () => {
     if (!famille) return;

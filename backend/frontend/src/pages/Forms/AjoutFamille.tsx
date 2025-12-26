@@ -226,6 +226,7 @@ const pereDataConverted = {
 const enfantsConverted = enfants.map((enfant) => ({
   ...enfant,
   dateNaissance: convertDate(enfant.dateNaissance),
+
 }));
 
  const handleSubmitAll = async () => {
@@ -291,7 +292,7 @@ const enfantsConverted = enfants.map((enfant) => ({
        enfantId: enfant.id,
        ecoleId: enfant.ecole?.id,
        niveauScolaireId: enfant.niveauscolaire?.id,
-       anneeScolaire: enfant.dateNaissance, // maintenant au format yyyy-MM-dd
+       anneeScolaire: enfant.anneeScolaire, // maintenant au format yyyy-MM-dd
      }));
 
 
@@ -1002,7 +1003,31 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                                   }}
                                 />
                               </div>
+<div className="w-1/2">
+                                <Label htmlFor={`date-${index}`}>السنة الدراسية</Label>
+                              <Input
+                                id={`date-${index}`}
+                                type="text"
+                                placeholder="YYYY/YYYY"
+                                value={enfants[index]?.anneeScolaire || ""}
+                                onChange={(e) => {
+                                  // Supprime tout sauf les chiffres
+                                  let val = e.target.value.replace(/\D/g, "");
 
+                                  // Limite à 8 chiffres max (4 pour chaque année)
+                                  if (val.length > 8) val = val.slice(0, 8);
+
+                                  // Insère le slash après les 4 premiers chiffres
+                                  if (val.length > 4) val = val.slice(0, 4) + "/" + val.slice(4);
+
+                                  // Met à jour l'état
+                                  const newEnfants = [...enfants];
+                                  newEnfants[index] = { ...newEnfants[index], anneeScolaire: val };
+                                  setEnfants(newEnfants);
+                                }}
+                              />
+
+                              </div>
                               <div className="w-1/2">
                                 <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
                                 <Select
@@ -1077,15 +1102,17 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
 
                             {/* Dropzone + aperçu */}
                             <div className="mt-6">
-                              <DropzoneComponent
-                                label={`صورة الطفل ${index + 1}`}
-                                id={`photoEnfant_${index}`}
-                                onFileSelect={(file) => {
-                                  const newEnfants = [...enfants];
-                                  newEnfants[index] = { ...newEnfants[index], photoEnfant: file };
-                                  setEnfants(newEnfants);
-                                }}
-                              />
+                             <DropzoneComponent
+                                  label="Photo de l'enfant"
+                                  id={`photoEnfant-${index}`}
+                                  onFileSelect={(file) => {
+                                    const updated = [...enfants];
+                                    updated[index].photoEnfant = file; // <- c’est ici qu’on stocke le fichier
+                                    setEnfants(updated);
+                                    console.log(`✅ Fichier enfant ${index + 1} sélectionné :`, file.name);
+                                  }}
+                                />
+
                             </div>
                           </div>
                         ))}

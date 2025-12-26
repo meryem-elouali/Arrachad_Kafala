@@ -9,6 +9,7 @@ import com.example.backend.model.*;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class EnfantService {
@@ -86,5 +87,13 @@ public class EnfantService {
     public List<Ecole> getAllEcoles() {
         return ecoleRepository.findAll();
     }
+    public Enfant updateEnfant(Enfant enfant) {
+        return enfantRepository.save(enfant);
+    }
+
+    public Optional<Enfant> getEnfantById(Long id) {
+        return enfantRepository.findById(id);
+    }
+
 
 }

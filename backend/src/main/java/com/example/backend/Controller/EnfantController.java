@@ -13,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/enfant")
@@ -70,6 +71,39 @@ public class EnfantController {
 
 
         return ResponseEntity.ok(savedEnfant);
+    }
+    @PutMapping("/{id}")
+    public ResponseEntity<Enfant> updateEnfant(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> payload) throws IOException {
+
+        Enfant enfant = enfantService.getEnfantById(id)
+                .orElseThrow(() -> new RuntimeException("Enfant introuvable"));
+
+        if (payload.containsKey("prenom")) enfant.setPrenom((String) payload.get("prenom"));
+        if (payload.containsKey("nom")) enfant.setNom((String) payload.get("nom"));
+        if (payload.containsKey("dateNaissance")) enfant.setDateNaissance((String) payload.get("dateNaissance"));
+        if (payload.containsKey("estMalade")) enfant.setEstMalade((Boolean) payload.get("estMalade"));
+        if (payload.containsKey("typeMaladie")) enfant.setTypeMaladie((String) payload.get("typeMaladie"));
+
+        if (payload.containsKey("photoEnfantBase64")) {
+            String photoBase64 = (String) payload.get("photoEnfantBase64");
+            if (photoBase64 != null && !photoBase64.isEmpty()) {
+                enfant.setPhotoEnfant(java.util.Base64.getDecoder().decode(photoBase64));
+            }
+        }
+
+        // ✅ Gestion null safe pour niveauScolaireId
+        Object niveauObj = payload.get("niveauScolaireId");
+        if (niveauObj != null) {
+            Long niveauId = ((Number) niveauObj).longValue();
+            NiveauScolaire niveau = enfantService.getNiveauById(niveauId);
+            // mettre à jour la relation si nécessaire
+        }
+
+        Enfant updatedEnfant = enfantService.updateEnfant(enfant);
+
+        return ResponseEntity.ok(updatedEnfant);
     }
 
 
