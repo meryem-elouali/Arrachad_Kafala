@@ -3,6 +3,7 @@ package com.example.backend.model;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;  // <-- AJOUTER CET IMPORT
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 
 import java.time.LocalDate;
@@ -41,6 +42,7 @@ public class Enfant {
 // Retour de la photo en Base64 pour le frontend
 // ----------------------------
     @Transient
+    @JsonProperty("photoEnfant")
     public String getPhotoEnfantBase64() {
         if (photoEnfant != null) {
             return java.util.Base64.getEncoder().encodeToString(photoEnfant);

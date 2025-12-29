@@ -222,8 +222,8 @@ public class FamilleController {
     }
 
     @PutMapping("/{id}/mere")
-    public Mere updateMere(@PathVariable Long id, @RequestBody Mere updatedMere) {
-        System.out.println("Données reçues pour mise à jour : " + updatedMere);
+    public Mere updateMere(@PathVariable Long id, @RequestBody Map<String, Object> payload) {  // <-- CHANGER LE PARAMÈTRE
+        System.out.println("Données reçues pour mise à jour : " + payload);
 
         Famille famille = familleService.getFamilleById(id);
         if (famille == null) {
@@ -236,28 +236,38 @@ public class FamilleController {
             famille.setMere(mere);
         }
 
-        mere.setNom(updatedMere.getNom());
-        mere.setPrenom(updatedMere.getPrenom());
-        mere.setPhone(updatedMere.getPhone());
-        mere.setEstMalade(updatedMere.getEstMalade());
-        mere.setTypeMaladie(updatedMere.getTypeMaladie());
-        mere.setEstTravaille(updatedMere.getEstTravaille());
-        mere.setTypeTravail(updatedMere.getTypeTravail());
-        mere.setPhotoMere(updatedMere.getPhotoMere());
-        mere.setEstDecedee(updatedMere.getEstDecedee());
-        mere.setDateDeces(updatedMere.getDateDeces());
-        if (updatedMere.getEstDecedee() != null && updatedMere.getEstDecedee()) {
+        // Champs existants
+        if (payload.containsKey("nom")) mere.setNom((String) payload.get("nom"));
+        if (payload.containsKey("prenom")) mere.setPrenom((String) payload.get("prenom"));
+        if (payload.containsKey("phone")) mere.setPhone((String) payload.get("phone"));
+        if (payload.containsKey("cin")) mere.setCin((String) payload.get("cin"));
+        if (payload.containsKey("dateNaissance")) mere.setDateNaissance((String) payload.get("dateNaissance"));
+        if (payload.containsKey("villeNaissance")) mere.setVilleNaissance((String) payload.get("villeNaissance"));
+        if (payload.containsKey("estMalade")) mere.setEstMalade((Boolean) payload.get("estMalade"));
+        if (payload.containsKey("typeMaladie")) mere.setTypeMaladie((String) payload.get("typeMaladie"));
+        if (payload.containsKey("estTravaille")) mere.setEstTravaille((Boolean) payload.get("estTravaille"));
+        if (payload.containsKey("typeTravail")) mere.setTypeTravail((String) payload.get("typeTravail"));
+        if (payload.containsKey("estDecedee")) mere.setEstDecedee((Boolean) payload.get("estDecedee"));
+        if (payload.containsKey("dateDeces")) mere.setDateDeces((String) payload.get("dateDeces"));
+
+        // ✅ GESTION PHOTO : Décodage Base64
+        if (payload.containsKey("photoMere")) {
+            String photoBase64 = (String) payload.get("photoMere");
+            if (photoBase64 != null && !photoBase64.isEmpty()) {
+                mere.setPhotoMere(java.util.Base64.getDecoder().decode(photoBase64));
+            }
+        }
+
+        // Logique décès (inchangée)
+        if (mere.getEstDecedee() != null && mere.getEstDecedee()) {
             mere.setPhone(null);
+            mere.setCin(null);
+            mere.setDateNaissance(null);
+            mere.setVilleNaissance(null);
             mere.setEstMalade(false);
             mere.setTypeMaladie(null);
             mere.setEstTravaille(false);
             mere.setTypeTravail(null);
-        } else {
-            mere.setPhone(updatedMere.getPhone());
-            mere.setEstMalade(updatedMere.getEstMalade());
-            mere.setTypeMaladie(updatedMere.getTypeMaladie());
-            mere.setEstTravaille(updatedMere.getEstTravaille());
-            mere.setTypeTravail(updatedMere.getTypeTravail());
         }
 
         familleService.saveFamille(famille);
@@ -265,8 +275,8 @@ public class FamilleController {
     }
 
     @PutMapping("/{id}/pere")
-    public Pere updatePere(@PathVariable Long id, @RequestBody Pere updatedPere) {
-        System.out.println("Données reçues pour mise à jour : " + updatedPere);
+    public Pere updatePere(@PathVariable Long id, @RequestBody Map<String, Object> payload) {  // <-- CHANGER LE PARAMÈTRE
+        System.out.println("Données reçues pour mise à jour : " + payload);
 
         Famille famille = familleService.getFamilleById(id);
         if (famille == null) {
@@ -279,28 +289,38 @@ public class FamilleController {
             famille.setPere(pere);
         }
 
-        pere.setNom(updatedPere.getNom());
-        pere.setPrenom(updatedPere.getPrenom());
-        pere.setPhone(updatedPere.getPhone());
-        pere.setEstMalade(updatedPere.getEstMalade());
-        pere.setTypeMaladie(updatedPere.getTypeMaladie());
-        pere.setEstTravaille(updatedPere.getEstTravaille());
-        pere.setTypeTravail(updatedPere.getTypeTravail());
-        pere.setPhotoPere(updatedPere.getPhotoPere());
-        pere.setEstDecedee(updatedPere.getEstDecedee());
-        pere.setDateDeces(updatedPere.getDateDeces());
-        if (updatedPere.getEstDecedee() != null && updatedPere.getEstDecedee()) {
+        // Champs existants
+        if (payload.containsKey("nom")) pere.setNom((String) payload.get("nom"));
+        if (payload.containsKey("prenom")) pere.setPrenom((String) payload.get("prenom"));
+        if (payload.containsKey("phone")) pere.setPhone((String) payload.get("phone"));
+        if (payload.containsKey("cin")) pere.setCin((String) payload.get("cin"));
+        if (payload.containsKey("dateNaissance")) pere.setDateNaissance((String) payload.get("dateNaissance"));
+        if (payload.containsKey("villeNaissance")) pere.setVilleNaissance((String) payload.get("villeNaissance"));
+        if (payload.containsKey("estMalade")) pere.setEstMalade((Boolean) payload.get("estMalade"));
+        if (payload.containsKey("typeMaladie")) pere.setTypeMaladie((String) payload.get("typeMaladie"));
+        if (payload.containsKey("estTravaille")) pere.setEstTravaille((Boolean) payload.get("estTravaille"));
+        if (payload.containsKey("typeTravail")) pere.setTypeTravail((String) payload.get("typeTravail"));
+        if (payload.containsKey("estDecedee")) pere.setEstDecedee((Boolean) payload.get("estDecedee"));
+        if (payload.containsKey("dateDeces")) pere.setDateDeces((String) payload.get("dateDeces"));
+
+        // ✅ GESTION PHOTO : Décodage Base64
+        if (payload.containsKey("photoPere")) {
+            String photoBase64 = (String) payload.get("photoPere");
+            if (photoBase64 != null && !photoBase64.isEmpty()) {
+                pere.setPhotoPere(java.util.Base64.getDecoder().decode(photoBase64));
+            }
+        }
+
+        // Logique décès (inchangée)
+        if (pere.getEstDecedee() != null && pere.getEstDecedee()) {
             pere.setPhone(null);
+            pere.setCin(null);
+            pere.setDateNaissance(null);
+            pere.setVilleNaissance(null);
             pere.setEstMalade(false);
             pere.setTypeMaladie(null);
             pere.setEstTravaille(false);
             pere.setTypeTravail(null);
-        } else {
-            pere.setPhone(updatedPere.getPhone());
-            pere.setEstMalade(updatedPere.getEstMalade());
-            pere.setTypeMaladie(updatedPere.getTypeMaladie());
-            pere.setEstTravaille(updatedPere.getEstTravaille());
-            pere.setTypeTravail(updatedPere.getTypeTravail());
         }
 
         familleService.saveFamille(famille);

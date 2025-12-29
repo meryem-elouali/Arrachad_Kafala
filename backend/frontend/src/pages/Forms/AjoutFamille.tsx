@@ -313,7 +313,7 @@ const enfantsConverted = enfants.map((enfant) => ({
        // 🔹 Photos enfants
        enfants.forEach((enfant) => {
          if (enfant.photoEnfant) {
-           formDataFamille.append('photoEnfants', enfant.photoEnfant);
+           formDataFamille.append('photoEnfant', enfant.photoEnfant);
          }
        });
 console.log("Données famille à envoyer :");
