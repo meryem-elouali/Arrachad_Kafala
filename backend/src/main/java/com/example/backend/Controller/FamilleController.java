@@ -5,6 +5,7 @@ import com.example.backend.model.*;
 import com.example.backend.service.FamilleService;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.persistence.criteria.CriteriaBuilder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -78,7 +79,8 @@ public class FamilleController {
             @RequestParam String adresseFamille,
             @RequestParam String phone,
             @RequestParam String dateInscription,
-            @RequestParam String possedeMalade,
+            @RequestParam Integer nombreEnfants,
+            @RequestParam Boolean possedeMalade,
             @RequestParam String personneMalade,
             @RequestParam String typeFamilleId,
             @RequestParam String habitationFamilleId,
@@ -118,7 +120,9 @@ public class FamilleController {
             famille.setAdresseFamille(adresseFamille);
             famille.setPhone(phone);
             famille.setDateInscription(dateInscription);
-            famille.setPossedeMalade(Boolean.parseBoolean(possedeMalade));
+            famille.setNombreEnfants(nombreEnfants);
+            famille.setPossedeMalade(possedeMalade);
+
             famille.setPersonneMalade(personneMalade);
             famille.setTypeFamille(typeFamille);
             famille.setHabitationFamille(habitationFamille);

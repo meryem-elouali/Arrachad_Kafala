@@ -6,6 +6,10 @@ import Label from "../../components/form/Label";
 import Input from "../../components/form/input/InputField";
 import ComponentCard from "../../components/common/ComponentCard";
 import DropzoneComponent from "../../components/form/form-elements/DropZone";
+import { useRef } from "react";
+
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 interface Option {
   value: string | number;
@@ -23,6 +27,12 @@ interface Enfant {
 }
 
 export default function FormElements() {
+   const [selectedDateInscription, setSelectedDateInscription] = useState<Date | null>(null);
+   const [selectedDateNaissancePere, setSelectedDateNaissancePere] = useState<Date | null>(null);
+   const [selectedDateNaissanceMere, setSelectedDateNaissanceMere] = useState<Date | null>(null);
+   const [selectedDateDecesMere, setSelectedDateDecesMere] = useState<Date | null>(null);
+    const [selectedDateDecesPere, setSelectedDateDecesPere] = useState<Date | null>(null);
+     const [selectedDateNaissance, setSelectedDateNaissance] = useState<Date | null>(null);
   const [familleData, setFamilleData] = useState({
     typeFamille: null as { id: string | number } | null,
     habitationFamille: null as { id: string | number } | null,
@@ -301,7 +311,11 @@ const enfantsConverted = enfants.map((enfant) => ({
        formDataFamille.append('adresseFamille', familleData.adresseFamille);
        formDataFamille.append('phone', familleData.phone);
        formDataFamille.append('dateInscription', convertedDateInscription);
-       formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
+       formDataFamille.append('nombreEnfants', familleData.nombreEnfants);
+formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
+
+
+      // formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
        formDataFamille.append('personneMalade', familleData.personneMalade || '');
        formDataFamille.append('typeFamilleId', familleData.typeFamille?.id.toString() || '');
        formDataFamille.append('habitationFamilleId', familleData.habitationFamille?.id.toString() || '');
@@ -406,29 +420,43 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                 + Ajouter un élément
               </div>
             ) : (
-              <div className="flex px-4 py-2 gap-2 items-center animate__animated animate__fadeIn animate__fast">
-                <input
-                  type="text"
-                  placeholder="Nouvel élément"
-                  value={newOption}
-                  onChange={(e) => setNewOption(e.target.value)}
-                  className="border p-2 rounded-lg w-full shadow-sm focus:ring-2 focus:ring-blue-500 transition duration-300 ease-in-out"
-                />
-                <button
-                  type="button"
-                  className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 ease-in-out"
-                  onClick={handleAddOption}
-                >
-                  <FaCheck />
-                </button>
-                <button
-                  type="button"
-                  className="px-3 py-1 bg-gray-300 text-black rounded-lg hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500 transition duration-200 ease-in-out"
-                  onClick={() => setAdding(false)}
-                >
-                  <FaTimes />
-                </button>
-              </div>
+          <div
+            className="px-3 py-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <input
+              type="text"
+              placeholder="Nouvel élément"
+              value={newOption}
+              autoFocus
+              onChange={(e) => setNewOption(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.stopPropagation();
+
+                  if (!newOption.trim()) {
+                    // ENTER + vide → FERMER
+                    setAdding(false);
+                    return;
+                  }
+
+                  // ENTER + texte → AJOUTER
+                  handleAddOption();
+                }
+
+                if (e.key === "Escape") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setAdding(false);
+                }
+              }}
+              className="h-9 px-3 text-sm border rounded-md w-full
+                         focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+
             )}
           </div>
         )}
@@ -518,22 +546,32 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
           /></div></div></div>
              <div className="flex gap-4">
                 <div className="w-1/2">
-          <div className="flex flex-col md:col-span-2">
-            <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
-           <Input
-             type="text"
-             id="dateInscription"
-             placeholder="__/__/____"
-             value={familleData.dateInscription}
-             onChange={(e) => {
-               let val = e.target.value.replace(/\D/g, ""); // Keep only digits
-               if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-               if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-               if (val.length > 10) val = val.slice(0, 10);
-               setFamilleData((prev) => ({ ...prev, dateInscription: val }));
-             }}
-           />
-          </div></div></div>
+      <div className="relative md:col-span-2">
+        <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
+
+     <DatePicker
+       selected={selectedDateInscription}  // Use the stable Date state
+       onChange={(date: Date | null) => {
+         setSelectedDateInscription(date);  // Update the Date state
+         if (!date) {
+           setFamilleData((p) => ({ ...p, dateInscription: "" }));
+           return;
+         }
+         const d = String(date.getDate()).padStart(2, "0");
+         const m = String(date.getMonth() + 1).padStart(2, "0");
+         const y = date.getFullYear();
+         setFamilleData((p) => ({
+           ...p,
+           dateInscription: `${d}/${m}/${y}`,
+         }));
+       }}
+       dateFormat="dd/MM/yyyy"
+       placeholderText="__/__/____"
+       className="h-9 px-3 border rounded-md w-full"
+     />
+
+      </div>
+</div></div>
   <div className="flex gap-4">
              <div className="w-1/2">
               <div className="flex items-center mt-4">
@@ -585,19 +623,26 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
       <div className="mt-2 space-y-2">
 
   <Label htmlFor="nom">تاريخ الوفاة</Label>
-  <Input
-                        type="text"
-                        id="datanaissancepere"
-                        placeholder="__/__/____"
-                       value={pereData.dateDeces}
-                        onChange={(e) => {
-                          let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
-                          if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                          if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                          if (val.length > 10) val = val.slice(0, 10);
-                          setPereData((prev) => ({ ...prev, dateDeces: val }));
-                        }}
-                      />
+    <DatePicker
+                       selected={selectedDateDecesPere}  // Utilise l'état Date stable
+                       onChange={(date: Date | null) => {
+                         setSelectedDateDecesPere(date);  // Met à jour l'état Date
+                         if (!date) {
+                           setPereData((prev) => ({ ...prev, dateDeces: "" }));
+                           return;
+                         }
+                         const d = String(date.getDate()).padStart(2, "0");
+                         const m = String(date.getMonth() + 1).padStart(2, "0");
+                         const y = date.getFullYear();
+                         setPereData((prev) => ({
+                           ...prev,
+                           dateDeces: `${d}/${m}/${y}`,
+                         }));
+                       }}
+                       dateFormat="dd/MM/yyyy"
+                       placeholderText="__/__/____"
+                       className="h-9 px-3 border rounded-md w-full"
+                     />
 
 
       </div>
@@ -658,19 +703,26 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
    <div className="flex gap-4">
       <div className="w-1/2">
                     <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
-                    <Input
-                      type="text"
-                      id="datanaissancepere"
-                      placeholder="__/__/____"
-                      value={pereData.dateNaissance}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
-                        if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                        if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                        if (val.length > 10) val = val.slice(0, 10);
-                        setPereData((prev) => ({ ...prev, dateNaissance: val }));
-                      }}
-                    />
+                   <DatePicker
+                     selected={selectedDateNaissancePere}  // Utilise l'état Date stable
+                     onChange={(date: Date | null) => {
+                       setSelectedDateNaissancePere(date);  // Met à jour l'état Date
+                       if (!date) {
+                         setPereData((prev) => ({ ...prev, dateNaissance: "" }));
+                         return;
+                       }
+                       const d = String(date.getDate()).padStart(2, "0");
+                       const m = String(date.getMonth() + 1).padStart(2, "0");
+                       const y = date.getFullYear();
+                       setPereData((prev) => ({
+                         ...prev,
+                         dateNaissance: `${d}/${m}/${y}`,
+                       }));
+                     }}
+                     dateFormat="dd/MM/yyyy"
+                     placeholderText="__/__/____"
+                     className="h-9 px-3 border rounded-md w-full"
+                   />
 
    </div>
 
@@ -772,19 +824,27 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
       <div className="mt-2 space-y-2">
 
   <Label htmlFor="nom">تاريخ الوفاة</Label>
-  <Input
-                        type="text"
-                        id="datanaissancemere"
-                        placeholder="__/__/____"
-                       value={mereData.dateDeces}
-                        onChange={(e) => {
-                          let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
-                          if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                          if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                          if (val.length > 10) val = val.slice(0, 10);
-                          setMereData((prev) => ({ ...prev, dateDeces: val }));
-                        }}
-                      />
+   <DatePicker
+                       selected={selectedDateDecesMere}  // Utilise l'état Date stable
+                       onChange={(date: Date | null) => {
+                         setSelectedDateDecesMere(date);  // Met à jour l'état Date
+                         if (!date) {
+                           setMereData((prev) => ({ ...prev, dateDeces: "" }));
+                           return;
+                         }
+                         const d = String(date.getDate()).padStart(2, "0");
+                         const m = String(date.getMonth() + 1).padStart(2, "0");
+                         const y = date.getFullYear();
+                         setMereData((prev) => ({
+                           ...prev,
+                           dateDeces: `${d}/${m}/${y}`,
+                         }));
+                       }}
+                       dateFormat="dd/MM/yyyy"
+                       placeholderText="__/__/____"
+                       className="h-9 px-3 border rounded-md w-full"
+                     />
+
 
 
       </div>
@@ -845,19 +905,26 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
    <div className="flex gap-4">
       <div className="w-1/2">
                     <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
-                    <Input
-                      type="text"
-                      id="datanaissancemere"
-                      placeholder="__/__/____"
-                      value={mereData.dateNaissance}
-                      onChange={(e) => {
-                        let val = e.target.value.replace(/\D/g, ""); // garder que les chiffres
-                        if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                        if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                        if (val.length > 10) val = val.slice(0, 10);
-                        setMereData((prev) => ({ ...prev, dateNaissance: val }));
-                      }}
-                    />
+                   <DatePicker
+                     selected={selectedDateNaissanceMere}  // Utilise l'état Date stable
+                     onChange={(date: Date | null) => {
+                       setSelectedDateNaissanceMere(date);  // Met à jour l'état Date
+                       if (!date) {
+                         setMereData((prev) => ({ ...prev, dateNaissance: "" }));
+                         return;
+                       }
+                       const d = String(date.getDate()).padStart(2, "0");
+                       const m = String(date.getMonth() + 1).padStart(2, "0");
+                       const y = date.getFullYear();
+                       setMereData((prev) => ({
+                         ...prev,
+                         dateNaissance: `${d}/${m}/${y}`,
+                       }));
+                     }}
+                     dateFormat="dd/MM/yyyy"
+                     placeholderText="__/__/____"
+                     className="h-9 px-3 border rounded-md w-full"
+                   />
 
    </div>
 
@@ -986,25 +1053,29 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                             <div className="flex gap-4 mt-4">
                               <div className="w-1/2">
                                 <Label htmlFor={`date-${index}`}>تاريخ الازدياد</Label>
-                                <Input
-                                  id={`date-${index}`}
-                                  type="text"
-                                  placeholder="__/__/____"
-                                  value={enfants[index]?.dateNaissance || ""}
-                                  onChange={(e) => {
-                                    let val = e.target.value.replace(/\D/g, "");
-                                    if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                                    if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                                    if (val.length > 10) val = val.slice(0, 10);
-
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = { ...newEnfants[index], dateNaissance: val };
-                                    setEnfants(newEnfants);
-                                  }}
-                                />
+                                 <DatePicker
+                                      selected={enfants[index]?.selectedDateNaissance}
+                                      onChange={(date: Date | null) => {
+                                        const newEnfants = [...enfants];
+                                        newEnfants[index].selectedDateNaissance = date;
+                                        if (!date) {
+                                          newEnfants[index].dateNaissance = "";
+                                        } else {
+                                          const d = String(date.getDate()).padStart(2, "0");
+                                          const m = String(date.getMonth() + 1).padStart(2, "0");
+                                          const y = date.getFullYear();
+                                          newEnfants[index].dateNaissance = `${d}/${m}/${y}`;
+                                        }
+                                        setEnfants(newEnfants);
+                                      }}
+                                      dateFormat="dd/MM/yyyy"
+                                      placeholderText="__/__/____"
+                                      className="h-9 px-3 border rounded-md w-full"
+                                    />
                               </div>
 <div className="w-1/2">
                                 <Label htmlFor={`date-${index}`}>السنة الدراسية</Label>
+
                               <Input
                                 id={`date-${index}`}
                                 type="text"

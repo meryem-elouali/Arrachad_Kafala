@@ -30,16 +30,11 @@ public class Famille {
         this.personneMalade = personneMalade;
     }
 
-    @Column(name = "possede_malade") // correspond à la colonne de la DB
+    @Column(name = "possede_malade")
     private Boolean possedeMalade = false;
 
-    public Boolean getPossedeMalade() {
-        return possedeMalade;
-    }
-
-    public void setPossedeMalade(Boolean possedeMalade) {
-        this.possedeMalade = possedeMalade;
-    }
+    public Boolean getPossedeMalade() { return possedeMalade; }
+    public void setPossedeMalade(Boolean possedeMalade) { this.possedeMalade = possedeMalade; }
     @ManyToOne
     @JoinColumn(name = "type_famille_id")
     private TypeFamille typeFamille;

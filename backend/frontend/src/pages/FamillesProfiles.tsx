@@ -519,59 +519,53 @@ const handleSaveEnfant = async () => {
     alert("Erreur lors de la mise à jour de l'enfant");
   }
 };
+const handleSave = async () => {
+  if (!famille) return;
 
+  try {
+    const formDataToSend = new FormData();
+    if (formData.typeFamilleId) formDataToSend.append('typeFamille.id', formData.typeFamilleId.toString());
+    if (formData.habitationFamilleId) formDataToSend.append('habitationFamille.id', formData.habitationFamilleId.toString());
+    formDataToSend.append('adresseFamille', formData.adresseFamille);
+    formDataToSend.append('phone', formData.phone);
+    formDataToSend.append('dateInscription', formData.dateInscription);
+    formDataToSend.append('possedeMalade', formData.possedeMalade.toString());
+    formDataToSend.append('personneMalade', formData.personneMalade);
 
-  const handleSave = async () => {
-    if (!famille) return;
+    const res = await fetch(`http://localhost:8080/api/famille/${famille.id}`, {
+      method: "PUT",
+      body: formDataToSend,
+      mode: "cors",
+      credentials: "include",
+    });
 
-    const selectedTypeFamille = typesFamilles.find(t => t.value.toString() === formData.typeFamilleId.toString()) || null;
-    const selectedHabitation = habitations.find(h => h.value.toString() === formData.habitationFamilleId.toString()) || null;
-
-    try {
-      const updatedData = {
-        typeFamille: selectedTypeFamille
-          ? { id: Number(selectedTypeFamille.value), nom: selectedTypeFamille.label }
-          : null,
-        habitationFamille: selectedHabitation
-          ? { id: Number(selectedHabitation.value), nom: selectedHabitation.label }
-          : null,
-        adresseFamille: formData.adresseFamille,
-        phone: formData.phone,
-        dateInscription: formData.dateInscription,
-        possedeMalade: formData.possedeMalade,
-        personneMalade: formData.personneMalade,
-      };
-
-      const res = await fetch(`http://localhost:8080/api/famille/${famille.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedData),
-        mode: "cors",
-        credentials: "include"
-      });
-
-      const text = await res.text(); // lire le texte pour debug
-      if (!res.ok) throw new Error(`Erreur HTTP ${res.status}: ${text}`);
-
-      const updatedFamille = JSON.parse(text);
-      setFamille(updatedFamille);
-      setFormData({
-        typeFamilleId: updatedFamille.typeFamille?.id || 0,
-        habitationFamilleId: updatedFamille.habitationFamille?.id || 0,
-        adresseFamille: updatedFamille.adresseFamille || "",
-        phone: updatedFamille.phone || "",
-        dateInscription: updatedFamille.dateInscription || "",
-        possedeMalade: updatedFamille.possedeMalade || false,
-        personneMalade: updatedFamille.personneMalade || "",
-      });
-
-    } catch (err: any) {
-      console.error("Erreur fetch PUT:", err);
-      alert(`Erreur réseau ou serveur: ${err.message}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Erreur HTTP ${res.status}: ${text}`);
     }
 
-    closeModal();
-  };
+    const updatedFamille = await res.json();
+
+    setFamille(updatedFamille);
+    setFormData({
+      typeFamilleId: updatedFamille.typeFamille?.id || 0,
+      habitationFamilleId: updatedFamille.habitationFamille?.id || 0,
+      adresseFamille: updatedFamille.adresseFamille || "",
+      phone: updatedFamille.phone || "",
+      dateInscription: updatedFamille.dateInscription || "",
+      possedeMalade: updatedFamille.possedeMalade || false,
+      personneMalade: updatedFamille.personneMalade || "",
+    });
+
+  } catch (err: any) {
+    console.error("Erreur fetch PUT:", err);
+    alert(`Erreur réseau ou serveur: ${err.message}`);
+  }
+
+  closeModal();
+};
+
+
   const [showPdf, setShowPdf] = useState(false);
    const pdfRef = useRef<HTMLDivElement>(null);
   if (!famille || loadingOptions) return <p>Chargement...</p>;
