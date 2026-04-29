@@ -14,7 +14,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-
+import com.example.backend.Repository.EtudeRepository;
+import com.example.backend.model.Etude;
 @RestController
 @RequestMapping("/api/enfant")
 @CrossOrigin(origins = "http://localhost:3000")
@@ -22,10 +23,15 @@ public class EnfantController {
 
     private final EnfantService enfantService;
     private final FamilleRepository familleRepository;
-
-    public EnfantController(EnfantService enfantService, FamilleRepository familleRepository) {
+    private final EtudeRepository etudeRepo;
+    public EnfantController(
+            EnfantService enfantService,
+            FamilleRepository familleRepository,
+            EtudeRepository etudeRepo
+    ) {
         this.enfantService = enfantService;
         this.familleRepository = familleRepository;
+        this.etudeRepo = etudeRepo;
     }
 
     @PostMapping
@@ -95,12 +101,31 @@ public class EnfantController {
 
         // ✅ Gestion null safe pour niveauScolaireId
         Object niveauObj = payload.get("niveauScolaireId");
+
         if (niveauObj != null) {
             Long niveauId = ((Number) niveauObj).longValue();
-            NiveauScolaire niveau = enfantService.getNiveauById(niveauId);
-            // mettre à jour la relation si nécessaire
-        }
 
+            Etude etude = etudeRepo.findLatestEtudeByEnfantId(id);
+
+            if (etude != null && niveauId != 0) {
+                NiveauScolaire niveau = enfantService.getNiveauById(niveauId);
+                etude.setNiveauScolaire(niveau);
+                etudeRepo.save(etude);
+            }
+        }
+        Object ecoleObj = payload.get("ecoleId");
+
+        if (ecoleObj != null) {
+            Long ecoleId = ((Number) ecoleObj).longValue();
+
+            Etude etude = etudeRepo.findLatestEtudeByEnfantId(id);
+
+            if (etude != null && ecoleId != 0) {
+                Ecole ecole = enfantService.getEcoleById(ecoleId);
+                etude.setEcole(ecole);
+                etudeRepo.save(etude);
+            }
+        }
         Enfant updatedEnfant = enfantService.updateEnfant(enfant);
 
         return ResponseEntity.ok(updatedEnfant);
@@ -141,5 +166,8 @@ public class EnfantController {
         return ResponseEntity.ok(enfantService.saveEcole(ecole));
     }
 
-
+    @GetMapping("/{id}/etude")
+    public Etude getLatestEtudeByEnfant(@PathVariable Long id) {
+        return etudeRepo.findLatestEtudeByEnfantId(id);
+    }
 }

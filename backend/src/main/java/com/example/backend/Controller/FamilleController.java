@@ -207,20 +207,57 @@ public class FamilleController {
 
     // 🔹 Mettre à jour une famille existante
     @PutMapping("/{id}")
-    public Famille updateFamille(@PathVariable Long id, @RequestBody Famille updatedFamille) {
-        System.out.println("Updating family ID: " + id);
+    public Famille updateFamille(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+
         Famille existingFamille = familleService.getFamilleById(id);
+
         if (existingFamille == null) {
             throw new RuntimeException("Famille introuvable avec l'id : " + id);
         }
 
-        existingFamille.setAdresseFamille(updatedFamille.getAdresseFamille());
-        existingFamille.setPhone(updatedFamille.getPhone());
-        existingFamille.setDateInscription(updatedFamille.getDateInscription());
-        existingFamille.setPossedeMalade(updatedFamille.getPossedeMalade());
-        existingFamille.setPersonneMalade(updatedFamille.getPersonneMalade());
-        existingFamille.setTypeFamille(updatedFamille.getTypeFamille());
-        existingFamille.setHabitationFamille(updatedFamille.getHabitationFamille());
+        if (payload.containsKey("adresseFamille")) {
+            existingFamille.setAdresseFamille((String) payload.get("adresseFamille"));
+        }
+
+        if (payload.containsKey("phone")) {
+            existingFamille.setPhone((String) payload.get("phone"));
+        }
+
+        if (payload.containsKey("dateInscription")) {
+            existingFamille.setDateInscription((String) payload.get("dateInscription"));
+        }
+
+        if (payload.containsKey("possedeMalade")) {
+            existingFamille.setPossedeMalade((Boolean) payload.get("possedeMalade"));
+        }
+
+        if (payload.containsKey("personneMalade")) {
+            existingFamille.setPersonneMalade((String) payload.get("personneMalade"));
+        }
+
+        if (payload.containsKey("typeFamilleId") && payload.get("typeFamilleId") != null) {
+            Long typeFamilleId = ((Number) payload.get("typeFamilleId")).longValue();
+
+            if (typeFamilleId != 0) {
+                TypeFamille typeFamille = typeRepo.findById(typeFamilleId)
+                        .orElseThrow(() -> new RuntimeException("TypeFamille non trouvé"));
+                existingFamille.setTypeFamille(typeFamille);
+            } else {
+                existingFamille.setTypeFamille(null);
+            }
+        }
+
+        if (payload.containsKey("habitationFamilleId") && payload.get("habitationFamilleId") != null) {
+            Long habitationFamilleId = ((Number) payload.get("habitationFamilleId")).longValue();
+
+            if (habitationFamilleId != 0) {
+                Habitation habitation = habitationRepo.findById(habitationFamilleId)
+                        .orElseThrow(() -> new RuntimeException("Habitation non trouvée"));
+                existingFamille.setHabitationFamille(habitation);
+            } else {
+                existingFamille.setHabitationFamille(null);
+            }
+        }
 
         return familleService.saveFamille(existingFamille);
     }

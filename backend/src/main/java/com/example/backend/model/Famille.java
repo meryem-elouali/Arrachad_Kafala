@@ -30,8 +30,8 @@ public class Famille {
         this.personneMalade = personneMalade;
     }
 
-    @Column(name = "possede_malade")
-    private Boolean possedeMalade = false;
+    @Column(name = "possede_malade", columnDefinition = "TINYINT(1)")
+    private Boolean possedeMalade;
 
     public Boolean getPossedeMalade() { return possedeMalade; }
     public void setPossedeMalade(Boolean possedeMalade) { this.possedeMalade = possedeMalade; }

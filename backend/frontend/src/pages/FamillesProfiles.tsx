@@ -43,8 +43,9 @@ const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem 
       if (!res.ok) throw new Error("Erreur serveur");
       const savedItem = await res.json();
       const newOpt = { value: savedItem.id, label: savedItem.nom }; // number
-      setOpts((prev) => [...prev, newOpt]);
-      if (onNewItem) onNewItem(newOpt);
+
+    if (onNewItem) onNewItem(newOpt);
+    else setOpts((prev) => [...prev, newOpt]);
       onChange(newOpt.value); // sélection automatique
       setNewOption("");
       setAdding(false);
@@ -60,7 +61,7 @@ const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem 
         {opts.find((o) => o.value === value)?.label || placeholder}
       </div>
       {open && (
-        <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto">
+      <div className="absolute left-0 right-0 top-full z-[99999] mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-y-auto">
           {opts.map((opt) => (
             <div key={opt.value} className="px-4 py-2 hover:bg-gray-100 cursor-pointer" onClick={() => handleSelect(opt)}>
               {opt.label}
@@ -95,10 +96,10 @@ interface Enfant {
   photoEnfant?: string;
   typeMaladie: string;
     estMalade: boolean;
-     niveauscolaire?: {
-        id: number;
-        nom: string;
-      };
+   niveauScolaire?: {
+     id: number;
+     nom: string;
+   };
    familleId: number;
 }
 
@@ -116,10 +117,19 @@ interface Famille {
   typeFamille?: { id: number; nom: string };
   habitationFamille?: { id: number; nom: string };
   enfants?: Enfant[];
-}
+}const InfoItem = ({ label, value }: { label: string; value: any }) => (
+   <div className="min-w-0 max-w-full">
+     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
+       {label}
+     </p>
 
+     <p className="text-sm font-medium text-gray-800 dark:text-white/90 whitespace-normal break-words">
+       {value || "غير محدد"}
+     </p>
+   </div>
+ );
 export default function FamillesProfiles() {
-  const [modalType, setModalType] = useState<null | "العائلة" | "address" | "Mere">(null); // 👈 Ajouté "Mere" au type
+ const [modalType, setModalType] = useState<null | "العائلة" | "Mere" | "Pere" | "Enfant">(null);
   const [famille, setFamille] = useState<Famille | null>(null);
   const [habitations, setHabitations] = useState<Option[]>([]);
   const [typesFamilles, setTypesFamilles] = useState<Option[]>([]);
@@ -128,7 +138,8 @@ export default function FamillesProfiles() {
    const [pereFormLoaded, setPereFormLoaded] = useState(false);
 const [currentEnfant, setCurrentEnfant] = useState<Enfant | null>(null);
 const [niveauxScolaires, setNiveauxScolaires] = useState<Option[]>([]);
-
+const [ecoles, setEcoles] = useState<Option[]>([]);
+const [etudesEnfants, setEtudesEnfants] = useState<Record<number, any>>({});
   const [formData, setFormData] = useState({
     typeFamilleId: 0,
     habitationFamilleId: 0,
@@ -177,6 +188,7 @@ const [niveauxScolaires, setNiveauxScolaires] = useState<Option[]>([]);
     typeMaladie: "",
      photoEnfant: "",
     niveauscolaireId: 0,
+    ecoleId: 0,
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -229,7 +241,19 @@ useEffect(() => {
   };
   fetchNiveaux();
 }, []);
+useEffect(() => {
+  const fetchEcoles = async () => {
+    try {
+      const res = await fetch("http://localhost:8080/api/enfant/ecole");
+      const data = await res.json();
+      setEcoles(data.map((e: any) => ({ value: e.id, label: e.nom })));
+    } catch (err) {
+      console.error("Erreur fetch écoles:", err);
+    }
+  };
 
+  fetchEcoles();
+}, []);
   useEffect(() => {
     if (famille?.mere) {
       setMereForm({
@@ -272,20 +296,6 @@ useEffect(() => {
         setPereFormLoaded(true); // 👈 Marque mereForm comme chargé
       }
     }, [famille]);
-useEffect(() => {
-  if (currentEnfant) {
-    setEnfantForm({
-      id: currentEnfant.id,
-      nom: currentEnfant.nom || "",
-      prenom: currentEnfant.prenom || "",
-      dateNaissance: currentEnfant.dateNaissance || "",
-      estMalade: currentEnfant.estMalade || false,
-      typeMaladie: currentEnfant.typeMaladie || "",
-        photoEnfant: currentEnfant.photoEnfant || "" ,
-      niveauscolaireId: currentEnfant.niveauscolaire?.id || 0
-    });
-  }
-}, [currentEnfant]);
 
   // Fonction handleChange spécifique mère
   const handleMereChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -428,7 +438,29 @@ const handleSavePere = async () => {
     };
     fetchFamille();
   }, []);
+useEffect(() => {
+  const fetchEtudesEnfants = async () => {
+    if (!famille?.enfants) return;
 
+    const result: Record<number, any> = {};
+
+    for (const enfant of famille.enfants) {
+      try {
+        const res = await fetch(`http://localhost:8080/api/enfant/${enfant.id}/etude`);
+        if (res.ok) {
+          const etude = await res.json();
+          result[enfant.id] = etude;
+        }
+      } catch (err) {
+        console.error("Erreur récupération étude enfant:", err);
+      }
+    }
+
+    setEtudesEnfants(result);
+  };
+
+  fetchEtudesEnfants();
+}, [famille]);
   useEffect(() => {
     if (famille && typesFamilles.length > 0 && habitations.length > 0) {
       if (famille.typeFamille && famille.typeFamille.id !== 0 && !typesFamilles.some(t => t.value === famille.typeFamille.id)) {
@@ -450,10 +482,31 @@ const handleSavePere = async () => {
     }
   }, [famille, typesFamilles, habitations]);
 
-  const openModal = (type: "العائلة" | "Mere" | "Pere"| "Enfant", enfant?: Enfant ) => {
-    setModalType(type);
-    if (enfant) setCurrentEnfant(enfant);
-  };
+ const openModal = async (
+   type: "العائلة" | "Mere" | "Pere" | "Enfant",
+   enfant?: Enfant
+ ) => {
+   setModalType(type);
+
+   if (type === "Enfant" && enfant) {
+     setCurrentEnfant(enfant);
+
+     const res = await fetch(`http://localhost:8080/api/enfant/${enfant.id}/etude`);
+     const etude = await res.json();
+
+     setEnfantForm({
+       id: enfant.id,
+       nom: enfant.nom || "",
+       prenom: enfant.prenom || "",
+       dateNaissance: enfant.dateNaissance || "",
+       estMalade: enfant.estMalade || false,
+       typeMaladie: enfant.typeMaladie || "",
+       photoEnfant: enfant.photoEnfant || "",
+       niveauscolaireId: etude?.niveauScolaire?.id || 0,
+        ecoleId: etude?.ecole?.id || 0,
+     });
+   }
+ };
   const closeModal = () => {
     setModalType(null);
     if (modalType === "Mere") setMereFormLoaded(false);
@@ -479,6 +532,7 @@ const handleSaveEnfant = async () => {
       typeMaladie: enfantForm.typeMaladie || "",
       niveauScolaireId: enfantForm.niveauscolaireId || null,
       photoEnfantBase64: enfantForm.photoEnfant || null, // Base64
+      ecoleId: enfantForm.ecoleId || null,
     };
 
     console.log("Payload JSON à envoyer :", payload);
@@ -523,18 +577,22 @@ const handleSave = async () => {
   if (!famille) return;
 
   try {
-    const formDataToSend = new FormData();
-    if (formData.typeFamilleId) formDataToSend.append('typeFamille.id', formData.typeFamilleId.toString());
-    if (formData.habitationFamilleId) formDataToSend.append('habitationFamille.id', formData.habitationFamilleId.toString());
-    formDataToSend.append('adresseFamille', formData.adresseFamille);
-    formDataToSend.append('phone', formData.phone);
-    formDataToSend.append('dateInscription', formData.dateInscription);
-    formDataToSend.append('possedeMalade', formData.possedeMalade.toString());
-    formDataToSend.append('personneMalade', formData.personneMalade);
+    const payload = {
+      typeFamilleId: formData.typeFamilleId || null,
+      habitationFamilleId: formData.habitationFamilleId || null,
+      adresseFamille: formData.adresseFamille,
+      phone: formData.phone,
+      dateInscription: formData.dateInscription,
+      possedeMalade: formData.possedeMalade,
+      personneMalade: formData.personneMalade,
+    };
 
     const res = await fetch(`http://localhost:8080/api/famille/${famille.id}`, {
       method: "PUT",
-      body: formDataToSend,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
       mode: "cors",
       credentials: "include",
     });
@@ -557,14 +615,12 @@ const handleSave = async () => {
       personneMalade: updatedFamille.personneMalade || "",
     });
 
+    closeModal();
   } catch (err: any) {
     console.error("Erreur fetch PUT:", err);
     alert(`Erreur réseau ou serveur: ${err.message}`);
   }
-
-  closeModal();
 };
-
 
   const [showPdf, setShowPdf] = useState(false);
    const pdfRef = useRef<HTMLDivElement>(null);
@@ -948,7 +1004,7 @@ if (modalType === "Enfant" && currentEnfant) {
        </h4>
 
        <form dir="rtl" className="flex flex-col">
-         <div className="px-2 overflow-y-auto custom-scrollbar">
+        <div className="px-2 overflow-visible">
            <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
   <div className="flex flex-col items-center gap-2 mb-4">
               <Label>صورة الام</Label>
@@ -1039,11 +1095,28 @@ if (modalType === "Enfant" && currentEnfant) {
                <Select
                  options={niveauxScolaires}
                  value={enfantForm.niveauscolaireId}
-                 onChange={(val: number) => setEnfantForm(prev => ({ ...prev, niveauscolaireId: val }))}
+                 onChange={(val: number) =>
+                   setEnfantForm(prev => ({ ...prev, niveauscolaireId: val }))
+                 }
                  placeholder="Sélectionnez le niveau scolaire"
+                 apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
+                 onNewItem={(newOpt: Option) =>
+                   setNiveauxScolaires(prev => [...prev, newOpt])
+                 }
                />
              </div>
-
+<div>
+  <Label>المدرسة</Label>
+  <Select
+    options={ecoles}
+    value={enfantForm.ecoleId}
+    onChange={(val: number) =>
+      setEnfantForm(prev => ({ ...prev, ecoleId: val }))
+    }
+    placeholder="Sélectionnez l'école"
+    apiUrl="http://localhost:8080/api/enfant/ecole"
+  />
+</div>
            </div>
          </div>
 
@@ -1078,8 +1151,8 @@ if (modalType === "Enfant" && currentEnfant) {
                     <div className="flex flex-col items-center w-full gap-6 xl:flex-row">
                       <div className="flex gap-4">
                            {famille.pere?.photoPere && (
-                             <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
-                               <img
+                           <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
+                             <img
                                  src={`data:image/jpeg;base64,${famille.pere.photoPere}`}
                                  alt="Père"
                                  className="w-full h-full object-cover"
@@ -1089,8 +1162,8 @@ if (modalType === "Enfant" && currentEnfant) {
 
                            {/* Image de la mère */}
                        {famille.mere?.photoMere && (
-                         <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
-                           <img
+                   <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
+                       <img
                              src={`data:image/jpeg;base64,${famille.mere.photoMere}`}
                              alt="Père"
                              className="w-full h-full object-cover"
@@ -1104,7 +1177,7 @@ if (modalType === "Enfant" && currentEnfant) {
     .map((enfant, index) => (
       <div
         key={index}
-        className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100"
+      className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100"
       >
         <img
           src={`data:image/jpeg;base64,${enfant.photoEnfant}`}
@@ -1167,8 +1240,8 @@ if (modalType === "Enfant" && currentEnfant) {
                </h4>
  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
   {famille.mere?.photoMere && (
-                                                          <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
-                                                            <img
+                                                   <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
+                                                          <img
                                                               src={`data:image/jpeg;base64,${famille.mere.photoMere}`}
                                                               alt="Père"
                                                               className="w-full h-full object-cover"
@@ -1176,93 +1249,33 @@ if (modalType === "Enfant" && currentEnfant) {
                                                           </div>
                                                         )}
              <div>
-               <div className="grid grid-cols-2 gap-4 lg:grid-cols-5 lg:gap-7 2xl:gap-x-32">
+             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.5fr_1.5fr_1fr_1fr] gap-4 text-right items-start">
                  {famille.mere ? (
-                   famille.mere.estDecedee ? (
-                     // Cas mère décédée : n'afficher que nom et date de décès
-                     <>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الاسم الكامل</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {`${famille.mere.nom} ${famille.mere.prenom}`}
-                         </p>
-                       </div>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">تاريخ الوفاة</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.dateDeces || "غير محدد"}
-                         </p>
-                       </div>
-                     </>
-                   ) : (
-                     // Cas mère vivante : afficher tous les autres champs
-                     <>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الاسم الكامل</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {`${famille.mere.nom} ${famille.mere.prenom}`}
-                         </p>
-                       </div>
+                famille.mere.estDecedee ? (
+                  <>
+                    <InfoItem label="الاسم الكامل" value={`${famille.mere.nom} ${famille.mere.prenom}`} />
+                    <InfoItem label="تاريخ الوفاة" value={famille.mere.dateDeces} />
+                  </>
+                ) : (
+                  <>
+                    <InfoItem label="الاسم الكامل" value={`${famille.mere.nom} ${famille.mere.prenom}`} />
+                    <InfoItem label="الهاتف" value={famille.mere.phone} />
+                    <InfoItem label="رقم البطاقة الوطنية" value={famille.mere.cin} />
+                    <InfoItem label="تاريخ الازدياد" value={famille.mere.dateNaissance} />
+                    <InfoItem label="مكان الازدياد" value={famille.mere.villeNaissance} />
+                    <InfoItem label="هل الام مريضة؟" value={famille.mere.estMalade ? "نعم" : "لا"} />
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الهاتف</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.phone || "غير محدد"}
-                         </p>
-                       </div>
+                    {famille.mere.estMalade && (
+                      <InfoItem label="نوع المرض" value={famille.mere.typeMaladie} />
+                    )}
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">رقم البطاقة الوطنية</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.cin || "غير محدد"}
-                         </p>
-                       </div>
+                    <InfoItem label="هل الام تعمل؟" value={famille.mere.estTravaille ? "نعم" : "لا"} />
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">تاريخ الازدياد</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.dateNaissance || "غير محدد"}
-                         </p>
-                       </div>
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">مكان الازدياد</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.villeNaissance || "غير محدد"}
-                         </p>
-                       </div>
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">هل الام مريصة?</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.estMalade ? "نعم" : "لا"}
-                         </p>
-                       </div>
-                       {famille.mere.estMalade && (
-                         <div>
-                           <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">نوع المرض</p>
-                           <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                             {famille.mere.typeMaladie || "غير محدد"}
-                           </p>
-                         </div>
-                       )}
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">هل الام تعمل?</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.mere.estTravaille ? "نعم" : "لا"}
-                         </p>
-                       </div>
-                       {famille.mere.estTravaille && (
-                         <div>
-                           <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">نوع العمل</p>
-                           <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                             {famille.mere.typeTravail || "غير محدد"}
-                           </p>
-                         </div>
-                       )}
-                     </>
-                   )
+                    {famille.mere.estTravaille && (
+                      <InfoItem label="نوع العمل" value={famille.mere.typeTravail} />
+                    )}
+                  </>
+                )
                  ) : (
                    <p className="text-sm text-gray-500 dark:text-gray-400 col-span-full">لا توجد معلومات</p>
                  )}
@@ -1304,8 +1317,8 @@ if (modalType === "Enfant" && currentEnfant) {
                </h4>
  <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
   {famille.pere?.photoPere && (
-                                                          <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
-                                                            <img
+                                                        <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
+                                                          <img
                                                               src={`data:image/jpeg;base64,${famille.pere.photoPere}`}
                                                               alt="Père"
                                                               className="w-full h-full object-cover"
@@ -1313,93 +1326,33 @@ if (modalType === "Enfant" && currentEnfant) {
                                                           </div>
                                                         )}
              <div>
-               <div className="grid grid-cols-2 gap-4 lg:grid-cols-5 lg:gap-7 2xl:gap-x-32">
+             <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.5fr_1.5fr_1fr_1fr] gap-4 text-right items-start">
                  {famille.pere ? (
-                   famille.pere.estDecedee ? (
-                     // Cas mère décédée : n'afficher que nom et date de décès
-                     <>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الاسم الكامل</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {`${famille.pere.nom} ${famille.pere.prenom}`}
-                         </p>
-                       </div>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">تاريخ الوفاة</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.dateDeces || "غير محدد"}
-                         </p>
-                       </div>
-                     </>
-                   ) : (
-                     // Cas mère vivante : afficher tous les autres champs
-                     <>
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الاسم الكامل</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {`${famille.pere.nom} ${famille.pere.prenom}`}
-                         </p>
-                       </div>
+                 famille.pere.estDecedee ? (
+                   <>
+                     <InfoItem label="الاسم الكامل" value={`${famille.pere.nom} ${famille.pere.prenom}`} />
+                     <InfoItem label="تاريخ الوفاة" value={famille.pere.dateDeces} />
+                   </>
+                 ) : (
+                   <>
+                     <InfoItem label="الاسم الكامل" value={`${famille.pere.nom} ${famille.pere.prenom}`} />
+                     <InfoItem label="الهاتف" value={famille.pere.phone} />
+                     <InfoItem label="رقم البطاقة الوطنية" value={famille.pere.cin} />
+                     <InfoItem label="تاريخ الازدياد" value={famille.pere.dateNaissance} />
+                     <InfoItem label="مكان الازدياد" value={famille.pere.villeNaissance} />
+                     <InfoItem label="هل الاب مريض؟" value={famille.pere.estMalade ? "نعم" : "لا"} />
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الهاتف</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.phone || "غير محدد"}
-                         </p>
-                       </div>
+                     {famille.pere.estMalade && (
+                       <InfoItem label="نوع المرض" value={famille.pere.typeMaladie} />
+                     )}
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">رقم البطاقة الوطنية</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.cin || "غير محدد"}
-                         </p>
-                       </div>
+                     <InfoItem label="هل الاب يعمل؟" value={famille.pere.estTravaille ? "نعم" : "لا"} />
 
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">تاريخ الازدياد</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.dateNaissance || "غير محدد"}
-                         </p>
-                       </div>
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">مكان الازدياد</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.villeNaissance || "غير محدد"}
-                         </p>
-                       </div>
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">هل الام مريصة?</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.estMalade ? "نعم" : "لا"}
-                         </p>
-                       </div>
-                       {famille.pere.estMalade && (
-                         <div>
-                           <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">نوع المرض</p>
-                           <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                             {famille.pere.typeMaladie || "غير محدد"}
-                           </p>
-                         </div>
-                       )}
-
-                       <div>
-                         <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">هل الام تعمل?</p>
-                         <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                           {famille.pere.estTravaille ? "نعم" : "لا"}
-                         </p>
-                       </div>
-                       {famille.pere.estTravaille && (
-                         <div>
-                           <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">نوع العمل</p>
-                           <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                             {famille.pere.typeTravail || "غير محدد"}
-                           </p>
-                         </div>
-                       )}
-                     </>
-                   )
+                     {famille.pere.estTravaille && (
+                       <InfoItem label="نوع العمل" value={famille.pere.typeTravail} />
+                     )}
+                   </>
+                 )
                  ) : (
                    <p className="text-sm text-gray-500 dark:text-gray-400 col-span-full">لا توجد معلومات</p>
                  )}
@@ -1440,14 +1393,13 @@ if (modalType === "Enfant" && currentEnfant) {
          <div className="flex flex-col gap-6">
            {famille.enfants && famille.enfants.length > 0 ? (
              famille.enfants.map((enfant: Enfant) => (
-               <div
-                 key={enfant.id}
-                 className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between border p-4 rounded-lg bg-gray-50 dark:bg-gray-800"
-               >
+              <div
+                key={enfant.id}
+              className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between border p-4 rounded-lg bg-gray-50 dark:bg-gray-800" >
                  {/* Photo de l'enfant */}
                  {enfant.photoEnfant && (
-                   <div className="w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
-                     <img
+                <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
+                  <img
                        src={`data:image/jpeg;base64,${enfant.photoEnfant}`}
                        alt={`${enfant.prenom} ${enfant.nom}`}
                        className="w-full h-full object-cover"
@@ -1455,45 +1407,19 @@ if (modalType === "Enfant" && currentEnfant) {
                    </div>
                  )}
 
-                 {/* Infos de l'enfant */}
-                 <div className="grid grid-cols-2 gap-4 lg:grid-cols-6 lg:gap-7 2xl:gap-x-32">
-                   <div>
-                     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">الاسم الكامل</p>
-                     <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                       {`${enfant.nom} ${enfant.prenom}`}
-                     </p>
-                   </div>
+                {/* Infos de l'enfant */}
+         <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.5fr_1.5fr_1fr_1fr] gap-4 text-right items-start">
+           <InfoItem label="الاسم الكامل" value={`${enfant.nom} ${enfant.prenom}`} />
+           <InfoItem label="تاريخ الازدياد" value={enfant.dateNaissance} />
+           <InfoItem label="المستوى الدراسي" value={etudesEnfants[enfant.id]?.niveauScolaire?.nom} />
+           <InfoItem label="المدرسة" value={etudesEnfants[enfant.id]?.ecole?.nom} />
+           <InfoItem label="هل الطفل مريض؟" value={enfant.estMalade ? "نعم" : "لا"} />
 
-                   <div>
-                     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">تاريخ الازدياد</p>
-                     <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                       {enfant.dateNaissance || "غير محدد"}
-                     </p>
-                   </div>
+           {enfant.estMalade && (
+             <InfoItem label="نوع المرض" value={enfant.typeMaladie} />
+           )}
 
-                   <div>
-                     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">المستوى الدراسي</p>
-                     <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                       {enfant.niveauscolaire?.nom || "غير محدد"}
-                     </p>
-                   </div>
-
-                   <div>
-                     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">هل الطفل مريض؟</p>
-                     <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                       {enfant.estMalade ? "نعم" : "لا"}
-                     </p>
-                   </div>
-
-                   {enfant.estMalade && (
-                     <div>
-                       <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">نوع المرض</p>
-                       <p className="text-sm font-medium text-gray-800 dark:text-white/90">
-                         {enfant.typeMaladie || "غير محدد"}
-                       </p>
-                     </div>
-                   )}
-  </div>
+                </div>
                    {/* Bouton pour éditer l'enfant */}
                    <button
 
@@ -1542,7 +1468,7 @@ if (modalType === "Enfant" && currentEnfant) {
         </div>
 
       <Modal isOpen={modalType !== null} onClose={closeModal} className="max-w-[700px] m-4">
-              <div className="no-scrollbar w-full max-w-[700px] overflow-y-auto rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
+           <div className="no-scrollbar w-full max-w-[700px] overflow-visible rounded-3xl bg-white p-4 dark:bg-gray-900 lg:p-11">
                 {renderModalContent()}
               </div>
             </Modal>
