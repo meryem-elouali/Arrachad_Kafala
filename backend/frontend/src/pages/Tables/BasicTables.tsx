@@ -9,7 +9,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
-
+import { Dialog } from "primereact/dialog";
+import { Checkbox } from "primereact/checkbox";
 export default function FamillesTable() {
   const [familles, setFamilles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,7 +24,19 @@ export default function FamillesTable() {
   });
 
   const [typesFamille, setTypesFamille] = useState([]);
+const [exportDialog, setExportDialog] = useState(false);
 
+const [exportOptions, setExportOptions] = useState({
+  typeFamille: null,
+  minEnfants: "",
+  maxEnfants: "",
+  fields: {
+    nomFamille: true,
+    nomCompletMere: true,
+    nombreEnfants: true,
+    typeFamilleNom: true,
+  },
+});
   useEffect(() => {
     axios.get('http://localhost:8080/api/famille')
       .then(res => {
@@ -47,16 +60,14 @@ export default function FamillesTable() {
         setLoading(false);
       });
   }, []);
-
-  const actionBodyTemplate = (rowData) => (
-    <Button
-      label="Voir"
-      icon="pi pi-eye"
-      className="p-button-info"
-      onClick={() => navigate(`/familleprofile/${rowData.id}`)}
-    />
-  );
-
+const actionBodyTemplate = (rowData) => (
+  <Button
+    label="عرض التفاصيل"
+    icon="pi pi-eye"
+    className="view-btn"
+    onClick={() => navigate(`/familleprofile/${rowData.id}`)}
+  />
+);
  const nombreEnfantsFilter = (options) => (
    <InputText
      type="number"
@@ -92,104 +103,299 @@ export default function FamillesTable() {
    />
  );
 const handleExport = () => {
-  // Récupérer les données filtrées
-  let dataToExport = familles;
+  let dataToExport = [...familles];
 
-  // Appliquer manuellement les filtres si nécessaire
-  Object.keys(filters).forEach(key => {
-    const filter = filters[key];
-    if (filter && filter.value !== null && filter.value !== '') {
-      if (filter.matchMode === FilterMatchMode.CONTAINS) {
-        dataToExport = dataToExport.filter(item =>
-          item[key]?.toString().toLowerCase().includes(filter.value.toString().toLowerCase())
-        );
-      } else if (filter.matchMode === FilterMatchMode.EQUALS) {
-        dataToExport = dataToExport.filter(item =>
-          item[key] === filter.value
-        );
-      }
+  if (exportOptions.typeFamille) {
+    dataToExport = dataToExport.filter(
+      (item: any) => item.typeFamilleNom === exportOptions.typeFamille
+    );
+  }
+
+  if (exportOptions.minEnfants !== "") {
+    dataToExport = dataToExport.filter(
+      (item: any) => Number(item.nombreEnfants || 0) >= Number(exportOptions.minEnfants)
+    );
+  }
+
+  if (exportOptions.maxEnfants !== "") {
+    dataToExport = dataToExport.filter(
+      (item: any) => Number(item.nombreEnfants || 0) <= Number(exportOptions.maxEnfants)
+    );
+  }
+
+  const exportData = dataToExport.map((item: any) => {
+    const row: any = {};
+
+    if (exportOptions.fields.nomFamille) {
+      row["اسم العائلة"] = `عائلة ${item.nomFamille}`;
     }
+
+    if (exportOptions.fields.nomCompletMere) {
+      row["اسم الأم الكامل"] = item.nomCompletMere;
+    }
+
+    if (exportOptions.fields.nombreEnfants) {
+      row["عدد الأطفال"] = item.nombreEnfants;
+    }
+
+    if (exportOptions.fields.typeFamilleNom) {
+      row["نوع العائلة"] = item.typeFamilleNom;
+    }
+
+    return row;
   });
 
-  // Préparer les colonnes que vous voulez exporter
-  const exportData = dataToExport.map(item => ({
-    "اسم العائلة": item.nomFamille,
-    "اسم الأم الكامل": item.nomCompletMere,
-    "عدد الأطفال": item.nombreEnfants,
-    "نوع العائلة": item.typeFamilleNom,
-  }));
+  if (exportData.length === 0) {
+    alert("لا توجد بيانات مطابقة للتصدير");
+    return;
+  }
 
-  // Créer le workbook
   const worksheet = XLSX.utils.json_to_sheet(exportData);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Familles");
 
-  // Exporter le fichier Excel
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Familles");
   XLSX.writeFile(workbook, "familles.xlsx");
+
+  setExportDialog(false);
 };
 
 
-  return (
-    <div className="p-6 bg-white rounded-xl shadow-md" dir="rtl">
-      <h1 className="text-2xl font-bold mb-4">📋 قائمة العائلات</h1>
 
-      <DataTable
-        value={familles}
-        paginator
-        rows={10}
-        loading={loading}
-        filterDisplay="row"
-        filters={filters}
-        onFilter={(e) => setFilters(e.filters)}
-        className="p-datatable-striped p-datatable-gridlines"
-        emptyMessage="لا توجد بيانات"
+return (
+  <div className="min-h-screen bg-slate-50 p-6" dir="rtl">
+    <div className="mx-auto max-w-7xl space-y-6">
 
-      >
-        <Column
-          field="nomFamille"
-          header="اسم العائلة"
-          filter
-          filterPlaceholder="بحث..."
-          sortable
-          showFilterMenu={false}
-          style={{ textAlign: 'right' }}
+      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_35px_rgba(15,23,42,0.06)]">
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="mb-2 inline-flex rounded-full bg-blue-50 px-4 py-1 text-sm font-bold text-blue-700">
+              إدارة العائلات
+            </div>
+
+            <h1 className="text-3xl font-extrabold text-slate-900">
+              قائمة العائلات
+            </h1>
+
+            <p className="mt-2 text-sm text-slate-500">
+              عرض، بحث، تصفية وتصدير بيانات العائلات بطريقة منظمة
+            </p>
+          </div>
+
+        <Button
+          icon="pi pi-file-excel"
+          label="تصدير Excel"
+          className="export-btn"
+          onClick={() => setExportDialog(true)}
         />
-        <Column
-          field="nomCompletMere"
-          header="اسم الأم الكامل"
-          filter
-          filterPlaceholder="بحث..."
-          sortable
-          showFilterMenu={false}
-          style={{ textAlign: 'right' }}
-        />
-        <Column
-          field="nombreEnfants"
-          header="عدد الأطفال"
-          filter
-          filterElement={nombreEnfantsFilter}
-          sortable
-          showFilterMenu={false}
-          style={{ textAlign: 'center' }}
-        />
-        <Column
-          field="typeFamilleNom"
-          header="نوع العائلة"
-          filter
-          filterElement={typeFamilleFilter}
-          sortable
-          showFilterMenu={false}
-          style={{ textAlign: 'right' }}
-        />
-        <Column
-          body={actionBodyTemplate}
-          header="الإجراء"
-          style={{ textAlign: 'center', width: '120px' }}
-        />
-      </DataTable>
-           <div className="mt-4 flex justify-start">
-                  <Button  icon="pi pi-download"  label="تصدير" className="p-button-success" onClick={handleExport}></Button>
-                </div>
+        </div>
+
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="stat-card">
+            <span>عدد العائلات</span>
+            <strong>{familles.length}</strong>
+          </div>
+
+          <div className="stat-card">
+            <span>إجمالي الأطفال</span>
+            <strong>
+              {familles.reduce((sum, f: any) => sum + Number(f.nombreEnfants || 0), 0)}
+            </strong>
+          </div>
+
+          <div className="stat-card">
+            <span>أنواع العائلات</span>
+            <strong>{typesFamille.length}</strong>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_10px_35px_rgba(15,23,42,0.06)]">
+        <DataTable
+          value={familles}
+          paginator
+          rows={10}
+          loading={loading}
+          filterDisplay="row"
+          filters={filters}
+          onFilter={(e) => setFilters(e.filters)}
+          emptyMessage="لا توجد بيانات"
+          stripedRows
+          showGridlines={false}
+          className="pro-family-table"
+          tableStyle={{ minWidth: "900px" }}
+          paginatorTemplate="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown"
+          rowsPerPageOptions={[5, 10, 20, 50]}
+        >
+          <Column
+            field="nomFamille"
+            header="اسم العائلة"
+            filter
+            filterPlaceholder="بحث..."
+            sortable
+            showFilterMenu={false}
+            body={(row) => (
+              <div className="family-name">
+                <span className="family-avatar">
+                  {row.nomFamille?.charAt(0) || "ع"}
+                </span>
+                <span>عائلة {row.nomFamille}</span>
+              </div>
+            )}
+          />
+
+          <Column
+            field="nomCompletMere"
+            header="اسم الأم الكامل"
+            filter
+            filterPlaceholder="بحث..."
+            sortable
+            showFilterMenu={false}
+          />
+
+          <Column
+            field="nombreEnfants"
+            header="عدد الأطفال"
+            filter
+            filterElement={nombreEnfantsFilter}
+            sortable
+            showFilterMenu={false}
+            body={(row) => <span className="children-badge">{row.nombreEnfants}</span>}
+          />
+
+          <Column
+            field="typeFamilleNom"
+            header="نوع العائلة"
+            filter
+            filterElement={typeFamilleFilter}
+            sortable
+            showFilterMenu={false}
+            body={(row) => <span className="type-badge">{row.typeFamilleNom}</span>}
+          />
+
+          <Column
+            body={actionBodyTemplate}
+            header="الإجراء"
+            style={{ width: "150px" }}
+          />
+        </DataTable>
+      </div>
     </div>
-  );
+    <Dialog
+      header="خيارات التصدير"
+      visible={exportDialog}
+      onHide={() => setExportDialog(false)}
+      style={{ width: "520px" }}
+      dir="rtl"
+      modal
+    >
+      <div className="space-y-5">
+
+        <div>
+          <label className="mb-2 block font-bold text-slate-700">
+            نوع العائلة
+          </label>
+          <Dropdown
+            value={exportOptions.typeFamille}
+            options={typesFamille}
+            onChange={(e) =>
+              setExportOptions(prev => ({
+                ...prev,
+                typeFamille: e.value,
+              }))
+            }
+            placeholder="كل الأنواع"
+            showClear
+            className="w-full"
+            optionLabel="label"
+            optionValue="value"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="mb-2 block font-bold text-slate-700">
+              أقل عدد أطفال
+            </label>
+            <InputText
+              type="number"
+              value={exportOptions.minEnfants}
+              onChange={(e) =>
+                setExportOptions(prev => ({
+                  ...prev,
+                  minEnfants: e.target.value,
+                }))
+              }
+              placeholder="مثلا 1"
+              className="w-full"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block font-bold text-slate-700">
+              أكبر عدد أطفال
+            </label>
+            <InputText
+              type="number"
+              value={exportOptions.maxEnfants}
+              onChange={(e) =>
+                setExportOptions(prev => ({
+                  ...prev,
+                  maxEnfants: e.target.value,
+                }))
+              }
+              placeholder="مثلا 5"
+              className="w-full"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-3 block font-bold text-slate-700">
+            الحقول المراد تصديرها
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              ["nomFamille", "اسم العائلة"],
+              ["nomCompletMere", "اسم الأم الكامل"],
+              ["nombreEnfants", "عدد الأطفال"],
+              ["typeFamilleNom", "نوع العائلة"],
+            ].map(([key, label]) => (
+              <div key={key} className="flex items-center gap-2">
+                <Checkbox
+                  checked={exportOptions.fields[key]}
+                  onChange={(e) =>
+                    setExportOptions(prev => ({
+                      ...prev,
+                      fields: {
+                        ...prev.fields,
+                        [key]: e.checked,
+                      },
+                    }))
+                  }
+                />
+                <span className="font-semibold">{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-3 pt-4">
+          <Button
+            label="إلغاء"
+            className="p-button-text"
+            onClick={() => setExportDialog(false)}
+          />
+
+          <Button
+            label="تصدير"
+            icon="pi pi-download"
+            className="export-btn"
+            onClick={handleExport}
+          />
+        </div>
+      </div>
+    </Dialog>
+  </div>
+);
 }

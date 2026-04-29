@@ -1,6 +1,5 @@
 import { SidebarProvider, useSidebar } from "../context/SidebarContext";
 import { Outlet } from "react-router";
-import AppHeader from "./AppHeader";
 import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 
@@ -8,22 +7,19 @@ const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
 
   return (
-<div dir="rtl" className="min-h-screen xl:flex xl:flex-row-reverse">
+    <div dir="rtl" className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <AppSidebar />
+      <Backdrop />
 
-      <div>
-        <AppSidebar />
-        <Backdrop />
-      </div>
-      <div
-        className={`flex-1 transition-all duration-300 ease-in-out ${
-       isExpanded || isHovered ? "lg:mr-[290px]" : "lg:mr-[90px]"
+      <main
+        className={`min-h-screen transition-all duration-300 ease-in-out ${
+          isExpanded || isHovered ? "lg:mr-[290px]" : "lg:mr-[90px]"
         } ${isMobileOpen ? "mr-0" : ""}`}
       >
-{/**<AppHeader/>**/}
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
+        <div className="w-full p-4 md:p-6">
           <Outlet />
         </div>
-      </div>
+      </main>
     </div>
   );
 };

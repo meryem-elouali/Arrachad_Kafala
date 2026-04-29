@@ -8,7 +8,7 @@ import Input from "../components/form/input/InputField";
 import Label from "../components/form/Label";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import jsPDF from "jspdf";
-import html2canvas from 'html2canvas';
+
 
 interface Option {
   value: number;
@@ -113,21 +113,81 @@ interface Famille {
   typeMaladie: string;
   estMalade: boolean;
   mere?: { photoMere?: string; nom: string; prenom: string; phone: string; cin: string; dateNaissance: string; villeNaissance: string; estMalade: boolean; typeMaladie?: string; estTravaille?: boolean; typeTravail?: string };
-  pere?: { photoPere?: string; nom: string; prenom: string };
+pere?: {
+  photoPere?: string;
+  nom: string;
+  prenom: string;
+  phone: string;
+  cin: string;
+  dateNaissance: string;
+  villeNaissance: string;
+  estMalade: boolean;
+  typeMaladie?: string;
+  estTravaille?: boolean;
+  typeTravail?: string;
+  estDecedee?: boolean;
+  dateDeces?: string;
+};
   typeFamille?: { id: number; nom: string };
   habitationFamille?: { id: number; nom: string };
   enfants?: Enfant[];
-}const InfoItem = ({ label, value }: { label: string; value: any }) => (
-   <div className="min-w-0 max-w-full">
-     <p className="mb-2 text-xs leading-normal text-gray-500 dark:text-gray-400">
-       {label}
-     </p>
+}
+const formatDate = (date?: string) => {
+  if (!date) return "غير محدد";
 
-     <p className="text-sm font-medium text-gray-800 dark:text-white/90 whitespace-normal break-words">
-       {value || "غير محدد"}
-     </p>
-   </div>
- );
+  // accepte: 2026-04-22
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  // accepte déjà: 22/04/2026
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(date)) {
+    return date;
+  }
+
+  return date;
+};
+const InfoItem = ({ label, value }: { label: string; value: any }) => (
+  <div className="min-w-0 overflow-hidden px-2 py-1 text-right">
+    <p className="mb-1 text-xs font-semibold text-gray-500 dark:text-gray-400">
+      {label}
+    </p>
+
+    <p className="max-w-full whitespace-normal break-all text-sm font-bold text-gray-800 dark:text-white/90">
+      {value || "غير محدد"}
+    </p>
+  </div>
+);
+const SectionCard = ({
+  title,
+  children,
+  onEdit,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onEdit?: () => void;
+}) => (
+  <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+    <div className="mb-5 flex items-center justify-between gap-3">
+      <h4 className="text-lg font-bold text-gray-800 dark:text-white">
+        {title}
+      </h4>
+
+      {onEdit && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="no-pdf rounded-full bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+        >
+          تعديل
+        </button>
+      )}
+    </div>
+
+    {children}
+  </div>
+);
 export default function FamillesProfiles() {
  const [modalType, setModalType] = useState<null | "العائلة" | "Mere" | "Pere" | "Enfant">(null);
   const [famille, setFamille] = useState<Famille | null>(null);
@@ -622,26 +682,201 @@ const handleSave = async () => {
   }
 };
 
-  const [showPdf, setShowPdf] = useState(false);
-   const pdfRef = useRef<HTMLDivElement>(null);
   if (!famille || loadingOptions) return <p>Chargement...</p>;
  // TOUJOURS déclaré ici
+const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return window.btoa(binary);
+};
+const loadArabicFont = async (pdf: jsPDF) => {
+  const res = await fetch("/fonts/NotoNaskhArabic-Regular.ttf");
+
+  if (!res.ok) {
+    throw new Error("Police introuvable: /fonts/NotoNaskhArabic-Regular.ttf");
+  }
+
+  const buffer = await res.arrayBuffer();
+  const base64 = arrayBufferToBase64(buffer);
+
+  pdf.addFileToVFS("NotoNaskhArabic-Regular.ttf", base64);
+  pdf.addFont("NotoNaskhArabic-Regular.ttf", "NotoNaskhArabic", "normal");
+  pdf.setFont("NotoNaskhArabic", "normal");
+};
+
+const ar = (pdf: jsPDF, text: string) => {
+  return (pdf as any).processArabic
+    ? (pdf as any).processArabic(text)
+    : text;
+};
+
+const addLine = (pdf: jsPDF, label: string, value: any, y: number) => {
+  pdf.setFontSize(11);
+  pdf.text(ar(pdf, `${label} : ${value || "غير محدد"}`), 190, y, {
+    align: "right",
+  });
+};
+
+const addTitle = (pdf: jsPDF, title: string, y: number) => {
+  pdf.setFillColor(240, 245, 255);
+  pdf.roundedRect(15, y - 7, 180, 10, 2, 2, "F");
+  pdf.setFontSize(14);
+  pdf.text(ar(pdf, title), 190, y, { align: "right" });
+};
+
+const addPhoto = (
+  pdf: jsPDF,
+  base64: string | undefined,
+  x: number,
+  y: number,
+  size = 25
+) => {
+  if (!base64) return;
+
+  try {
+    pdf.addImage(
+      `data:image/jpeg;base64,${base64}`,
+      "JPEG",
+      x,
+      y,
+      size,
+      size
+    );
+  } catch (e) {
+    console.log("Erreur image PDF:", e);
+  }
+};
+
+const checkPage = (pdf: jsPDF, y: number) => {
+  if (y > 270) {
+    pdf.addPage();
+    pdf.setR2L(true);
+    return 20;
+  }
+  return y;
+};
 
 const handleExportPDF = async () => {
-  if (!pdfRef.current) return;
-
-  const canvas = await html2canvas(pdfRef.current, { scale: 2 });
-  const imgData = canvas.toDataURL("image/png");
+  if (!famille) return;
 
   const pdf = new jsPDF("p", "mm", "a4");
-  const pdfWidth = pdf.internal.pageSize.getWidth();
-  const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
 
-  pdf.addImage(imgData, "PNG", 0, 0, pdfWidth, pdfHeight);
-  pdf.save("famille.pdf");
-}; // <-- Bien fermer la fonction
+  await loadArabicFont(pdf);
 
+  pdf.setR2L(true);
+ pdf.setFont("NotoNaskhArabic", "normal");
 
+  let y = 18;
+
+  pdf.setFontSize(20);
+  pdf.text(ar(pdf, "ملف العائلة"), 105, y, { align: "center" });
+
+  y += 12;
+
+  addTitle(pdf, "معلومات عامة عن العائلة", y);
+  y += 14;
+
+  addLine(pdf, "اسم العائلة", famille.pere?.nom ? `عائلة ${famille.pere.nom}` : famille.nomFamille, y); y += 8;
+  addLine(pdf, "نوع الحالة", famille.typeFamille?.nom, y); y += 8;
+  addLine(pdf, "نوع السكن", famille.habitationFamille?.nom, y); y += 8;
+  addLine(pdf, "العنوان", famille.adresseFamille, y); y += 8;
+  addLine(pdf, "الهاتف", famille.phone, y); y += 8;
+  addLine(pdf, "تاريخ التسجيل", famille.dateInscription, y); y += 12;
+
+  addTitle(pdf, "معلومات الأم", y);
+  y += 14;
+
+  addPhoto(pdf, famille.mere?.photoMere, 20, y - 8, 25);
+
+  if (famille.mere) {
+    addLine(pdf, "الاسم الكامل", `${famille.mere.nom} ${famille.mere.prenom}`, y); y += 8;
+
+    if ((famille.mere as any).estDecedee) {
+      addLine(pdf, "الحالة", "متوفاة", y); y += 8;
+      addLine(pdf, "تاريخ الوفاة", (famille.mere as any).dateDeces, y); y += 8;
+    } else {
+      addLine(pdf, "الهاتف", famille.mere.phone, y); y += 8;
+      addLine(pdf, "رقم البطاقة الوطنية", famille.mere.cin, y); y += 8;
+      addLine(pdf, "تاريخ الازدياد", famille.mere.dateNaissance, y); y += 8;
+      addLine(pdf, "مكان الازدياد", famille.mere.villeNaissance, y); y += 8;
+      addLine(pdf, "هل الأم مريضة؟", famille.mere.estMalade ? "نعم" : "لا", y); y += 8;
+      if (famille.mere.estMalade) {
+        addLine(pdf, "نوع المرض", famille.mere.typeMaladie, y); y += 8;
+      }
+      addLine(pdf, "هل الأم تعمل؟", famille.mere.estTravaille ? "نعم" : "لا", y); y += 8;
+      if (famille.mere.estTravaille) {
+        addLine(pdf, "نوع العمل", famille.mere.typeTravail, y); y += 8;
+      }
+    }
+  }
+
+  y += 10;
+  y = checkPage(pdf, y);
+
+  addTitle(pdf, "معلومات الأب", y);
+  y += 14;
+
+  addPhoto(pdf, famille.pere?.photoPere, 20, y - 8, 25);
+
+  if (famille.pere) {
+    addLine(pdf, "الاسم الكامل", `${famille.pere.nom} ${famille.pere.prenom}`, y); y += 8;
+
+    if (famille.pere.estDecedee) {
+      addLine(pdf, "الحالة", "متوفي", y); y += 8;
+      addLine(pdf, "تاريخ الوفاة", famille.pere.dateDeces, y); y += 8;
+    } else {
+      addLine(pdf, "الهاتف", famille.pere.phone, y); y += 8;
+      addLine(pdf, "رقم البطاقة الوطنية", famille.pere.cin, y); y += 8;
+      addLine(pdf, "تاريخ الازدياد", famille.pere.dateNaissance, y); y += 8;
+      addLine(pdf, "مكان الازدياد", famille.pere.villeNaissance, y); y += 8;
+      addLine(pdf, "هل الأب مريض؟", famille.pere.estMalade ? "نعم" : "لا", y); y += 8;
+      if (famille.pere.estMalade) {
+        addLine(pdf, "نوع المرض", famille.pere.typeMaladie, y); y += 8;
+      }
+      addLine(pdf, "هل الأب يعمل؟", famille.pere.estTravaille ? "نعم" : "لا", y); y += 8;
+      if (famille.pere.estTravaille) {
+        addLine(pdf, "نوع العمل", famille.pere.typeTravail, y); y += 8;
+      }
+    }
+  }
+
+  y += 10;
+  y = checkPage(pdf, y);
+
+  addTitle(pdf, "معلومات الأطفال", y);
+  y += 14;
+
+  if (famille.enfants && famille.enfants.length > 0) {
+    famille.enfants.forEach((enfant, index) => {
+      y = checkPage(pdf, y);
+
+      pdf.setFontSize(13);
+      pdf.text(ar(pdf, `الطفل ${index + 1}`), 190, y, { align: "right" });
+
+      addPhoto(pdf, enfant.photoEnfant, 20, y - 5, 22);
+
+      y += 8;
+
+      addLine(pdf, "الاسم الكامل", `${enfant.nom} ${enfant.prenom}`, y); y += 8;
+      addLine(pdf, "تاريخ الازدياد", enfant.dateNaissance, y); y += 8;
+      addLine(pdf, "المستوى الدراسي", etudesEnfants[enfant.id]?.niveauScolaire?.nom, y); y += 8;
+      addLine(pdf, "المدرسة", etudesEnfants[enfant.id]?.ecole?.nom, y); y += 8;
+      addLine(pdf, "هل الطفل مريض؟", enfant.estMalade ? "نعم" : "لا", y); y += 8;
+
+      if (enfant.estMalade) {
+        addLine(pdf, "نوع المرض", enfant.typeMaladie, y);
+        y += 8;
+      }
+
+      y += 8;
+    });
+  } else {
+    addLine(pdf, "الأطفال", "لا توجد معلومات عن الأطفال", y);
+  }
+
+  pdf.save(`ملف_العائلة_${famille.id}.pdf`);
+};
   const renderModalContent = () => {
     if (modalType === "العائلة") {
       return (
@@ -686,22 +921,20 @@ const handleExportPDF = async () => {
                   <Input type="text" name="phone" value={formData.phone} onChange={handleChange} />
                 </div>
 
-                <div>
-                  <Label>date inscription</Label>
-                  <Input
-                    type="text"
-                    name="dateInscription"
-                    placeholder="__/__/____"
-                    value={formData.dateInscription}
-                    onChange={(e) => {
-                      let val = e.target.value.replace(/\D/g, "");
-                      if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-                      if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-                      if (val.length > 10) val = val.slice(0, 10);
-                      setFormData(prev => ({ ...prev, dateInscription: val }));
-                    }}
-                  />
-                </div>
+               <div>
+                 <Label>تاريخ التسجيل</Label>
+                 <Input
+                   type="date"
+                   name="dateInscription"
+                   value={formData.dateInscription}
+                   onChange={(e) =>
+                     setFormData(prev => ({
+                       ...prev,
+                       dateInscription: e.target.value
+                     }))
+                   }
+                 />
+               </div>
 
                 <div>
                   <input
@@ -727,8 +960,8 @@ const handleExportPDF = async () => {
             </div>
 
             <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-              <Button size="sm" variant="outline" onClick={closeModal}>Close</Button>
-                           <button size="sm" variant="outline" type="button" onClick={handleSave}>Save</button>
+              <Button size="sm" variant="outline" onClick={closeModal}>إغلاق</Button>
+                           <button size="sm" variant="outline" type="button" onClick={handleSave}>حفظ</button>
                          </div>
                        </form>
                      </>
@@ -758,11 +991,11 @@ if (modalType === "Mere") {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-gray-400 text-sm">Cliquer pour ajouter</span>
+                  <span className="text-gray-400 text-sm">اضغط لإضافة صورة</span>
                 )}
 
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-white text-sm font-semibold">Modifier</span>
+                  <span className="text-white text-sm font-semibold">تغيير</span>
                 </div>
               </div>
               <input
@@ -858,8 +1091,8 @@ if (modalType === "Mere") {
         </div>
 
         <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-          <Button size="sm" variant="outline" onClick={closeModal}>Close</Button>
-          <button size="sm" variant="outline" type="button" onClick={handleSaveMere}>Save</button>
+          <Button size="sm" variant="outline" onClick={closeModal}>إغلاق</Button>
+          <button size="sm" variant="outline" type="button" onClick={handleSaveMere}>حفظ</button>
         </div>
       </form>
     </>
@@ -889,11 +1122,11 @@ if (modalType === "Pere") {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <span className="text-gray-400 text-sm">Cliquer pour ajouter</span>
+                  <span className="text-gray-400 text-sm">اضغط لإضافة صورة</span>
                 )}
 
                 <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-white text-sm font-semibold">Modifier</span>
+                  <span className="text-white text-sm font-semibold">تغيير</span>
                 </div>
               </div>
               <input
@@ -954,9 +1187,38 @@ if (modalType === "Pere") {
 
                 <div className="flex items-center gap-2">
                   <input type="checkbox" name="estMalade" checked={pereForm.estMalade} onChange={handlePereChange} />
-                  <Label>هل الام مريصة?</Label>
-                </div>
+                <Label>هل الأب مريض؟</Label>
 
+                </div>
+<div className="flex flex-col">
+  <Label>رقم البطاقة الوطنية</Label>
+  <Input
+    type="text"
+    name="cin"
+    value={pereForm.cin}
+    onChange={handlePereChange}
+  />
+</div>
+
+<div className="flex flex-col">
+  <Label>تاريخ الازدياد</Label>
+  <Input
+    type="date"
+    name="dateNaissance"
+    value={pereForm.dateNaissance}
+    onChange={handlePereChange}
+  />
+</div>
+
+<div className="flex flex-col">
+  <Label>مكان الازدياد</Label>
+  <Input
+    type="text"
+    name="villeNaissance"
+    value={pereForm.villeNaissance}
+    onChange={handlePereChange}
+  />
+</div>
                 <div className="flex flex-col">
                   <Label>نوع المرض</Label>
                   <Input
@@ -970,7 +1232,7 @@ if (modalType === "Pere") {
 
                 <div className="flex items-center gap-2">
                   <input type="checkbox" name="estTravaille" checked={pereForm.estTravaille} onChange={handlePereChange} />
-                  <Label>هل الام تعمل?</Label>
+                  <Label>هل الأب يعمل؟</Label>
                 </div>
 
                 <div className="flex flex-col">
@@ -989,8 +1251,8 @@ if (modalType === "Pere") {
         </div>
 
         <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-          <Button size="sm" variant="outline" onClick={closeModal}>Close</Button>
-          <button size="sm" variant="outline" type="button" onClick={handleSavePere}>Save</button>
+          <Button size="sm" variant="outline" onClick={closeModal}>إغلاق</Button>
+          <button size="sm" variant="outline" type="button" onClick={handleSavePere}>حفظ</button>
         </div>
       </form>
     </>
@@ -1007,7 +1269,7 @@ if (modalType === "Enfant" && currentEnfant) {
         <div className="px-2 overflow-visible">
            <div className="grid grid-cols-1 gap-x-6 gap-y-5 lg:grid-cols-2">
   <div className="flex flex-col items-center gap-2 mb-4">
-              <Label>صورة الام</Label>
+             <Label>صورة الطفل</Label>
               <div
                 className="relative w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100 cursor-pointer group"
                 onClick={handlePhotoClick}
@@ -1121,8 +1383,8 @@ if (modalType === "Enfant" && currentEnfant) {
          </div>
 
          <div className="flex items-center gap-3 px-2 mt-6 lg:justify-end">
-           <Button size="sm" variant="outline" onClick={closeModal}>Close</Button>
-           <button size="sm" variant="outline" type="button" onClick={handleSaveEnfant}>Save</button>
+           <Button size="sm" variant="outline" onClick={closeModal}>إغلاق</Button>
+           <button size="sm" variant="outline" type="button" onClick={handleSaveEnfant}>حفظ</button>
          </div>
        </form>
      </>
@@ -1140,11 +1402,23 @@ if (modalType === "Enfant" && currentEnfant) {
         title="React.js Profile Dashboard | TailAdmin - Next.js Admin Dashboard Template"
         description="This is React.js Profile Dashboard page for TailAdmin - React.js Tailwind CSS Admin Dashboard Template"
       />
-      <PageBreadcrumb pageTitle="Profile" />
-      <div ref={pdfRef} dir="rtl" className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        <h3 className="mb-5 text-lg font-semibold text-gray-800 dark:text-white/90 lg:mb-7">
-          Profile
-        </h3>
+     <PageBreadcrumb pageTitle="ملف العائلة" />
+
+
+
+     <div
+
+       dir="rtl"
+       className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:p-8"
+     >
+       <div className="mb-8 border-b border-gray-200 pb-5 text-right dark:border-gray-800">
+         <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white">
+           ملف العائلة
+         </h3>
+         <p className="mt-2 text-sm text-gray-500">
+           جميع المعلومات الشخصية والاجتماعية الخاصة بالعائلة
+         </p>
+       </div>
         <div className="space-y-6">
           <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6">
                   <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
@@ -1190,19 +1464,30 @@ if (modalType === "Enfant" && currentEnfant) {
 
                          </div>
                       <div className="order-3 xl:order-2">
-                        <h4 className="mb-2 text-lg font-semibold text-center text-gray-800 dark:text-white/90 xl:text-left">
-                         عائلة {famille.pere ? `${famille.pere.nom} ` : "N/A"}
-                        </h4>
-                        <div className="flex flex-col items-center gap-1 text-center xl:flex-row xl:gap-3 xl:text-left">
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                           {famille.typeFamille ? `${famille.typeFamille.nom} ` : "N/A"}
-                          </p>
-                          <div className="hidden h-3.5 w-px bg-gray-300 dark:bg-gray-700 xl:block"></div>
-                          <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {famille.adresseFamille ? `${famille.adresseFamille}` : "N/A"}
+                      <h4 className="mb-4 text-2xl font-extrabold text-center text-gray-900 dark:text-white xl:text-right">
+                        عائلة {famille.pere?.nom || famille.nomFamille || "غير محدد"}
+                      </h4>
+                      <div className="grid grid-cols-1 gap-3 text-right sm:grid-cols-2 xl:grid-cols-4">
+                        <InfoItem
+                          label="نوع الحالة"
+                          value={famille.typeFamille?.nom}
+                        />
 
-                          </p>
-                        </div>
+                        <InfoItem
+                          label="نوع السكن"
+                          value={famille.habitationFamille?.nom}
+                        />
+
+                        <InfoItem
+                          label="العنوان"
+                          value={famille.adresseFamille}
+                        />
+
+                        <InfoItem
+                          label="تاريخ التسجيل"
+                          value={formatDate(famille.dateInscription)}
+                        />
+                      </div>
                       </div>
 
                     </div>
@@ -1226,7 +1511,7 @@ if (modalType === "Enfant" && currentEnfant) {
                           fill=""
                         />
                       </svg>
-                      Edit
+                     تعديل
                     </button>
                   </div>
                 </div>
@@ -1254,14 +1539,14 @@ if (modalType === "Enfant" && currentEnfant) {
                 famille.mere.estDecedee ? (
                   <>
                     <InfoItem label="الاسم الكامل" value={`${famille.mere.nom} ${famille.mere.prenom}`} />
-                    <InfoItem label="تاريخ الوفاة" value={famille.mere.dateDeces} />
+                  <InfoItem label="تاريخ الوفاة" value={formatDate(famille.mere.dateDeces)} />
                   </>
                 ) : (
                   <>
                     <InfoItem label="الاسم الكامل" value={`${famille.mere.nom} ${famille.mere.prenom}`} />
                     <InfoItem label="الهاتف" value={famille.mere.phone} />
                     <InfoItem label="رقم البطاقة الوطنية" value={famille.mere.cin} />
-                    <InfoItem label="تاريخ الازدياد" value={famille.mere.dateNaissance} />
+                  <InfoItem label="تاريخ الازدياد" value={formatDate(famille.mere.dateNaissance)} />
                     <InfoItem label="مكان الازدياد" value={famille.mere.villeNaissance} />
                     <InfoItem label="هل الام مريضة؟" value={famille.mere.estMalade ? "نعم" : "لا"} />
 
@@ -1302,7 +1587,7 @@ if (modalType === "Enfant" && currentEnfant) {
                     fill=""
                   />
                 </svg>
-                Edit
+                تعديل
               </button>
             </div>
 
@@ -1331,14 +1616,14 @@ if (modalType === "Enfant" && currentEnfant) {
                  famille.pere.estDecedee ? (
                    <>
                      <InfoItem label="الاسم الكامل" value={`${famille.pere.nom} ${famille.pere.prenom}`} />
-                     <InfoItem label="تاريخ الوفاة" value={famille.pere.dateDeces} />
+                   <InfoItem label="تاريخ الوفاة" value={formatDate(famille.pere.dateDeces)} />
                    </>
                  ) : (
                    <>
                      <InfoItem label="الاسم الكامل" value={`${famille.pere.nom} ${famille.pere.prenom}`} />
                      <InfoItem label="الهاتف" value={famille.pere.phone} />
                      <InfoItem label="رقم البطاقة الوطنية" value={famille.pere.cin} />
-                     <InfoItem label="تاريخ الازدياد" value={famille.pere.dateNaissance} />
+                   <InfoItem label="تاريخ الازدياد" value={formatDate(famille.pere.dateNaissance)} />
                      <InfoItem label="مكان الازدياد" value={famille.pere.villeNaissance} />
                      <InfoItem label="هل الاب مريض؟" value={famille.pere.estMalade ? "نعم" : "لا"} />
 
@@ -1378,7 +1663,7 @@ if (modalType === "Enfant" && currentEnfant) {
                     fill=""
                   />
                 </svg>
-                Edit
+                تعديل
               </button>
 
             </div>
@@ -1395,7 +1680,7 @@ if (modalType === "Enfant" && currentEnfant) {
              famille.enfants.map((enfant: Enfant) => (
               <div
                 key={enfant.id}
-              className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between border p-4 rounded-lg bg-gray-50 dark:bg-gray-800" >
+            className="w-full overflow-hidden flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between border p-4 rounded-lg bg-white dark:bg-gray-900" >
                  {/* Photo de l'enfant */}
                  {enfant.photoEnfant && (
                 <div className="shrink-0 w-24 h-24 rounded-full overflow-hidden border border-gray-300 flex items-center justify-center bg-gray-100">
@@ -1408,9 +1693,9 @@ if (modalType === "Enfant" && currentEnfant) {
                  )}
 
                 {/* Infos de l'enfant */}
-         <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[2fr_1fr_1.5fr_1.5fr_1fr_1fr] gap-4 text-right items-start">
-           <InfoItem label="الاسم الكامل" value={`${enfant.nom} ${enfant.prenom}`} />
-           <InfoItem label="تاريخ الازدياد" value={enfant.dateNaissance} />
+     <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 text-right items-start overflow-hidden">
+      <InfoItem label="الاسم الكامل" value={`${enfant.nom} ${enfant.prenom}`} />
+         <InfoItem label="تاريخ الازدياد" value={formatDate(enfant.dateNaissance)} />
            <InfoItem label="المستوى الدراسي" value={etudesEnfants[enfant.id]?.niveauScolaire?.nom} />
            <InfoItem label="المدرسة" value={etudesEnfants[enfant.id]?.ecole?.nom} />
            <InfoItem label="هل الطفل مريض؟" value={enfant.estMalade ? "نعم" : "لا"} />
@@ -1441,7 +1726,7 @@ if (modalType === "Enfant" && currentEnfant) {
                                       fill=""
                                     />
                                   </svg>
-                                  Edit
+                                  تعديل
                                 </button>
 
                </div>
@@ -1459,7 +1744,7 @@ if (modalType === "Enfant" && currentEnfant) {
              onClick={handleExportPDF}
              className="flex w-full items-center justify-center gap-2 rounded-full border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 shadow-theme-xs hover:bg-gray-50 hover:text-gray-800 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-white/[0.03] dark:hover:text-gray-200 lg:inline-flex lg:w-auto"
            >
-             Exporter en PDF
+            تصدير PDF
            </button>
 
 
