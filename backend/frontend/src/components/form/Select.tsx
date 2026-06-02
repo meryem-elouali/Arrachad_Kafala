@@ -13,13 +13,7 @@ interface SelectProps {
   allowAdd?: boolean;
 }
 
-const Select: React.FC<SelectProps> = ({
-  options,
-  placeholder = "Select...",
-  onChange,
-  value = "",
-  allowAdd = false,
-}) => {
+ => {
   const [selectedValue, setSelectedValue] = useState(value);
   const [open, setOpen] = useState(false);
   const [localOptions, setLocalOptions] = useState<Option[]>(options);

@@ -61,12 +61,12 @@ const [exportOptions, setExportOptions] = useState({
       });
   }, []);
 const actionBodyTemplate = (rowData) => (
-  <Button
-    label="عرض التفاصيل"
-    icon="pi pi-eye"
+  <button
     className="view-btn"
     onClick={() => navigate(`/familleprofile/${rowData.id}`)}
-  />
+  >
+    عرض التفاصيل
+  </button>
 );
  const nombreEnfantsFilter = (options) => (
    <InputText
@@ -162,21 +162,21 @@ const handleExport = () => {
 
 
 return (
-  <div className="min-h-screen bg-slate-50 p-6" dir="rtl">
+ <div className="family-page" dir="rtl">
     <div className="mx-auto max-w-7xl space-y-6">
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_10px_35px_rgba(15,23,42,0.06)]">
+    <div className="family-header-card">
         <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="mb-2 inline-flex rounded-full bg-blue-50 px-4 py-1 text-sm font-bold text-blue-700">
+         <div className="family-badge-title">
               إدارة العائلات
             </div>
 
-            <h1 className="text-3xl font-extrabold text-slate-900">
+          <h1 className="family-title">
               قائمة العائلات
             </h1>
 
-            <p className="mt-2 text-sm text-slate-500">
+         <p className="family-subtitle">
               عرض، بحث، تصفية وتصدير بيانات العائلات بطريقة منظمة
             </p>
           </div>
@@ -209,7 +209,7 @@ return (
         </div>
       </div>
 
-      <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_10px_35px_rgba(15,23,42,0.06)]">
+   <div className="family-table-card">
         <DataTable
           value={familles}
           paginator
