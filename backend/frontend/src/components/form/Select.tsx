@@ -5,15 +5,13 @@ interface Option {
   label: string;
 }
 
-interface SelectProps {
-  options: Option[];
-  placeholder?: string;
-  onChange: (value: string, newOption?: boolean) => void;
-  value?: string;
-  allowAdd?: boolean;
-}
-
- => {
+const Select = ({
+  options,
+  placeholder,
+  onChange,
+  value = "",
+  allowAdd = false,
+}: SelectProps) => {
   const [selectedValue, setSelectedValue] = useState(value);
   const [open, setOpen] = useState(false);
   const [localOptions, setLocalOptions] = useState<Option[]>(options);
