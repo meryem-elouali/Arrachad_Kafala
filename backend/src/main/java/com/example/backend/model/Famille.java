@@ -21,7 +21,16 @@ public class Famille {
     private String dateInscription;
     @Column(name = "personne_malade") // correspond à la colonne de la DB
     private String personneMalade;
+    @Column(name = "lien_parente_malade")
+    private String lienParenteMalade;
 
+    public String getLienParenteMalade() {
+        return lienParenteMalade;
+    }
+
+    public void setLienParenteMalade(String lienParenteMalade) {
+        this.lienParenteMalade = lienParenteMalade;
+    }
     public String getPersonneMalade() {
         return personneMalade;
     }

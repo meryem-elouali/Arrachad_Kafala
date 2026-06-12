@@ -1,9 +1,7 @@
 package com.example.backend.Controller;
 
-import com.example.backend.model.Ecole;
-import com.example.backend.model.Enfant;
-import com.example.backend.model.Famille;
-import com.example.backend.model.NiveauScolaire;
+import com.example.backend.Repository.SpecialiteRepository;
+import com.example.backend.model.*;
 import com.example.backend.Repository.EnfantRepository;
 import com.example.backend.Repository.FamilleRepository;
 import com.example.backend.service.EnfantService;
@@ -15,7 +13,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import com.example.backend.Repository.EtudeRepository;
-import com.example.backend.model.Etude;
+
 @RestController
 @RequestMapping("/api/enfant")
 @CrossOrigin(origins = "http://localhost:3000")
@@ -24,16 +22,27 @@ public class EnfantController {
     private final EnfantService enfantService;
     private final FamilleRepository familleRepository;
     private final EtudeRepository etudeRepo;
+    private final SpecialiteRepository specialiteRepo;
     public EnfantController(
             EnfantService enfantService,
             FamilleRepository familleRepository,
-            EtudeRepository etudeRepo
+            EtudeRepository etudeRepo,
+            SpecialiteRepository specialiteRepo
     ) {
         this.enfantService = enfantService;
         this.familleRepository = familleRepository;
         this.etudeRepo = etudeRepo;
+        this.specialiteRepo = specialiteRepo;
+    }
+    @GetMapping("/specialite")
+    public List<Specialite> getSpecialites() {
+        return specialiteRepo.findAll();
     }
 
+    @PostMapping("/specialite")
+    public ResponseEntity<Specialite> addSpecialite(@RequestBody Specialite specialite) {
+        return ResponseEntity.ok(specialiteRepo.save(specialite));
+    }
     @PostMapping
     public ResponseEntity<Enfant> addEnfant(
             @RequestParam("prenom") String prenom,
@@ -123,6 +132,20 @@ public class EnfantController {
             if (etude != null && ecoleId != 0) {
                 Ecole ecole = enfantService.getEcoleById(ecoleId);
                 etude.setEcole(ecole);
+                etudeRepo.save(etude);
+            }
+        }
+        Object specialiteObj = payload.get("specialiteId");
+
+        if (specialiteObj != null) {
+            Long specialiteId = ((Number) specialiteObj).longValue();
+
+            Etude etude = etudeRepo.findLatestEtudeByEnfantId(id);
+
+            if (etude != null && specialiteId != 0) {
+                Specialite specialite = specialiteRepo.findById(specialiteId)
+                        .orElseThrow(() -> new RuntimeException("Spécialité non trouvée"));
+                etude.setSpecialite(specialite);
                 etudeRepo.save(etude);
             }
         }

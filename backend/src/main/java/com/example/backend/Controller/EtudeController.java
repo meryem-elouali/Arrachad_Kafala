@@ -1,11 +1,8 @@
 package com.example.backend.Controller;
 
 import com.example.backend.Repository.EtudeRepository;
-import com.example.backend.model.Ecole;
-import com.example.backend.model.Enfant;
-import com.example.backend.model.Etude;
+import com.example.backend.model.*;
 
-import com.example.backend.model.NiveauScolaire;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -49,7 +46,11 @@ public class EtudeController {
             niveau.setId(etude.getNiveauScolaire().getId());
             etude.setNiveauScolaire(niveau);
         }
-
+        if (etude.getSpecialite() != null && etude.getSpecialite().getId() != null) {
+            Specialite specialite = new Specialite();
+            specialite.setId(etude.getSpecialite().getId());
+            etude.setSpecialite(specialite);
+        }
         return etudeRepository.save(etude);
     }
 
@@ -68,7 +69,7 @@ public class EtudeController {
         etude.setNoteSemestre1(etudeDetails.getNoteSemestre1());
         etude.setNoteSemestre2(etudeDetails.getNoteSemestre2());
         etude.setRedoublon(etudeDetails.getRedoublon());
-
+        etude.setSpecialite(etudeDetails.getSpecialite());
         return etudeRepository.save(etude);
     }
 

@@ -29,7 +29,9 @@ public class Etude {
     @JoinColumn(name = "niveauscolaire_id")
     // @JsonManagedReference supprimé car non nécessaire (pas de relation bidirectionnelle évidente)
     private NiveauScolaire niveauScolaire;
-
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "specialite_id")
+    private Specialite specialite;
     private String anneeScolaire;
     private Double noteSemestre1;
     private Double noteSemestre2;
@@ -44,6 +46,13 @@ public class Etude {
         // Si redoublon == false (non redoublé) -> année courante = true
         // Si redoublon == true (redoublon) -> année courante = false
         return !redoublon;
+    }
+    public Specialite getSpecialite() {
+        return specialite;
+    }
+
+    public void setSpecialite(Specialite specialite) {
+        this.specialite = specialite;
     }
     public Boolean getPasseAnnee() {
         return redoublon != null ? !redoublon : null;

@@ -82,6 +82,7 @@ public class FamilleController {
             @RequestParam Integer nombreEnfants,
             @RequestParam Boolean possedeMalade,
             @RequestParam String personneMalade,
+            @RequestParam(required = false) String lienParenteMalade,
             @RequestParam String typeFamilleId,
             @RequestParam String habitationFamilleId,
             @RequestParam Long mereId,
@@ -124,6 +125,7 @@ public class FamilleController {
             famille.setPossedeMalade(possedeMalade);
 
             famille.setPersonneMalade(personneMalade);
+            famille.setLienParenteMalade(lienParenteMalade);
             famille.setTypeFamille(typeFamille);
             famille.setHabitationFamille(habitationFamille);
             famille.setMere(mereRepo.findById(mereId).orElseThrow(() -> new RuntimeException("Mère non trouvée")));
@@ -234,7 +236,9 @@ public class FamilleController {
         if (payload.containsKey("personneMalade")) {
             existingFamille.setPersonneMalade((String) payload.get("personneMalade"));
         }
-
+        if (payload.containsKey("lienParenteMalade")) {
+            existingFamille.setLienParenteMalade((String) payload.get("lienParenteMalade"));
+        }
         if (payload.containsKey("typeFamilleId") && payload.get("typeFamilleId") != null) {
             Long typeFamilleId = ((Number) payload.get("typeFamilleId")).longValue();
 

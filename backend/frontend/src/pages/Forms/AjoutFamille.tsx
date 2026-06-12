@@ -24,6 +24,7 @@ interface Enfant {
   photoEnfant: File | null;
   typeMaladie: string;
   estMalade: boolean;
+ specialite: { id: string | number } | null;
 }
 
 export default function FormElements() {
@@ -41,6 +42,7 @@ export default function FormElements() {
     phone: "",
     dateInscription: "",
     personneMalade: "",
+    lienParenteMalade: "",
     possedeMalade: false,
   });
 
@@ -79,7 +81,7 @@ export default function FormElements() {
   const [enfants, setEnfants] = useState<Enfant[]>([]);
   const [niveauxscolaires, setNiveauxscolaires] = useState<Option[]>([]);
   const [ecoles, setEcoles] = useState<Option[]>([]);
-
+const [specialites, setSpecialites] = useState<Option[]>([]);
   const [typesFamille, setTypesFamille] = useState<Option[]>([]);
   const [habitations, setHabitations] = useState<Option[]>([]);
   const [loading, setLoading] = useState(false);
@@ -137,9 +139,11 @@ export default function FormElements() {
           fetch("http://localhost:8080/api/famille/types"),
           fetch("http://localhost:8080/api/famille/habitations"),
           fetch("http://localhost:8080/api/enfant/niveauScolaire"),
-          fetch("http://localhost:8080/api/enfant/ecole")
+          fetch("http://localhost:8080/api/enfant/ecole"),
+          fetch("http://localhost:8080/api/enfant/specialite")
         ]);
-
+const specialitesData = await specialitesRes.json();
+setSpecialites(specialitesData.map((s: any) => ({ value: s.id, label: s.nom })));
         const ecolesData = await ecolesRes.json();
         setEcoles(ecolesData.map((e: any) => ({ value: e.id, label: e.nom })));
 
@@ -173,7 +177,8 @@ export default function FormElements() {
             ecole: null,
             photoEnfant: null,
             typeMaladie: "",
-            estMalade: false
+            estMalade: false,
+            specialite: null
           });
         }
       } else {
@@ -303,6 +308,7 @@ const enfantsConverted = enfants.map((enfant) => ({
        ecoleId: enfant.ecole?.id,
        niveauScolaireId: enfant.niveauscolaire?.id,
        anneeScolaire: enfant.anneeScolaire, // maintenant au format yyyy-MM-dd
+       specialiteId: enfant.specialite?.id,
      }));
 
 
@@ -317,6 +323,7 @@ formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'fa
 
       // formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
        formDataFamille.append('personneMalade', familleData.personneMalade || '');
+      formDataFamille.append('lienParenteMalade', familleData.lienParenteMalade || '');
        formDataFamille.append('typeFamilleId', familleData.typeFamille?.id.toString() || '');
        formDataFamille.append('habitationFamilleId', familleData.habitationFamille?.id.toString() || '');
        formDataFamille.append('mereId', savedMere.id.toString());
@@ -585,15 +592,33 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
           </div></div>
 
              <div className="w-1/2">
-        {familleData.possedeMalade && (
-          <Input
-            type="text"
-            placeholder="نوع المرض"
-            value={familleData.personneMalade}
-            onChange={(e) => setFamilleData({ ...familleData, personneMalade: e.target.value })}
-            className="border p-2 rounded w-full mt-2"
-          />
-        )}
+      {familleData.possedeMalade && (
+        <div className="flex gap-4 mt-2">
+          <div className="w-1/2">
+            <Input
+              type="text"
+              placeholder="نوع المرض"
+              value={familleData.personneMalade}
+              onChange={(e) =>
+                setFamilleData({ ...familleData, personneMalade: e.target.value })
+              }
+              className="border p-2 rounded w-full"
+            />
+          </div>
+
+          <div className="w-1/2">
+            <Input
+              type="text"
+              placeholder="صلة القرابة"
+              value={familleData.lienParenteMalade}
+              onChange={(e) =>
+                setFamilleData({ ...familleData, lienParenteMalade: e.target.value })
+              }
+              className="border p-2 rounded w-full"
+            />
+          </div>
+        </div>
+      )}
         </div></div>
 
 
@@ -1168,6 +1193,25 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                                     className="border p-2 rounded w-full mt-2"
                                   />
                                 )}
+                              </div>
+                              <div className="w-1/2">
+                                <Label htmlFor={`specialite-${index}`}>التخصص</Label>
+
+                                <Select
+                                  options={specialites}
+                                  value={enfants[index]?.specialite?.id || ""}
+                                  onChange={(val) => {
+                                    const newEnfants = [...enfants];
+                                    newEnfants[index] = {
+                                      ...newEnfants[index],
+                                      specialite: val ? { id: val } : null,
+                                    };
+                                    setEnfants(newEnfants);
+                                  }}
+                                  placeholder="اختر التخصص"
+                                  apiUrl="http://localhost:8080/api/enfant/specialite"
+                                  onNewItem={(newOpt) => setSpecialites((prev) => [...prev, newOpt])}
+                                />
                               </div>
                             </div>
 
