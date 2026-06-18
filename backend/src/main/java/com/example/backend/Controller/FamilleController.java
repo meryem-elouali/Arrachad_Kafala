@@ -64,9 +64,27 @@ public class FamilleController {
     // 🔹 Obtenir toutes les habitations
     @GetMapping("/habitations")
     public List<Habitation> getHabitations() {
-        return familleService.getAllHabitations();
-    }
 
+        if (habitationRepo.findAll().stream().noneMatch(h -> h.getNom().equals("ملك"))) {
+            Habitation h = new Habitation();
+            h.setNom("ملك");
+            habitationRepo.save(h);
+        }
+
+        if (habitationRepo.findAll().stream().noneMatch(h -> h.getNom().equals("رهن"))) {
+            Habitation h = new Habitation();
+            h.setNom("رهن");
+            habitationRepo.save(h);
+        }
+
+        if (habitationRepo.findAll().stream().noneMatch(h -> h.getNom().equals("كراء"))) {
+            Habitation h = new Habitation();
+            h.setNom("كراء");
+            habitationRepo.save(h);
+        }
+
+        return habitationRepo.findAll();
+    }
     // 🔹 Ajouter une nouvelle habitation
     @PostMapping("/habitations")
     public Habitation addHabitation(@RequestBody Habitation habitation) {

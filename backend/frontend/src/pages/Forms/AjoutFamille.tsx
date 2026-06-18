@@ -135,7 +135,7 @@ const [specialites, setSpecialites] = useState<Option[]>([]);
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [typesRes, habitationsRes, niveauxRes, ecolesRes] = await Promise.all([
+   const [typesRes, habitationsRes, niveauxRes, ecolesRes, specialitesRes] = await Promise.all([
           fetch("http://localhost:8080/api/famille/types"),
           fetch("http://localhost:8080/api/famille/habitations"),
           fetch("http://localhost:8080/api/enfant/niveauScolaire"),
@@ -369,7 +369,7 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
 
 
 
-  const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem }: any) => {
+  const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem,allowAdd = true }: any) => {
     const [open, setOpen] = useState(false);
     const [adding, setAdding] = useState(false);
     const [newOption, setNewOption] = useState("");
@@ -419,52 +419,49 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
               </div>
             ))}
 
-            {!adding ? (
-              <div
-                className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100 transition duration-150 ease-in-out"
-                onClick={() => setAdding(true)}
-              >
-                + Ajouter un élément
-              </div>
-            ) : (
-          <div
-            className="px-3 py-2"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <input
-              type="text"
-              placeholder="Nouvel élément"
-              value={newOption}
-              autoFocus
-              onChange={(e) => setNewOption(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  e.stopPropagation();
+   {allowAdd && !adding && (
+     <div
+       className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100 transition duration-150 ease-in-out"
+       onClick={() => setAdding(true)}
+     >
+       + Ajouter un élément
+     </div>
+   )}
 
-                  if (!newOption.trim()) {
-                    // ENTER + vide → FERMER
-                    setAdding(false);
-                    return;
-                  }
+   {allowAdd && adding && (
+     <div
+       className="px-3 py-2"
+       onClick={(e) => e.stopPropagation()}
+     >
+       <input
+         type="text"
+         placeholder="Nouvel élément"
+         value={newOption}
+         autoFocus
+         onChange={(e) => setNewOption(e.target.value)}
+         onKeyDown={(e) => {
+           if (e.key === "Enter") {
+             e.preventDefault();
+             e.stopPropagation();
 
-                  // ENTER + texte → AJOUTER
-                  handleAddOption();
-                }
+             if (!newOption.trim()) {
+               setAdding(false);
+               return;
+             }
 
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setAdding(false);
-                }
-              }}
-              className="h-9 px-3 text-sm border rounded-md w-full
-                         focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
+             handleAddOption();
+           }
 
-
-            )}
+           if (e.key === "Escape") {
+             e.preventDefault();
+             e.stopPropagation();
+             setAdding(false);
+           }
+         }}
+         className="h-9 px-3 text-sm border rounded-md w-full focus:ring-2 focus:ring-blue-500"
+       />
+     </div>
+   )}
           </div>
         )}
       </div>
@@ -512,6 +509,7 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                   placeholder="نوع السكن"
                   apiUrl="http://localhost:8080/api/famille/habitations"
                   onNewItem={(newOpt) => setHabitations((prev) => [...prev, newOpt])}
+                  allowAdd={false}
                 />
               </div>
             </div>
