@@ -23,7 +23,43 @@ public class Famille {
     private String personneMalade;
     @Column(name = "lien_parente_malade")
     private String lienParenteMalade;
+    @Column(name = "aide_famille", columnDefinition = "TINYINT(1)")
+    private Boolean aideFamille = false;
+    @Column(name = "revenu_mensuel", columnDefinition = "TINYINT(1)")
+    private Boolean revenuMensuel = false;
+    @Column(name = "beneficie_autre_association", columnDefinition = "TINYINT(1)")
+    private Boolean beneficieAutreAssociation = false;
+    @Column(name = "degre_famille")
+    private Integer degreFamille = 0;
 
+    public Integer getDegreFamille() {
+        return degreFamille;
+    }
+
+    public void setDegreFamille(Integer degreFamille) {
+        this.degreFamille = degreFamille;
+    }
+    public Boolean getBeneficieAutreAssociation() {
+        return beneficieAutreAssociation;
+    }
+
+    public void setBeneficieAutreAssociation(Boolean beneficieAutreAssociation) {
+        this.beneficieAutreAssociation = beneficieAutreAssociation;
+    }
+    public Boolean getRevenuMensuel() {
+        return revenuMensuel;
+    }
+
+    public void setRevenuMensuel(Boolean revenuMensuel) {
+        this.revenuMensuel = revenuMensuel;
+    }
+    public Boolean getAideFamille() {
+        return aideFamille;
+    }
+
+    public void setAideFamille(Boolean aideFamille) {
+        this.aideFamille = aideFamille;
+    }
     public String getLienParenteMalade() {
         return lienParenteMalade;
     }

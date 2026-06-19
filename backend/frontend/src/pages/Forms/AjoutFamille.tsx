@@ -44,6 +44,9 @@ export default function FormElements() {
     personneMalade: "",
     lienParenteMalade: "",
     possedeMalade: false,
+    aideFamille: false,
+    revenuMensuel: false,
+    beneficieAutreAssociation: false,
   });
 
   const [mereData, setMereData] = useState({
@@ -320,7 +323,18 @@ const enfantsConverted = enfants.map((enfant) => ({
        formDataFamille.append('nombreEnfants', familleData.nombreEnfants);
 formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
 
-
+formDataFamille.append(
+  "aideFamille",
+  familleData.aideFamille ? "true" : "false"
+);
+formDataFamille.append(
+  "revenuMensuel",
+  familleData.revenuMensuel ? "true" : "false"
+);
+formDataFamille.append(
+  "beneficieAutreAssociation",
+  familleData.beneficieAutreAssociation ? "true" : "false"
+);
       // formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
        formDataFamille.append('personneMalade', familleData.personneMalade || '');
       formDataFamille.append('lienParenteMalade', familleData.lienParenteMalade || '');
@@ -484,19 +498,18 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
           <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
             <div className="flex gap-4">
               <div className="w-1/2">
-                <Select
-                  options={typesFamille}
-                  value={familleData.typeFamille?.id || ""}
-                  onChange={(val) =>
-                    setFamilleData({
-                      ...familleData,
-                      typeFamille: { id: val },
-                    })
-                  }
-                  placeholder="نوع الحالة"
-                  apiUrl="http://localhost:8080/api/famille/types"
-                  onNewItem={(newOpt) => setTypesFamille((prev) => [...prev, newOpt])}
-                />
+               <Select
+                 options={typesFamille}
+                 value={familleData.typeFamille?.id || ""}
+                 onChange={(val) =>
+                   setFamilleData({
+                     ...familleData,
+                     typeFamille: { id: val },
+                   })
+                 }
+                 placeholder="نوع الحالة"
+                 allowAdd={false}
+               />
               </div>
               <div className="w-1/2">
                 <Select
@@ -619,9 +632,51 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
           </div>
         </div>
       )}
-        </div></div>
 
-
+        </div>
+     </div>
+     <div className="flex items-center mt-4">
+         <input
+           type="checkbox"
+           checked={familleData.aideFamille}
+           onChange={(e) =>
+             setFamilleData({
+               ...familleData,
+               aideFamille: e.target.checked,
+             })
+           }
+           className="mr-2"
+         />
+         <label>هل تستفيد العائلة من مساعدة؟</label>
+       </div>
+   <div className="flex items-center mt-4">
+          <input
+            type="checkbox"
+            checked={familleData.revenuMensuel}
+            onChange={(e) =>
+              setFamilleData({
+                ...familleData,
+                revenuMensuel: e.target.checked,
+              })
+            }
+            className="mr-2"
+          />
+          <label>هل يوجد دخل مالي شهري ؟</label>
+        </div>
+<div className="flex items-center mt-4">
+  <input
+    type="checkbox"
+    checked={familleData.beneficieAutreAssociation}
+    onChange={(e) =>
+      setFamilleData({
+        ...familleData,
+        beneficieAutreAssociation: e.target.checked,
+      })
+    }
+    className="mr-2"
+  />
+  <label>هل تستفيد العائلة من جمعية أخرى ؟</label>
+</div>
 </ComponentCard>
 
  <ComponentCard title={<span className="font-bold">معلومات الأب</span>}>

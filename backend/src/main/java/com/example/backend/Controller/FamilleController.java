@@ -30,7 +30,7 @@ public class FamilleController {
     private final EcoleRepository ecoleRepo;
     private final NiveauScolaireRepository niveauScolaireRepo;
     private final EtudeRepository etudeRepo;
-
+    private final DegreFamilleRepository degreRepo;
     public FamilleController(FamilleService familleService,
                              MereRepository mereRepo,
                              PereRepository pereRepo,
@@ -38,7 +38,8 @@ public class FamilleController {
                              HabitationRepository habitationRepo,
                              EcoleRepository ecoleRepo,
                              NiveauScolaireRepository niveauScolaireRepo,
-                             EtudeRepository etudeRepo) {
+                             EtudeRepository etudeRepo,
+                             DegreFamilleRepository degreRepo) {
         this.familleService = familleService;
         this.mereRepo = mereRepo;
         this.pereRepo = pereRepo;
@@ -47,14 +48,34 @@ public class FamilleController {
         this.ecoleRepo = ecoleRepo;
         this.niveauScolaireRepo = niveauScolaireRepo;
         this.etudeRepo = etudeRepo;
+        this.degreRepo = degreRepo;
     }
 
     // 🔹 Obtenir tous les types de familles
     @GetMapping("/types")
     public List<TypeFamille> getTypes() {
-        return familleService.getAllTypes();
-    }
 
+        String[] types = {"أيتام", "معوز", "لطيم"};
+
+        for (String nom : types) {
+            boolean existe = typeRepo.findAll()
+                    .stream()
+                    .anyMatch(t -> t.getNom().equals(nom));
+
+            if (!existe) {
+                TypeFamille type = new TypeFamille();
+                type.setNom(nom);
+                typeRepo.save(type);
+            }
+        }
+
+        return typeRepo.findAll()
+                .stream()
+                .filter(t -> t.getNom().equals("أيتام")
+                        || t.getNom().equals("معوز")
+                        || t.getNom().equals("لطيم"))
+                .toList();
+    }
     // 🔹 Ajouter un nouveau type de famille
     @PostMapping("/types")
     public TypeFamille addTypeFamille(@RequestBody TypeFamille typeFamille) {
@@ -106,7 +127,10 @@ public class FamilleController {
             @RequestParam Long mereId,
             @RequestParam Long pereId,
             @RequestParam String enfantsJson,
-            @RequestParam String etudesJson,  // <- liste des études pour chaque enfant
+            @RequestParam String etudesJson,
+            @RequestParam Boolean aideFamille,
+            @RequestParam Boolean revenuMensuel,
+            @RequestParam Boolean beneficieAutreAssociation,// <- liste des études pour chaque enfant
             @RequestPart(value = "photoEnfant", required = false) List<MultipartFile> photoEnfants
     ) throws Exception {
         try {
@@ -141,14 +165,15 @@ public class FamilleController {
             famille.setDateInscription(dateInscription);
             famille.setNombreEnfants(nombreEnfants);
             famille.setPossedeMalade(possedeMalade);
-
+            famille.setAideFamille(aideFamille);
             famille.setPersonneMalade(personneMalade);
             famille.setLienParenteMalade(lienParenteMalade);
             famille.setTypeFamille(typeFamille);
             famille.setHabitationFamille(habitationFamille);
             famille.setMere(mereRepo.findById(mereId).orElseThrow(() -> new RuntimeException("Mère non trouvée")));
             famille.setPere(pereRepo.findById(pereId).orElseThrow(() -> new RuntimeException("Père non trouvé")));
-
+            famille.setRevenuMensuel(revenuMensuel);
+            famille.setBeneficieAutreAssociation(beneficieAutreAssociation);
             // 🔹 Associer les enfants à la famille et gérer les photos
             for (int i = 0; i < enfants.size(); i++) {
                 Enfant enfant = enfants.get(i);
@@ -162,7 +187,55 @@ public class FamilleController {
                 }
             }
             famille.setEnfants(enfants);
+            DegreFamille d = degreRepo.findAll().stream()
+                    .findFirst()
+                    .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
 
+            int degre = 0;
+
+// nombre enfants = nombre * point
+            degre += nombreEnfants * d.getPointParEnfant();
+
+// habitation
+            String habitationNom = habitationFamille.getNom();
+            if ("ملك".equals(habitationNom)) degre += d.getPointHabitationPropriete();
+            if ("رهن".equals(habitationNom)) degre += d.getPointHabitationRahn();
+            if ("كراء".equals(habitationNom)) degre += d.getPointHabitationLoyer();
+
+// mère travaille
+            if (famille.getMere().getEstTravaille()) {
+                degre += d.getPointMereTravailleOui();
+            } else {
+                degre += d.getPointMereTravailleNon();
+            }
+
+// mère malade
+            if (famille.getMere().getEstMalade()) {
+                degre += d.getPointMereMaladeOui();
+            } else {
+                degre += d.getPointMereMaladeNon();
+            }
+
+// aide famille
+            degre += aideFamille ? d.getPointAideFamilleOui() : d.getPointAideFamilleNon();
+
+// revenu mensuel
+            degre += revenuMensuel ? d.getPointRevenuMensuelOui() : d.getPointRevenuMensuelNon();
+
+// autre association
+            degre += beneficieAutreAssociation ? d.getPointAutreAssociationOui() : d.getPointAutreAssociationNon();
+
+// possède malade
+            degre += possedeMalade ? d.getPointPossedeMaladeOui() : d.getPointPossedeMaladeNon();
+
+// enfants malades = nombre enfants malades * point
+            long nbEnfantsMalades = enfants.stream()
+                    .filter(e -> Boolean.TRUE.equals(e.getEstMalade()))
+                    .count();
+
+            degre += nbEnfantsMalades * d.getPointEnfantMalade();
+
+            famille.setDegreFamille(degre);
             // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
 

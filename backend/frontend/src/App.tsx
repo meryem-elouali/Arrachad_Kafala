@@ -18,7 +18,7 @@ import BarChart from "./pages/Charts/BarChart";
 import Calendar from "./pages/Calendar";
 import ListeEvents from "./pages/ListeEvents";
 import EventDetails from "./pages/EventDetails";
-
+import DegreFamillePage from "./pages/DegreFamillePage";
 import BasicTables from "./pages/Tables/BasicTables";
 import SuiviEtudes from "./pages/Tables/SuiviEtudes";
 import AjoutFamille from "./pages/Forms/AjoutFamille";
@@ -42,6 +42,7 @@ export default function App() {
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />
         <Route path="/familleprofile/:familleId" element={<FamillesProfiles />} />
+        <Route path="/degre-famille" element={<DegreFamillePage />} />
    <Route path="/EtudesProfile/:enfantid" element={<EtudesProfile />} />
 
             <Route path="/calendar" element={<Calendar />} />
