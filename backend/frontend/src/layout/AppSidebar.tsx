@@ -36,6 +36,11 @@ const navItems: NavItem[] = [
       name: "اضافة عائلة",
       path: "/form-elements",
     },
+{
+  name: "تحديد درجة استحقاق الأسر",
+  icon: <TableIcon />,
+  path: "/degre-famille",
+},
   {
     icon: <CalenderIcon />,
     name: "events",

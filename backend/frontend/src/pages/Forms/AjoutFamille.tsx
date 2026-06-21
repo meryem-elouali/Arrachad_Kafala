@@ -48,7 +48,7 @@ export default function FormElements() {
     revenuMensuel: false,
     beneficieAutreAssociation: false,
   });
-
+const [openedSelect, setOpenedSelect] = useState<string | null>(null);
   const [mereData, setMereData] = useState({
     nom: "",
     prenom: "",
@@ -383,8 +383,20 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
 
 
 
-  const Select = ({ options = [], value, onChange, placeholder, apiUrl, onNewItem,allowAdd = true }: any) => {
-    const [open, setOpen] = useState(false);
+ const Select = ({
+   options = [],
+   value,
+   onChange,
+   placeholder,
+   apiUrl,
+   onNewItem,
+   allowAdd = true,
+   selectId,
+   openedSelect,
+   setOpenedSelect,
+ }: any) => {
+
+   const open = openedSelect === selectId;
     const [adding, setAdding] = useState(false);
     const [newOption, setNewOption] = useState("");
     const [opts, setOpts] = useState(options);
@@ -392,7 +404,7 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
 
     const handleSelect = (opt: Option) => {
       onChange(opt.value);
-      setOpen(false);
+    setOpenedSelect(null);
     };
 
     const handleAddOption = async () => {
@@ -406,7 +418,7 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
         onChange(newOpt.value);
         setNewOption("");
         setAdding(false);
-        setOpen(false);
+       setOpenedSelect(null);
       } catch (error) {
         console.error(error);
       }
@@ -416,7 +428,9 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
       <div className="relative w-full">
         <div
           className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer bg-white hover:bg-gray-50 transition duration-200 ease-in-out"
-          onClick={() => setOpen(!open)}
+        onClick={() =>
+          setOpenedSelect(open ? null : selectId)
+        }
         >
           {opts.find((o) => o.value === value)?.label || placeholder}
         </div>
@@ -498,34 +512,38 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
           <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
             <div className="flex gap-4">
               <div className="w-1/2">
-               <Select
-                 options={typesFamille}
-                 value={familleData.typeFamille?.id || ""}
-                 onChange={(val) =>
-                   setFamilleData({
-                     ...familleData,
-                     typeFamille: { id: val },
-                   })
-                 }
-                 placeholder="نوع الحالة"
-                 allowAdd={false}
-               />
+       <Select
+         selectId="typeFamille"
+         openedSelect={openedSelect}
+         setOpenedSelect={setOpenedSelect}
+         options={typesFamille}
+         value={familleData.typeFamille?.id || ""}
+         onChange={(val) =>
+           setFamilleData({
+             ...familleData,
+             typeFamille: { id: val },
+           })
+         }
+         placeholder="نوع الحالة"
+         allowAdd={false}
+       />
               </div>
               <div className="w-1/2">
-                <Select
-                  options={habitations}
-                  value={familleData.habitationFamille?.id || ""}
-                  onChange={(val) =>
-                    setFamilleData({
-                      ...familleData,
-                      habitationFamille: { id: val },
-                    })
-                  }
-                  placeholder="نوع السكن"
-                  apiUrl="http://localhost:8080/api/famille/habitations"
-                  onNewItem={(newOpt) => setHabitations((prev) => [...prev, newOpt])}
-                  allowAdd={false}
-                />
+              <Select
+                selectId="habitationFamille"
+                openedSelect={openedSelect}
+                setOpenedSelect={setOpenedSelect}
+                options={habitations}
+                value={familleData.habitationFamille?.id || ""}
+                onChange={(val) =>
+                  setFamilleData({
+                    ...familleData,
+                    habitationFamille: { id: val },
+                  })
+                }
+                placeholder="نوع السكن"
+                allowAdd={false}
+              />
               </div>
             </div>
 
@@ -1153,6 +1171,46 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                                       className="h-9 px-3 border rounded-md w-full"
                                     />
                               </div>
+                               <div className="w-1/2 flex items-center">
+                                                              <input
+                                                                type="checkbox"
+                                                                checked={enfants[index]?.estMalade || false}
+                                                                onChange={(e) => {
+                                                                  const newEnfants = [...enfants];
+                                                                  newEnfants[index] = {
+                                                                    ...newEnfants[index],
+                                                                    estMalade: e.target.checked,
+                                                                  };
+                                                                  setEnfants(newEnfants);
+                                                                }}
+                                                                className="mr-2"
+                                                              />
+                                                              <label>هل الابن مريض؟</label>
+                                                            </div>
+
+                                                            <div className="w-1/2">
+                                                              {enfants[index]?.estMalade && (
+                                                                <Input
+                                                                  type="text"
+                                                                  placeholder="نوع المرض"
+                                                                  value={enfants[index]?.typeMaladie || ""}
+                                                                  onChange={(e) => {
+                                                                    const newEnfants = [...enfants];
+                                                                    newEnfants[index] = {
+                                                                      ...newEnfants[index],
+                                                                      typeMaladie: e.target.value,
+                                                                    };
+                                                                    setEnfants(newEnfants);
+                                                                  }}
+                                                                  className="border p-2 rounded w-full mt-2"
+                                                                />
+                                                              )}
+                                                            </div>
+
+                            </div>
+
+                            {/* Checkbox Malade */}
+                            <div className="flex gap-4 mt-4">
 <div className="w-1/2">
                                 <Label htmlFor={`date-${index}`}>السنة الدراسية</Label>
 
@@ -1182,6 +1240,9 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                               <div className="w-1/2">
                                 <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
                                 <Select
+                                  selectId={`niveau-${index}`}
+                                  openedSelect={openedSelect}
+                                  setOpenedSelect={setOpenedSelect}
                                   options={niveauxscolaires}
                                   value={enfants[index]?.niveauscolaire?.id || ""}
                                   onChange={(val) => {
@@ -1193,10 +1254,14 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                                   apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
                                   onNewItem={(newOpt) => setNiveauxscolaires((prev) => [...prev, newOpt])}
                                 />
-                              </div>
+                              </div></div>
+                               <div className="flex gap-4 mt-4">
                                <div className="w-1/2">
                                                               <Label htmlFor={`ecole-${index}`}>المؤسسة</Label>
                                                              <Select
+                                                             selectId={`ecole-${index}`}
+                                                               openedSelect={openedSelect}
+                                                               setOpenedSelect={setOpenedSelect}
                                                                options={ecoles}
                                                                value={enfants[index]?.ecole?.id || ""}
                                                                onChange={(val) => {
@@ -1210,49 +1275,13 @@ console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
                                                              />
 
                                                             </div>
-                            </div>
-
-                            {/* Checkbox Malade */}
-                            <div className="flex gap-4 mt-4">
-                              <div className="w-1/2 flex items-center">
-                                <input
-                                  type="checkbox"
-                                  checked={enfants[index]?.estMalade || false}
-                                  onChange={(e) => {
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      estMalade: e.target.checked,
-                                    };
-                                    setEnfants(newEnfants);
-                                  }}
-                                  className="mr-2"
-                                />
-                                <label>هل الابن مريض؟</label>
-                              </div>
-
-                              <div className="w-1/2">
-                                {enfants[index]?.estMalade && (
-                                  <Input
-                                    type="text"
-                                    placeholder="نوع المرض"
-                                    value={enfants[index]?.typeMaladie || ""}
-                                    onChange={(e) => {
-                                      const newEnfants = [...enfants];
-                                      newEnfants[index] = {
-                                        ...newEnfants[index],
-                                        typeMaladie: e.target.value,
-                                      };
-                                      setEnfants(newEnfants);
-                                    }}
-                                    className="border p-2 rounded w-full mt-2"
-                                  />
-                                )}
-                              </div>
                               <div className="w-1/2">
                                 <Label htmlFor={`specialite-${index}`}>التخصص</Label>
 
                                 <Select
+                                selectId={`specialite-${index}`}
+                                  openedSelect={openedSelect}
+                                  setOpenedSelect={setOpenedSelect}
                                   options={specialites}
                                   value={enfants[index]?.specialite?.id || ""}
                                   onChange={(val) => {
