@@ -100,6 +100,10 @@ interface Enfant {
      id: number;
      nom: string;
    };
+specialite?: {
+  id: number;
+  nom: string;
+};
    familleId: number;
 }
 
@@ -131,6 +135,13 @@ pere?: {
   typeFamille?: { id: number; nom: string };
   habitationFamille?: { id: number; nom: string };
   enfants?: Enfant[];
+  possedeMalade?: boolean;
+  personneMalade?: string;
+  lienParenteMalade?: string;
+  aideFamille?: boolean;
+  revenuMensuel?: boolean;
+  beneficieAutreAssociation?: boolean;
+  degreFamille?: string;
 }
 const formatDate = (date?: string) => {
   if (!date) return "غير محدد";
@@ -200,15 +211,20 @@ const [currentEnfant, setCurrentEnfant] = useState<Enfant | null>(null);
 const [niveauxScolaires, setNiveauxScolaires] = useState<Option[]>([]);
 const [ecoles, setEcoles] = useState<Option[]>([]);
 const [etudesEnfants, setEtudesEnfants] = useState<Record<number, any>>({});
-  const [formData, setFormData] = useState({
-    typeFamilleId: 0,
-    habitationFamilleId: 0,
-    adresseFamille: "",
-    phone: "",
-    dateInscription: "",
-    possedeMalade: false,
-    personneMalade: ""
-  });
+const [specialites, setSpecialites] = useState<Option[]>([]);
+ const [formData, setFormData] = useState({
+   typeFamilleId: 0,
+   habitationFamilleId: 0,
+   adresseFamille: "",
+   phone: "",
+   dateInscription: "",
+   possedeMalade: false,
+   personneMalade: "",
+   lienParenteMalade: "",
+   aideFamille: false,
+   revenuMensuel: false,
+   beneficieAutreAssociation: false,
+ });
   const [mereForm, setMereForm] = useState({
     nom: "",
     prenom: "",
@@ -249,6 +265,7 @@ const [etudesEnfants, setEtudesEnfants] = useState<Record<number, any>>({});
      photoEnfant: "",
     niveauscolaireId: 0,
     ecoleId: 0,
+    specialiteId: 0,
   });
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -465,10 +482,17 @@ const handleSavePere = async () => {
   useEffect(() => {
     const fetchOptions = async () => {
       try {
-        const [typesRes, habitationsRes] = await Promise.all([
-          fetch("http://localhost:8080/api/famille/types"),
-          fetch("http://localhost:8080/api/famille/habitations"),
-        ]);
+       const [typesRes, habitationsRes, specialitesRes] = await Promise.all([
+         fetch("http://localhost:8080/api/famille/types"),
+         fetch("http://localhost:8080/api/famille/habitations"),
+         fetch("http://localhost:8080/api/enfant/specialite"),
+       ]);
+
+       const specialitesData = await specialitesRes.json();
+
+       setSpecialites(
+         specialitesData.map((s: any) => ({ value: s.id, label: s.nom }))
+       );
         const typesData = await typesRes.json();
         const habitationsData = await habitationsRes.json();
 
@@ -538,6 +562,10 @@ useEffect(() => {
         dateInscription: famille.dateInscription || "",
         possedeMalade: famille.possedeMalade || false,
         personneMalade: famille.personneMalade || "",
+        lienParenteMalade: famille.lienParenteMalade || "",
+        aideFamille: famille.aideFamille || false,
+        revenuMensuel: famille.revenuMensuel || false,
+        beneficieAutreAssociation: famille.beneficieAutreAssociation || false,
       });
     }
   }, [famille, typesFamilles, habitations]);
@@ -564,6 +592,7 @@ useEffect(() => {
        photoEnfant: enfant.photoEnfant || "",
        niveauscolaireId: etude?.niveauScolaire?.id || 0,
         ecoleId: etude?.ecole?.id || 0,
+        specialiteId: etude?.specialite?.id || 0,
      });
    }
  };
@@ -645,6 +674,10 @@ const handleSave = async () => {
       dateInscription: formData.dateInscription,
       possedeMalade: formData.possedeMalade,
       personneMalade: formData.personneMalade,
+      lienParenteMalade: formData.lienParenteMalade,
+      aideFamille: formData.aideFamille,
+      revenuMensuel: formData.revenuMensuel,
+      beneficieAutreAssociation: formData.beneficieAutreAssociation,
     };
 
     const res = await fetch(`http://localhost:8080/api/famille/${famille.id}`, {
@@ -665,15 +698,19 @@ const handleSave = async () => {
     const updatedFamille = await res.json();
 
     setFamille(updatedFamille);
-    setFormData({
-      typeFamilleId: updatedFamille.typeFamille?.id || 0,
-      habitationFamilleId: updatedFamille.habitationFamille?.id || 0,
-      adresseFamille: updatedFamille.adresseFamille || "",
-      phone: updatedFamille.phone || "",
-      dateInscription: updatedFamille.dateInscription || "",
-      possedeMalade: updatedFamille.possedeMalade || false,
-      personneMalade: updatedFamille.personneMalade || "",
-    });
+   setFormData({
+     typeFamilleId: updatedFamille.typeFamille?.id || 0,
+     habitationFamilleId: updatedFamille.habitationFamille?.id || 0,
+     adresseFamille: updatedFamille.adresseFamille || "",
+     phone: updatedFamille.phone || "",
+     dateInscription: updatedFamille.dateInscription || "",
+     possedeMalade: updatedFamille.possedeMalade || false,
+     personneMalade: updatedFamille.personneMalade || "",
+     lienParenteMalade: updatedFamille.lienParenteMalade || "",
+     aideFamille: updatedFamille.aideFamille || false,
+     revenuMensuel: updatedFamille.revenuMensuel || false,
+     beneficieAutreAssociation: updatedFamille.beneficieAutreAssociation || false,
+   });
 
     closeModal();
   } catch (err: any) {
@@ -955,6 +992,44 @@ const handleExportPDF = async () => {
                     onChange={handleChange}
                     disabled={!formData.possedeMalade}
                   />
+                </div>
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={formData.aideFamille}
+                    onChange={(e) =>
+                      setFormData(prev => ({ ...prev, aideFamille: e.target.checked }))
+                    }
+                    className="mr-2"
+                  />
+                  <label>هل تستفيد العائلة من مساعدة؟</label>
+                </div>
+
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={formData.revenuMensuel}
+                    onChange={(e) =>
+                      setFormData(prev => ({ ...prev, revenuMensuel: e.target.checked }))
+                    }
+                    className="mr-2"
+                  />
+                  <label>هل يوجد دخل مالي شهري؟</label>
+                </div>
+
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={formData.beneficieAutreAssociation}
+                    onChange={(e) =>
+                      setFormData(prev => ({
+                        ...prev,
+                        beneficieAutreAssociation: e.target.checked,
+                      }))
+                    }
+                    className="mr-2"
+                  />
+                  <label>هل تستفيد العائلة من جمعية أخرى؟</label>
                 </div>
               </div>
             </div>
@@ -1367,6 +1442,21 @@ if (modalType === "Enfant" && currentEnfant) {
                  }
                />
              </div>
+             <div>
+               <Label>التخصص</Label>
+               <Select
+                 options={specialites}
+                 value={enfantForm.specialiteId}
+                 onChange={(val: number) =>
+                   setEnfantForm(prev => ({ ...prev, specialiteId: val }))
+                 }
+                 placeholder="التخصص"
+                 apiUrl="http://localhost:8080/api/enfant/specialite"
+                 onNewItem={(newOpt: Option) =>
+                   setSpecialites(prev => [...prev, newOpt])
+                 }
+               />
+             </div>
 <div>
   <Label>المدرسة</Label>
   <Select
@@ -1467,7 +1557,7 @@ if (modalType === "Enfant" && currentEnfant) {
                       <h4 className="mb-4 text-2xl font-extrabold text-center text-gray-900 dark:text-white xl:text-right">
                         عائلة {famille.pere?.nom || famille.nomFamille || "غير محدد"}
                       </h4>
-                      <div className="grid grid-cols-1 gap-3 text-right sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="grid grid-cols-1 gap-3 text-right sm:grid-cols-2 xl:grid-cols-5">
                         <InfoItem
                           label="نوع الحالة"
                           value={famille.typeFamille?.nom}
@@ -1487,7 +1577,15 @@ if (modalType === "Enfant" && currentEnfant) {
                           label="تاريخ التسجيل"
                           value={formatDate(famille.dateInscription)}
                         />
-                      </div>
+                       <InfoItem
+                         label="درجة الأسرة"
+                         value={famille.degreFamille}
+                       />
+                       <InfoItem label="تستفيد من مساعدة" value={famille.aideFamille ? "نعم" : "لا"} />
+                       <InfoItem label="دخل شهري" value={famille.revenuMensuel ? "نعم" : "لا"} />
+                       <InfoItem label="جمعية أخرى" value={famille.beneficieAutreAssociation ? "نعم" : "لا"} />
+                    </div>
+
                       </div>
 
                     </div>
@@ -1698,6 +1796,10 @@ if (modalType === "Enfant" && currentEnfant) {
          <InfoItem label="تاريخ الازدياد" value={formatDate(enfant.dateNaissance)} />
            <InfoItem label="المستوى الدراسي" value={etudesEnfants[enfant.id]?.niveauScolaire?.nom} />
            <InfoItem label="المدرسة" value={etudesEnfants[enfant.id]?.ecole?.nom} />
+          <InfoItem
+            label="التخصص"
+            value={etudesEnfants[enfant.id]?.specialite?.nom}
+          />
            <InfoItem label="هل الطفل مريض؟" value={enfant.estMalade ? "نعم" : "لا"} />
 
            {enfant.estMalade && (

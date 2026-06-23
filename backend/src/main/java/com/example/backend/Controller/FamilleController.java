@@ -353,6 +353,65 @@ public class FamilleController {
                 existingFamille.setHabitationFamille(null);
             }
         }
+// champs booléens
+        if (payload.containsKey("aideFamille")) {
+            existingFamille.setAideFamille((Boolean) payload.get("aideFamille"));
+        }
+
+        if (payload.containsKey("revenuMensuel")) {
+            existingFamille.setRevenuMensuel((Boolean) payload.get("revenuMensuel"));
+        }
+
+        if (payload.containsKey("beneficieAutreAssociation")) {
+            existingFamille.setBeneficieAutreAssociation((Boolean) payload.get("beneficieAutreAssociation"));
+        }
+
+// recalcul degré famille
+        DegreFamille d = degreRepo.findAll().stream()
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
+
+        int degre = 0;
+
+        degre += existingFamille.getNombreEnfants() * d.getPointParEnfant();
+
+        String habitationNom = existingFamille.getHabitationFamille().getNom();
+        if ("ملك".equals(habitationNom)) degre += d.getPointHabitationPropriete();
+        if ("رهن".equals(habitationNom)) degre += d.getPointHabitationRahn();
+        if ("كراء".equals(habitationNom)) degre += d.getPointHabitationLoyer();
+
+        degre += existingFamille.getMere().getEstTravaille()
+                ? d.getPointMereTravailleOui()
+                : d.getPointMereTravailleNon();
+
+        degre += existingFamille.getMere().getEstMalade()
+                ? d.getPointMereMaladeOui()
+                : d.getPointMereMaladeNon();
+
+        degre += Boolean.TRUE.equals(existingFamille.getAideFamille())
+                ? d.getPointAideFamilleOui()
+                : d.getPointAideFamilleNon();
+
+        degre += Boolean.TRUE.equals(existingFamille.getRevenuMensuel())
+                ? d.getPointRevenuMensuelOui()
+                : d.getPointRevenuMensuelNon();
+
+        degre += Boolean.TRUE.equals(existingFamille.getBeneficieAutreAssociation())
+                ? d.getPointAutreAssociationOui()
+                : d.getPointAutreAssociationNon();
+
+        degre += Boolean.TRUE.equals(existingFamille.getPossedeMalade())
+                ? d.getPointPossedeMaladeOui()
+                : d.getPointPossedeMaladeNon();
+
+        long nbEnfantsMalades = existingFamille.getEnfants().stream()
+                .filter(e -> Boolean.TRUE.equals(e.getEstMalade()))
+                .count();
+
+        degre += nbEnfantsMalades * d.getPointEnfantMalade();
+
+        existingFamille.setDegreFamille(degre);
+
 
         return familleService.saveFamille(existingFamille);
     }
