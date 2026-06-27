@@ -8,7 +8,7 @@ import Input from "../components/form/input/InputField";
 import Label from "../components/form/Label";
 import { FaCheck, FaTimes } from "react-icons/fa";
 import jsPDF from "jspdf";
-
+import html2pdf from "html2pdf.js";
 
 interface Option {
   value: number;
@@ -793,126 +793,28 @@ const checkPage = (pdf: jsPDF, y: number) => {
   }
   return y;
 };
+const handleExportPDF = () => {
+  const element = document.getElementById("famille-pdf");
 
-const handleExportPDF = async () => {
-  if (!famille) return;
+  if (!element) return;
 
-  const pdf = new jsPDF("p", "mm", "a4");
-
-  await loadArabicFont(pdf);
-
-  pdf.setR2L(true);
- pdf.setFont("NotoNaskhArabic", "normal");
-
-  let y = 18;
-
-  pdf.setFontSize(20);
-  pdf.text(ar(pdf, "ملف العائلة"), 105, y, { align: "center" });
-
-  y += 12;
-
-  addTitle(pdf, "معلومات عامة عن العائلة", y);
-  y += 14;
-
-  addLine(pdf, "اسم العائلة", famille.pere?.nom ? `عائلة ${famille.pere.nom}` : famille.nomFamille, y); y += 8;
-  addLine(pdf, "نوع الحالة", famille.typeFamille?.nom, y); y += 8;
-  addLine(pdf, "نوع السكن", famille.habitationFamille?.nom, y); y += 8;
-  addLine(pdf, "العنوان", famille.adresseFamille, y); y += 8;
-  addLine(pdf, "الهاتف", famille.phone, y); y += 8;
-  addLine(pdf, "تاريخ التسجيل", famille.dateInscription, y); y += 12;
-
-  addTitle(pdf, "معلومات الأم", y);
-  y += 14;
-
-  addPhoto(pdf, famille.mere?.photoMere, 20, y - 8, 25);
-
-  if (famille.mere) {
-    addLine(pdf, "الاسم الكامل", `${famille.mere.nom} ${famille.mere.prenom}`, y); y += 8;
-
-    if ((famille.mere as any).estDecedee) {
-      addLine(pdf, "الحالة", "متوفاة", y); y += 8;
-      addLine(pdf, "تاريخ الوفاة", (famille.mere as any).dateDeces, y); y += 8;
-    } else {
-      addLine(pdf, "الهاتف", famille.mere.phone, y); y += 8;
-      addLine(pdf, "رقم البطاقة الوطنية", famille.mere.cin, y); y += 8;
-      addLine(pdf, "تاريخ الازدياد", famille.mere.dateNaissance, y); y += 8;
-      addLine(pdf, "مكان الازدياد", famille.mere.villeNaissance, y); y += 8;
-      addLine(pdf, "هل الأم مريضة؟", famille.mere.estMalade ? "نعم" : "لا", y); y += 8;
-      if (famille.mere.estMalade) {
-        addLine(pdf, "نوع المرض", famille.mere.typeMaladie, y); y += 8;
-      }
-      addLine(pdf, "هل الأم تعمل؟", famille.mere.estTravaille ? "نعم" : "لا", y); y += 8;
-      if (famille.mere.estTravaille) {
-        addLine(pdf, "نوع العمل", famille.mere.typeTravail, y); y += 8;
-      }
-    }
-  }
-
-  y += 10;
-  y = checkPage(pdf, y);
-
-  addTitle(pdf, "معلومات الأب", y);
-  y += 14;
-
-  addPhoto(pdf, famille.pere?.photoPere, 20, y - 8, 25);
-
-  if (famille.pere) {
-    addLine(pdf, "الاسم الكامل", `${famille.pere.nom} ${famille.pere.prenom}`, y); y += 8;
-
-    if (famille.pere.estDecedee) {
-      addLine(pdf, "الحالة", "متوفي", y); y += 8;
-      addLine(pdf, "تاريخ الوفاة", famille.pere.dateDeces, y); y += 8;
-    } else {
-      addLine(pdf, "الهاتف", famille.pere.phone, y); y += 8;
-      addLine(pdf, "رقم البطاقة الوطنية", famille.pere.cin, y); y += 8;
-      addLine(pdf, "تاريخ الازدياد", famille.pere.dateNaissance, y); y += 8;
-      addLine(pdf, "مكان الازدياد", famille.pere.villeNaissance, y); y += 8;
-      addLine(pdf, "هل الأب مريض؟", famille.pere.estMalade ? "نعم" : "لا", y); y += 8;
-      if (famille.pere.estMalade) {
-        addLine(pdf, "نوع المرض", famille.pere.typeMaladie, y); y += 8;
-      }
-      addLine(pdf, "هل الأب يعمل؟", famille.pere.estTravaille ? "نعم" : "لا", y); y += 8;
-      if (famille.pere.estTravaille) {
-        addLine(pdf, "نوع العمل", famille.pere.typeTravail, y); y += 8;
-      }
-    }
-  }
-
-  y += 10;
-  y = checkPage(pdf, y);
-
-  addTitle(pdf, "معلومات الأطفال", y);
-  y += 14;
-
-  if (famille.enfants && famille.enfants.length > 0) {
-    famille.enfants.forEach((enfant, index) => {
-      y = checkPage(pdf, y);
-
-      pdf.setFontSize(13);
-      pdf.text(ar(pdf, `الطفل ${index + 1}`), 190, y, { align: "right" });
-
-      addPhoto(pdf, enfant.photoEnfant, 20, y - 5, 22);
-
-      y += 8;
-
-      addLine(pdf, "الاسم الكامل", `${enfant.nom} ${enfant.prenom}`, y); y += 8;
-      addLine(pdf, "تاريخ الازدياد", enfant.dateNaissance, y); y += 8;
-      addLine(pdf, "المستوى الدراسي", etudesEnfants[enfant.id]?.niveauScolaire?.nom, y); y += 8;
-      addLine(pdf, "المدرسة", etudesEnfants[enfant.id]?.ecole?.nom, y); y += 8;
-      addLine(pdf, "هل الطفل مريض؟", enfant.estMalade ? "نعم" : "لا", y); y += 8;
-
-      if (enfant.estMalade) {
-        addLine(pdf, "نوع المرض", enfant.typeMaladie, y);
-        y += 8;
-      }
-
-      y += 8;
-    });
-  } else {
-    addLine(pdf, "الأطفال", "لا توجد معلومات عن الأطفال", y);
-  }
-
-  pdf.save(`ملف_العائلة_${famille.id}.pdf`);
+  html2pdf()
+    .set({
+      margin: 10,
+      filename: `Famille_${famille?.id}.pdf`,
+      image: { type: "jpeg", quality: 1 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+      },
+      jsPDF: {
+        unit: "mm",
+        format: "a4",
+        orientation: "portrait",
+      },
+    })
+    .from(element)
+    .save();
 };
   const renderModalContent = () => {
     if (modalType === "العائلة") {
@@ -1496,11 +1398,11 @@ if (modalType === "Enfant" && currentEnfant) {
 
 
 
-     <div
-
-       dir="rtl"
-       className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:p-8"
-     >
+    <div
+      id="famille-pdf"
+      dir="rtl"
+      className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-950 lg:p-8"
+    >
        <div className="mb-8 border-b border-gray-200 pb-5 text-right dark:border-gray-800">
          <h3 className="text-2xl font-extrabold text-gray-900 dark:text-white">
            ملف العائلة

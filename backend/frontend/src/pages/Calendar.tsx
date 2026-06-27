@@ -51,18 +51,24 @@ const Calendar: React.FC = () => {
     Warning: "warning",
   };
 
-  const [eventTypes, setEventTypes] = useState<EventType[]>([]);
-  useEffect(() => {
-    fetch("http://localhost:8080/api/event-types")
-      .then((res) => res.json())
-      .then((data) => setEventTypes(data))
-      .catch(console.error);
-  }, []);
-const includeLastDay = (dateStr: string) => {
-  const date = new Date(dateStr);
-  date.setDate(date.getDate() + 1); // ajoute 1 jour
-  return date.toISOString().split("T")[0];
-};
+ const [eventTypes, setEventTypes] = useState<EventType[]>([]);
+
+ useEffect(() => {
+   fetch("http://localhost:8080/api/events/event-types")
+     .then((res) => {
+       if (!res.ok) {
+         throw new Error("Erreur chargement types");
+       }
+       return res.json();
+     })
+     .then((data) => {
+       setEventTypes(Array.isArray(data) ? data : []);
+     })
+     .catch((err) => {
+       console.error(err);
+       setEventTypes([]);
+     });
+ }, []);
 
   useEffect(() => {
     fetch("http://localhost:8080/api/events")
@@ -147,7 +153,14 @@ const resetModalFields = () => {
    openModal();
  };
 
+const includeLastDay = (dateStr: string) => {
+  if (!dateStr) return dateStr;
 
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + 1);
+
+  return date.toISOString().split("T")[0];
+};
 
 
 

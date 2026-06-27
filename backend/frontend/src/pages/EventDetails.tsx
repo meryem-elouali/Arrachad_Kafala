@@ -7,7 +7,8 @@ import Button from "../components/ui/button/Button";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
-
+import { PDFDownloadLink } from "@react-pdf/renderer";
+import ParticipantsPdf from "./ParticipantsPdf";
 interface Participant {
   id: number;
   nom: string;
@@ -109,7 +110,18 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
   });
 };
 
-
+const getCibleLabel = (cible: string) => {
+  switch (cible) {
+    case "MERE":
+      return "أم";
+    case "ENFANT":
+      return "طفل";
+    case "FAMILLE":
+      return "عائلة";
+    default:
+      return cible;
+  }
+};
 
 
 
@@ -183,9 +195,42 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
       })
       .catch(console.error);
   }, [id]);
+const saveFiles = async (selectedFiles: File[]) => {
+  if (!event) return;
 
+  const newFiles = await Promise.all(
+    selectedFiles.map(async (file) => ({
+      base64: await convertToBase64(file),
+      type: file.type,
+    }))
+  );
 
-  const openParticipantModal = () => {
+  const payload = {
+    extendedProps: {
+      files: [
+        ...existingFiles,
+        ...newFiles,
+      ],
+    },
+  };
+
+  await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  // Recharger les données
+  const res = await fetch(`http://localhost:8080/api/events/${event.id}`);
+  const updated = await res.json();
+
+  setExistingFiles(updated.photos || []);
+  setFiles([]);
+};
+const [searchParticipant, setSearchParticipant] = useState("");
+ const openParticipantModal = () => {
     if (!event) return;
 
     const cibles = event.cibles || [];
@@ -314,10 +359,18 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
         return;
       }
 
-      const updated = await res.json();
-      setEvent(updated);
-      setExistingFiles(updated.photos || []); // Update loaded files
-      setFiles([]); // Clear new uploads after save
+    await res.json();
+
+    // Recharger les détails complets après save
+    const refreshedRes = await fetch(`http://localhost:8080/api/events/${event.id}`);
+    const refreshed = await refreshedRes.json();
+
+    setEvent(refreshed);
+    setExistingFiles(refreshed.photos || []);
+    setDescription(refreshed.description || "");
+    setFiles([]);
+
+
       alert("Événement mis à jour avec succès !");
     } catch (err) {
       console.error("Erreur lors de la sauvegarde de l'événement :", err);
@@ -339,15 +392,15 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
     XLSX.utils.book_append_sheet(wb, ws, "المشاركين");
     XLSX.writeFile(wb, `${event?.title || "participants"}.xlsx`);
   };
+const filteredParticipants = participants.filter((p: any) => {
+  const search = searchParticipant.toLowerCase().trim();
 
-  const exportToPDF = () => {
-    if (!participantsList.length) return;
-    const doc = new jsPDF();
-    const tableColumn = ["الاسم", "اللقب", "الحضور", "سبب الغياب"];
-    const tableRows = participantsList.map((p) => [p.nom, p.prenom, p.present ? "نعم" : "لا", p.motif || ""]);
-    doc.autoTable({ head: [tableColumn], body: tableRows, styles: { font: "helvetica", fontSize: 10, halign: "right" } });
-    doc.save(`${event?.title || "participants"}.pdf`);
-  };
+  return (
+    p.nom?.toLowerCase().includes(search) ||
+    p.prenom?.toLowerCase().includes(search)
+  );
+});
+
 
   if (!event) return <p>جاري التحميل...</p>;
 
@@ -360,9 +413,11 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 lg:p-6 mb-6 text-right">
         <h3 className="mb-5 text-lg font-bold text-gray-800 dark:text-white">{event.title}</h3>
         <p className="text-gray-500 dark:text-gray-400">
-          <strong>الفئة المستهدفة :</strong> {event.cibles?.join(", ")} <br />
+        <strong>الفئة المستهدفة :</strong>{" "}
+        {event.cibles?.map(getCibleLabel).join("، ")}
+         <br />
           <strong>من :</strong> {event.startDate} <strong>إلى :</strong> {event.endDate} <br />
-          <strong>Place :</strong> {event.place}
+       <strong>مكان النشاط :</strong> {event.place}
         </p>
       </div>
 
@@ -393,13 +448,16 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [],
           }}
           multiple
-          onFileSelect={(fileOrFiles) => {
-            if (Array.isArray(fileOrFiles)) {
-              setFiles((prev) => [...prev, ...fileOrFiles]);
-            } else {
-              setFiles((prev) => [...prev, fileOrFiles]);
-            }
-          }}
+       onFileSelect={async (fileOrFiles) => {
+         const selectedFiles = Array.isArray(fileOrFiles)
+           ? fileOrFiles
+           : [fileOrFiles];
+
+         setFiles((prev) => [...prev, ...selectedFiles]);
+
+         // Sauvegarder automatiquement
+         await saveFiles(selectedFiles);
+       }}
         />
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -507,7 +565,21 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
 
                        <div className="flex gap-2 mb-4">
                          <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
-                         <Button onClick={exportToPDF} className="bg-red-500 text-white">تصدير PDF</Button>
+                     <PDFDownloadLink
+                       document={
+                         <ParticipantsPdf
+                           event={event!}
+                           participants={participantsList}
+                         />
+                       }
+                       fileName={`المشاركون_${event?.title}.pdf`}
+                     >
+                       {({ loading }) => (
+                         <Button className="bg-red-500 text-white">
+                           {loading ? "جاري إنشاء PDF..." : "تصدير PDF"}
+                         </Button>
+                       )}
+                     </PDFDownloadLink>
                        </div>
 
                        <Button onClick={openParticipantModal} className="mb-4 bg-blue-500 text-white">
@@ -515,43 +587,83 @@ const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
                        </Button>
 
                        {/* Modal */}
-                       {isModalOpen && (
-                         <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-                           <div className="bg-white p-6 rounded shadow max-h-[80vh] overflow-y-auto w-96 text-right">
-                             <h3 className="text-xl font-bold mb-4">اختيار المشاركين</h3>
+                    {isModalOpen && (
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                        <div dir="rtl" className="w-[700px] max-h-[85vh] overflow-hidden rounded-2xl bg-white shadow-xl">
 
-                             <div className="mb-2 flex items-center gap-2">
-                               <input
-                                 type="checkbox"
-                                 checked={selectAll}
-                                 onChange={toggleSelectAll}
-                               />
-                               <span>اختيار الكل</span>
-                             </div>
+                          <div className="border-b p-5">
+                            <h3 className="text-xl font-bold text-gray-800">اختيار المشاركين</h3>
 
-                             <div className="grid grid-cols-2 gap-2">
-                          {participants.map((p) => (
-                            <label key={p.uniqueKey} className="flex items-center gap-2 border p-1 rounded cursor-pointer">
+                            <input
+                              type="text"
+                              placeholder="البحث بالاسم أو اللقب..."
+                              value={searchParticipant}
+                              onChange={(e) => setSearchParticipant(e.target.value)}
+                              className="mt-4 w-full rounded-lg border px-4 py-2 text-sm"
+                            />
+
+                            <div className="mt-3 flex items-center gap-2">
                               <input
                                 type="checkbox"
-                                checked={selectedParticipants.includes(p.uniqueKey!)}
-                                onChange={() => toggleParticipant(p.id, p.type!)}
+                                checked={selectAll}
+                                onChange={toggleSelectAll}
                               />
-                              {p.nom} {p.prenom}
-                            </label>
-                          ))}
+                              <span>اختيار الكل</span>
+                            </div>
+                          </div>
 
+                          <div className="max-h-[50vh] overflow-y-auto p-5">
+                            <div className="grid grid-cols-1 gap-2">
+                              {filteredParticipants.map((p: any) => (
+                                <label
+                                  key={p.uniqueKey}
+                                  className="flex cursor-pointer items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
+                                >
+                                  <div>
+                                    <p className="font-semibold text-gray-800">
+                                      {p.nom} {p.prenom}
+                                    </p>
+                                    <p className="text-xs text-gray-500">
+                                      {p.type === "MERE"
+                                        ? "أم"
+                                        : p.type === "ENFANT"
+                                        ? "طفل"
+                                        : "عائلة"}
+                                    </p>
+                                  </div>
 
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedParticipants.includes(p.uniqueKey!)}
+                                    onChange={() => toggleParticipant(p.id, p.type!)}
+                                  />
+                                </label>
+                              ))}
 
-                             </div>
+                              {filteredParticipants.length === 0 && (
+                                <p className="text-center text-gray-500">لا توجد نتائج</p>
+                              )}
+                            </div>
+                          </div>
 
-                             <div className="mt-4 flex justify-end gap-2">
-                               <button className="px-4 py-2 bg-gray-300 rounded" onClick={() => setIsModalOpen(false)}>إلغاء</button>
-                               <button className="px-4 py-2 bg-blue-500 text-white rounded" onClick={confirmParticipants}>تأكيد</button>
-                             </div>
-                           </div>
-                         </div>
-                       )}
+                          <div className="flex justify-end gap-2 border-t p-5">
+                            <button
+                              className="rounded-lg bg-gray-200 px-4 py-2"
+                              onClick={() => setIsModalOpen(false)}
+                            >
+                              إلغاء
+                            </button>
+
+                            <button
+                              className="rounded-lg bg-blue-500 px-4 py-2 text-white"
+                              onClick={confirmParticipants}
+                            >
+                              تأكيد
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                        {participantsList.length > 0 ? (
                          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">

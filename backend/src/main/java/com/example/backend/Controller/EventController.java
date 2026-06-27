@@ -57,7 +57,30 @@ public class EventController {
 
         return ResponseEntity.ok(serialized);
     }
+    @GetMapping("/event-types")
+    public List<EventType> getEventTypes() {
 
+        String[] types = {"اقتصادي", "ترفيهي", "تربوي"};
+
+        for (String name : types) {
+            boolean existe = eventTypeRepository.findAll()
+                    .stream()
+                    .anyMatch(t -> t.getName().equals(name));
+
+            if (!existe) {
+                EventType type = new EventType();
+                type.setName(name);
+                eventTypeRepository.save(type);
+            }
+        }
+
+        return eventTypeRepository.findAll()
+                .stream()
+                .filter(t -> t.getName().equals("اقتصادي")
+                        || t.getName().equals("ترفيهي")
+                        || t.getName().equals("تربوي"))
+                .toList();
+    }
     // --------------------- CREATE EVENT ---------------------
     @PostMapping
     public ResponseEntity<Event> createEvent(@RequestBody Map<String, Object> payload) {
