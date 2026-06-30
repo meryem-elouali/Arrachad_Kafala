@@ -16,7 +16,8 @@ interface Participant {
   age?: number;
   present?: boolean;
   motif?: string;
-  uniqueKey?: string; // For unique React keys
+  uniqueKey?: string;
+  type?: "MERE" | "ENFANT" | "FAMILLE";
 }
 
 interface EventFile {
@@ -188,9 +189,9 @@ const getCibleLabel = (cible: string) => {
 
         // Populate participantsList with unique keys (using entity IDs)
         const eventList: Participant[] = [];
-        if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `mere-${p.id}` })));
-        if (data.enfantsParticipants) eventList.push(...data.enfantsParticipants.map(p => ({ ...p, uniqueKey: `enfant-${p.id}` })));
-        if (data.famillesParticipants) eventList.push(...data.famillesParticipants.map(p => ({ ...p, uniqueKey: `famille-${p.id}` })));
+        if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" })));
+        if (data.enfantsParticipants) eventList.push(...data.enfantsParticipants.map(p => ({ ...p, uniqueKey: `ENFANT-${p.id}`, type: "ENFANT" })));
+        if (data.famillesParticipants) eventList.push(...data.famillesParticipants.map(p => ({ ...p, uniqueKey: `FAMILLE-${p.id}`, type: "FAMILLE"})));
         setParticipantsList(eventList);
       })
       .catch(console.error);
@@ -378,15 +379,48 @@ const [searchParticipant, setSearchParticipant] = useState("");
     }
   };
 
+const importFromExcel = (file: File) => {
+  const reader = new FileReader();
 
+  reader.onload = (e) => {
+    const data = new Uint8Array(e.target?.result as ArrayBuffer);
+    const workbook = XLSX.read(data, { type: "array" });
+    const sheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[sheetName];
+
+    const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+    setParticipantsList((prev) =>
+      prev.map((p) => {
+        const row = rows.find((r) => r.REFERENCE === p.uniqueKey);
+
+        if (!row) return p;
+
+        return {
+          ...p,
+          present: row["الحضور"] === "نعم" || row["الحضور"] === "oui",
+          motif: row["سبب الغياب"] || "",
+        };
+      })
+    );
+
+    alert("تم استيراد ملف Excel بنجاح");
+  };
+
+  reader.readAsArrayBuffer(file);
+};
   const exportToExcel = () => {
     if (!participantsList.length) return;
-    const wsData = participantsList.map((p) => ({
-      الاسم: p.nom,
-      اللقب: p.prenom,
-      الحضور: p.present ? "نعم" : "لا",
-      "سبب الغياب": p.motif || "",
-    }));
+  const wsData = participantsList.map((p: any) => ({
+    REFERENCE: p.uniqueKey,   // ex : MERE-15, ENFANT-8, FAMILLE-3
+    TYPE: p.type,
+    ID: p.id,
+
+    الاسم: p.nom,
+    اللقب: p.prenom,
+    الحضور: p.present ? "نعم" : "لا",
+    "سبب الغياب": p.motif || "",
+  }));
     const ws = XLSX.utils.json_to_sheet(wsData);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "المشاركين");
@@ -565,6 +599,19 @@ const filteredParticipants = participants.filter((p: any) => {
 
                        <div className="flex gap-2 mb-4">
                          <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
+                     <label className="cursor-pointer rounded bg-blue-500 px-4 py-2 text-white">
+                       استيراد Excel
+                       <input
+                         type="file"
+                         accept=".xlsx,.xls"
+                         className="hidden"
+                         onChange={(e) => {
+                           const file = e.target.files?.[0];
+                           if (file) importFromExcel(file);
+                           e.target.value = "";
+                         }}
+                       />
+                     </label>
                      <PDFDownloadLink
                        document={
                          <ParticipantsPdf
