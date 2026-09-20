@@ -40,7 +40,7 @@ public class EventController {
             map.put("place", ev.getPlace());
             map.put("ageMin", ev.getAgeMin());
             map.put("ageMax", ev.getAgeMax());
-
+            map.put("degresFamille", ev.getDegresFamille());
             if (ev.getEventType() != null) {
                 Map<String, Object> typeMap = new java.util.HashMap<>();
                 typeMap.put("id", ev.getEventType().getId());
@@ -60,7 +60,7 @@ public class EventController {
     @GetMapping("/event-types")
     public List<EventType> getEventTypes() {
 
-        String[] types = {"اقتصادي", "ترفيهي", "تربوي"};
+        String[] types = {"اقتصادي", "ترفيهي", "تربوي", "صحي"};
 
         for (String name : types) {
             boolean existe = eventTypeRepository.findAll()
@@ -78,10 +78,10 @@ public class EventController {
                 .stream()
                 .filter(t -> t.getName().equals("اقتصادي")
                         || t.getName().equals("ترفيهي")
-                        || t.getName().equals("تربوي"))
+                        || t.getName().equals("تربوي")
+                        || t.getName().equals("صحي"))
                 .toList();
     }
-    // --------------------- CREATE EVENT ---------------------
     @PostMapping
     public ResponseEntity<Event> createEvent(@RequestBody Map<String, Object> payload) {
         try {
@@ -115,7 +115,14 @@ public class EventController {
             List<Cible> cibles = new ArrayList<>();
             for (String c : ciblesStr) cibles.add(Cible.valueOf(c));
             event.setCibles(cibles);
+            List<Integer> degresFamille =
+                    (List<Integer>) props.get("degresFamille");
 
+            if (degresFamille != null) {
+                event.setDegresFamille(degresFamille);
+            } else {
+                event.setDegresFamille(new ArrayList<>());
+            }
             // AgeMin / AgeMax if ENFANT
             if (cibles.contains(Cible.ENFANT)) {
                 Object ageMinObj = props.get("ageMin");
@@ -152,6 +159,7 @@ public class EventController {
                     EventFile ef = new EventFile();
                     ef.setBase64(f.get("base64"));
                     ef.setType(f.get("type"));
+                    ef.setName(f.get("name"));
                     ef.setEvent(event);
                     eventFiles.add(ef);
                 }
@@ -222,8 +230,11 @@ public class EventController {
                     map.put("photos", ev.getFiles().stream()
                             .map(f -> {
                                 Map<String, Object> photoMap = new HashMap<>();
+
                                 photoMap.put("base64", f.getBase64());
                                 photoMap.put("type", f.getType());
+                                photoMap.put("name", f.getName());
+
                                 return photoMap;
                             }).collect(Collectors.toList()));
 
@@ -349,6 +360,16 @@ public class EventController {
                 if (enfantsIds != null) existingEvent.setEnfantsParticipants(eventService.getEnfantsByIds(enfantsIds));
                 List<Integer> famillesIds = (List<Integer>) props.get("famillesParticipants");
                 if (famillesIds != null) existingEvent.setFamilleParticipants(eventService.getFamillesByIds(famillesIds));
+                if (props.containsKey("degresFamille")) {
+                    List<Integer> degresFamille =
+                            (List<Integer>) props.get("degresFamille");
+
+                    existingEvent.setDegresFamille(
+                            degresFamille != null
+                                    ? degresFamille
+                                    : new ArrayList<>()
+                    );
+                }
             }
 
             Event saved = eventService.saveEvent(existingEvent);
@@ -381,6 +402,7 @@ public class EventController {
                         EventFile ef = new EventFile();
                         ef.setBase64(f.get("base64"));
                         ef.setType(f.get("type"));
+                        ef.setName(f.get("name"));
                         ef.setEvent(existingEvent);
                         existingEvent.getFiles().add(ef);
                     }

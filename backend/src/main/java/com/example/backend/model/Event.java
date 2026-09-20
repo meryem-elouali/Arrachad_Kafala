@@ -14,7 +14,13 @@ public class Event {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
+    @ElementCollection
+    @CollectionTable(
+            name = "event_degres_famille",
+            joinColumns = @JoinColumn(name = "event_id")
+    )
+    @Column(name = "degre")
+    private List<Integer> degresFamille = new ArrayList<>();
     // ------------------------------------
     // Base infos
     // ------------------------------------
@@ -27,7 +33,13 @@ public class Event {
     private String place;
     @Column(name = "end_date")
     private LocalDate endDate;
+    public List<Integer> getDegresFamille() {
+        return degresFamille;
+    }
 
+    public void setDegresFamille(List<Integer> degresFamille) {
+        this.degresFamille = degresFamille;
+    }
     @ElementCollection(targetClass = Cible.class)
     @Enumerated(EnumType.STRING)
     @CollectionTable(name = "event_cibles", joinColumns = @JoinColumn(name = "event_id"))

@@ -11,7 +11,7 @@ public class EventType {
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String name; // exemple: STEP, REUNION, RAMADAN, SORTIE, EID_FITR, EID_ADHA
+    private String name;
 
     // Getters et Setters
     public Long getId() { return id; }

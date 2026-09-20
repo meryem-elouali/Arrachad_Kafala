@@ -235,7 +235,19 @@ public class FamilleController {
 
             degre += nbEnfantsMalades * d.getPointEnfantMalade();
 
-            famille.setDegreFamille(degre);
+            int degreFinal;
+
+            if (degre >= 7 && degre <= 10) {
+                degreFinal = 1;
+            } else if (degre >= 4 && degre < 7) {
+                degreFinal = 2;
+            } else if (degre >= 0 && degre < 4) {
+                degreFinal = 3;
+            } else {
+                throw new RuntimeException("Note de degré invalide : " + degre);
+            }
+
+            famille.setDegreFamille(degreFinal);
             // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
 
@@ -410,7 +422,19 @@ public class FamilleController {
 
         degre += nbEnfantsMalades * d.getPointEnfantMalade();
 
-        existingFamille.setDegreFamille(degre);
+        int degreFinal;
+
+        if (degre >= 7 && degre <= 10) {
+            degreFinal = 1;
+        } else if (degre >= 4 && degre < 7) {
+            degreFinal = 2;
+        } else if (degre >= 0 && degre < 4) {
+            degreFinal = 3;
+        } else {
+            throw new RuntimeException("Note de degré invalide : " + degre);
+        }
+
+        existingFamille.setDegreFamille(degreFinal);
 
 
         return familleService.saveFamille(existingFamille);

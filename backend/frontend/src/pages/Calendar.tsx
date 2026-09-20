@@ -15,18 +15,21 @@ interface EventType {
   id: number;
   name: string;
 }
-
 interface CalendarEvent extends EventInput {
   id?: number;
   extendedProps: {
     calendar: string;
-
+    cibles?: Cible[];
     eventType: EventType;
     ageMin?: number;
     ageMax?: number;
-  }
-}
+    degresFamille?: number[];
+    place?: string;
+    startDate?: string;
+    endDate?: string;
 
+  };
+}
 const Calendar: React.FC = () => {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [eventTitle, setEventTitle] = useState("");
@@ -36,6 +39,7 @@ const Calendar: React.FC = () => {
 
   const [ageMin, setAgeMin] = useState<number | "">("");
   const [ageMax, setAgeMax] = useState<number | "">("");
+  const [degresFamille, setDegresFamille] = useState<number[]>([]);
   const [eventStartDate, setEventStartDate] = useState("");
   const [eventEndDate, setEventEndDate] = useState("");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
@@ -89,6 +93,7 @@ const Calendar: React.FC = () => {
      place: ev.place,          // <-- assure-toi que 'place' existe bien ici
      startDate: ev.startDate,
      endDate: ev.endDate,
+     degresFamille: ev.degresFamille ?? [],
    },
  }));
 
@@ -114,6 +119,7 @@ const resetModalFields = () => {
   setEventTypeId("");
   setPlace(""); // réinitialise place uniquement pour nouvel événement
   setSelectedEvent(null);
+  setDegresFamille([]);
 };
 
   const handleDateSelect = (selectInfo: DateSelectArg) => {
@@ -149,7 +155,11 @@ const resetModalFields = () => {
    setAgeMax(props.ageMax ?? "");
    setEventTypeId(props.eventType?.id ?? "");
    setPlace(props.place ?? "");
-
+setDegresFamille(
+  Array.isArray(props.degresFamille)
+    ? props.degresFamille.map(Number)
+    : []
+);
    openModal();
  };
 
@@ -175,10 +185,19 @@ const eventData = {
   end: eventEndDate,
   extendedProps: {
     cibles,
-    ageMin: cibles.includes("ENFANT") ? (ageMin !== "" ? Number(ageMin) : null) : null,
-    ageMax: cibles.includes("ENFANT") ? (ageMax !== "" ? Number(ageMax) : null) : null,
+
+    degresFamille,
+
+    ageMin: cibles.includes("ENFANT")
+      ? (ageMin !== "" ? Number(ageMin) : null)
+      : null,
+
+    ageMax: cibles.includes("ENFANT")
+      ? (ageMax !== "" ? Number(ageMax) : null)
+      : null,
+
     eventType: { id: Number(eventTypeId) },
-    place: place || "Inconnu", // <-- valeur par défaut pour éviter null
+    place: place || "Inconnu",
   }
 };
 
@@ -213,16 +232,17 @@ const eventData = {
       start: savedEvent.startDate,
       end: includeLastDay(savedEvent.endDate),
       allDay: true,
-      extendedProps: {
-        calendar: savedEvent.calendar ?? "primary",
-        cibles: cibles,  // Use local state
-        ageMin: ageMin,  // Use local state
-        ageMax: ageMax,  // Use local state
-        eventType: savedEvent.eventType ?? { id: eventTypeId, name: "" },
-        place: place,    // Use local state
-        startDate: savedEvent.startDate,
-        endDate: savedEvent.endDate,
-      },
+    extendedProps: {
+      calendar: savedEvent.calendar ?? "primary",
+      cibles: cibles,
+      ageMin: ageMin,
+      ageMax: ageMax,
+      degresFamille: degresFamille,
+      eventType: savedEvent.eventType ?? { id: eventTypeId, name: "" },
+      place: place,
+      startDate: savedEvent.startDate,
+      endDate: savedEvent.endDate,
+    },
     };
 
     if (selectedEvent) {
@@ -276,97 +296,270 @@ const eventData = {
           select={handleDateSelect}
           eventClick={handleEventClick}
           customButtons={{
-            addEventButton: {
-              text: "إضافة حدث +",
+          addEventButton: {
+              text: "إضافة نشاط +",
               click: openModal,
-            },
-            listEventButton: {
-              text: "قائمة الأحداث",
+          },
+          listEventButton: {
+              text: "قائمة الأنشطة",
               click: () => navigate("/listeevents"),
-            },
+          },
           }}
         />
 
         <Modal isOpen={isOpen} onClose={closeModal} className="max-w-[700px] p-6 lg:p-10">
           <div className="flex flex-col px-2" dir="rtl">
-            <h5 className="mb-2 font-semibold">{selectedEvent ? "تعديل الحدث" : "إضافة حدث"}</h5>
+          <h5 className="mb-2 font-semibold">
+              {selectedEvent ? "تعديل النشاط" : "إضافة نشاط"}
+          </h5>
 
-            <label className="block mt-4">عنوان الحدث</label>
+          <label className="block mt-4">عنوان النشاط</label>
             <input type="text" value={eventTitle} onChange={(e) => setEventTitle(e.target.value)} className="border rounded px-2 py-1 w-full" />
 
-           <div className="block mt-4">
-             <label className="block mb-1">الفئة</label>
-             <div className="flex gap-4">
-               {["MERE", "ENFANT", "FAMILLE"].map((option) => (
-                 <label key={option} className="flex items-center gap-1">
-                   <input
-                     type="checkbox"
-                     value={option}
-                     checked={cibles.includes(option as Cible)}
-                     onChange={(e) => {
-                       const value = e.target.value as Cible;
-                       // si déjà coché => décocher
-                       if (cibles.includes(value)) {
-                         setCibles(cibles.filter((c) => c !== value));
-                       } else {
-                         // logique : soit un seul, soit combo MERE+ENFANT
-                         if (value === "FAMILLE") {
-                           setCibles(["FAMILLE"]);
-                         } else if (value === "MERE" || value === "ENFANT") {
-                           const other = cibles.find((c) => c === "MERE" || c === "ENFANT");
-                           setCibles(other ? [other, value] : [value]);
-                         }
-                       }
-                     }}
-                   />
-                   {option === "MERE" ? "أم" : option === "ENFANT" ? "طفل" : "عائلة"}
-                 </label>
-               ))}
-             </div>
-           </div>
+        {/* ===================== الفئة المستهدفة ===================== */}
+        <div className="mt-6">
+          <label className="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+            الفئة المستهدفة
+          </label>
+
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { value: "MERE", label: "الأمهات", icon: "👩" },
+              { value: "ENFANT", label: "الأطفال", icon: "👧" },
+              { value: "FAMILLE", label: "العائلات", icon: "👨‍👩‍👧" },
+            ].map((item) => {
+              const selected = cibles.includes(item.value as Cible);
+
+              return (
+                <button
+                  key={item.value}
+                  type="button"
+                  onClick={() => {
+                    const value = item.value as Cible;
+
+                    if (cibles.includes(value)) {
+                      setCibles(cibles.filter((c) => c !== value));
+                    } else {
+                      if (value === "FAMILLE") {
+                        setCibles(["FAMILLE"]);
+                      } else {
+                        const other = cibles.find(
+                          (c) => c === "MERE" || c === "ENFANT"
+                        );
+
+                        setCibles(other ? [other, value] : [value]);
+                      }
+                    }
+                  }}
+                  className={`
+                    group relative flex flex-col items-center justify-center
+                    rounded-2xl border p-4
+                    transition-all duration-300 ease-out
+                    ${
+                      selected
+                        ? "border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500/20 dark:bg-blue-500/10"
+                        : "border-gray-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                    }
+                  `}
+                >
+                  {/* check */}
+                  <div
+                    className={`
+                      absolute left-3 top-3 flex h-5 w-5 items-center justify-center
+                      rounded-full border text-xs transition-all duration-200
+                      ${
+                        selected
+                          ? "border-blue-500 bg-blue-500 text-white"
+                          : "border-gray-300 bg-white text-transparent"
+                      }
+                    `}
+                  >
+                    ✓
+                  </div>
+
+                  <span className="mb-2 text-2xl">{item.icon}</span>
+
+                  <span
+                    className={`text-sm font-semibold ${
+                      selected
+                        ? "text-blue-700 dark:text-blue-300"
+                        : "text-gray-700 dark:text-gray-200"
+                    }`}
+                  >
+                    {item.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
 
 
-           {cibles.includes("ENFANT") && (
-             <div className="flex gap-4 mt-4">
-               <div>
-                 <label>الحد الأدنى للعمر</label>
-                 <input
-                   type="number"
-                   value={ageMin}
-                   onChange={(e) => setAgeMin(e.target.value ? Number(e.target.value) : "")}
-                   className="border rounded px-2 py-1 w-full"
-                 />
-               </div>
-               <div>
-                 <label>الحد الأقصى للعمر</label>
-                 <input
-                   type="number"
-                   value={ageMax}
-                   onChange={(e) => setAgeMax(e.target.value ? Number(e.target.value) : "")}
-                   className="border rounded px-2 py-1 w-full"
-                 />
-               </div>
-             </div>
-           )}
+        {/* ===================== درجة العائلة ===================== */}
+        <div
+          className={`
+            overflow-hidden transition-all duration-500 ease-in-out
+            ${
+              cibles.length > 0
+                ? "mt-6 max-h-60 opacity-100"
+                : "max-h-0 opacity-0"
+            }
+          `}
+        >
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+
+            <div className="mb-3">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-200">
+                درجة العائلة المستهدفة
+              </label>
+
+              <p className="mt-1 text-xs text-gray-400">
+                يمكنك اختيار درجة واحدة أو عدة درجات
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              {[1, 2, 3].map((degre) => {
+                const selected = degresFamille.includes(degre);
+
+                return (
+                  <button
+                    key={degre}
+                    type="button"
+                    onClick={() => {
+                      setDegresFamille((prev) =>
+                        prev.includes(degre)
+                          ? prev.filter((d) => d !== degre)
+                          : [...prev, degre]
+                      );
+                    }}
+                    className={`
+                      relative rounded-xl border px-4 py-3
+                      text-center transition-all duration-200
+                      ${
+                        selected
+                          ? "border-blue-500 bg-blue-500 text-white shadow-sm"
+                          : "border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:bg-blue-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                      }
+                    `}
+                  >
+                    <div className="text-sm font-semibold">
+                      الدرجة {degre}
+                    </div>
+
+                    {selected && (
+                      <div className="mt-1 text-xs text-blue-100">
+                        ✓ تم الاختيار
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
 
 
-            <label className="block mt-4">نوع الحدث</label>
-            <select
-              value={eventTypeId}
-              onChange={(e) => setEventTypeId(Number(e.target.value))}
-              className="border rounded px-2 py-1 w-full"
-            >
-              <option value="">-- اختر --</option>
-              {eventTypes.map((type) => (
-                <option key={type.id} value={type.id}>
-                  {type.name}
-                </option>
-              ))}
-            </select>
+        {/* ===================== العمر - فقط للأطفال ===================== */}
+        <div
+          className={`
+            overflow-hidden transition-all duration-500 ease-in-out
+            ${
+              cibles.includes("ENFANT")
+                ? "mt-6 max-h-60 opacity-100"
+                : "max-h-0 opacity-0"
+            }
+          `}
+        >
+          <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700 dark:bg-gray-800/50">
+
+            <label className="mb-3 block text-sm font-semibold text-gray-700 dark:text-gray-200">
+              الفئة العمرية للأطفال
+            </label>
+
+            <div className="grid grid-cols-2 gap-4">
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                  الحد الأدنى للعمر
+                </label>
+
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={ageMin}
+                    onChange={(e) =>
+                      setAgeMin(e.target.value ? Number(e.target.value) : "")
+                    }
+                    placeholder="مثال: 6"
+                    className="
+                      h-11 w-full rounded-xl border border-gray-200
+                      bg-white px-4 outline-none
+                      transition-all duration-200
+                      focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10
+                      dark:border-gray-700 dark:bg-gray-900
+                    "
+                  />
+
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                    سنة
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                  الحد الأقصى للعمر
+                </label>
+
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    value={ageMax}
+                    onChange={(e) =>
+                      setAgeMax(e.target.value ? Number(e.target.value) : "")
+                    }
+                    placeholder="مثال: 16"
+                    className="
+                      h-11 w-full rounded-xl border border-gray-200
+                      bg-white px-4 outline-none
+                      transition-all duration-200
+                      focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10
+                      dark:border-gray-700 dark:bg-gray-900
+                    "
+                  />
+
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                    سنة
+                  </span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
 
 
 
-            <label className="block mt-4">مكان الحدث</label>
+         <label className="block mt-4">نوع النشاط</label>
+         <select
+             value={eventTypeId}
+             onChange={(e) => setEventTypeId(Number(e.target.value))}
+             className="border rounded px-2 py-1 w-full"
+         >
+             <option value="">-- اختر --</option>
+             {eventTypes.map((type) => (
+                 <option key={type.id} value={type.id}>
+                     {type.name}
+                 </option>
+             ))}
+         </select>
+
+
+
+       <label className="block mt-4">مكان النشاط</label>
             <input type="text" value={place} onChange={(e) => setPlace(e.target.value)} className="border rounded px-2 py-1 w-full" />
 
             <label className="block mt-4">تاريخ البداية</label>

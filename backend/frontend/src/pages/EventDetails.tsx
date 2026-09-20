@@ -1,12 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import DropzoneComponent1 from "../components/form/form-elements/DropZone1";
 import Button from "../components/ui/button/Button";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import "jspdf-autotable";
+
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import ParticipantsPdf from "./ParticipantsPdf";
 interface Participant {
@@ -19,12 +18,11 @@ interface Participant {
   uniqueKey?: string;
   type?: "MERE" | "ENFANT" | "FAMILLE";
 }
-
 interface EventFile {
   base64: string;
   type: string;
+  name: string;
 }
-
 interface EventDetail {
   id: number;
   title: string;
@@ -32,9 +30,10 @@ interface EventDetail {
   endDate: string;
   cibles: string[];
   description?: string;
-  photos?: EventFile[]; // Now properly returned by backend
+  photos?: EventFile[];
   ageMin?: number;
   ageMax?: number;
+  degresFamille?: number[];
   meresParticipants?: Participant[];
   enfantsParticipants?: Participant[];
   famillesParticipants?: Participant[];
@@ -48,7 +47,6 @@ const EventDetails: React.FC = () => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
 
-  const [files, setFiles] = useState<File[]>([]);
   const [existingFiles, setExistingFiles] = useState<EventFile[]>([]); // To hold loaded files
   const [description, setDescription] = useState<string>("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -57,7 +55,10 @@ const EventDetails: React.FC = () => {
   const [allMeres, setAllMeres] = useState<Participant[]>([]);
   const [allEnfants, setAllEnfants] = useState<Participant[]>([]);
   const [allFamilles, setAllFamilles] = useState<Participant[]>([]);
+const [isSaving, setIsSaving] = useState(false);
+const [isSaved, setIsSaved] = useState(true);
 
+const firstLoad = useRef(true);
   const convertToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -67,16 +68,32 @@ const EventDetails: React.FC = () => {
     });
 
   // Convert Base64 back to File for display
-  const base64ToFile = (base64: string, type: string, filename: string): File => {
-    const byteString = atob(base64.split(',')[1]);
-    const mimeString = base64.split(',')[0].split(':')[1].split(';')[0];
-    const ab = new ArrayBuffer(byteString.length);
-    const ia = new Uint8Array(ab);
-    for (let i = 0; i < byteString.length; i++) {
-      ia[i] = byteString.charCodeAt(i);
-    }
-    return new File([ab], filename, { type: mimeString });
-  };
+const base64ToFile = (
+  base64: string,
+  type: string,
+  filename: string
+): File => {
+  const parts = base64.split(",");
+
+  const byteString = atob(
+    parts.length > 1 ? parts[1] : parts[0]
+  );
+
+  const mimeType =
+    parts.length > 1 && parts[0].includes(":")
+      ? parts[0].split(":")[1].split(";")[0]
+      : type || "application/octet-stream";
+
+  const bytes = new Uint8Array(byteString.length);
+
+  for (let i = 0; i < byteString.length; i++) {
+    bytes[i] = byteString.charCodeAt(i);
+  }
+
+  return new File([bytes], filename, {
+    type: mimeType,
+  });
+};
 const toggleParticipant = (id: number, type: "MERE" | "ENFANT" | "FAMILLE") => {
  const key = `${type.toUpperCase()}-${id}`;
 
@@ -128,32 +145,19 @@ const getCibleLabel = (cible: string) => {
 
 
 
- const toggleSelectAll = () => {
-   if (selectAll) {
-     // Décocher tout
-     setSelectedParticipants([]);
-     setParticipantsList([]);
-     setSelectAll(false);
-   } else {
-     // Cocher tout
-     const allKeys = participants.map(p => p.uniqueKey!);
-     setSelectedParticipants(allKeys);
+const toggleSelectAll = () => {
+  if (selectAll) {
+    setSelectedParticipants([]);
+    setSelectAll(false);
+  } else {
+    const allKeys = participants
+      .map((p) => p.uniqueKey)
+      .filter((key): key is string => Boolean(key));
 
-     // Mettre à jour participantsList avec tous les participants (éviter doublons)
-     setParticipantsList(prev => {
-       const newList = [...prev];
-       participants.forEach(p => {
-         if (!newList.some(np => np.uniqueKey === p.uniqueKey)) {
-           newList.push(p);
-         }
-       });
-       return newList;
-     });
-
-     setSelectAll(true);
-   }
- };
-
+    setSelectedParticipants(allKeys);
+    setSelectAll(true);
+  }
+};
   // Fetch data
   useEffect(() => {
     const fetchData = async () => {
@@ -199,12 +203,13 @@ const getCibleLabel = (cible: string) => {
 const saveFiles = async (selectedFiles: File[]) => {
   if (!event) return;
 
-  const newFiles = await Promise.all(
-    selectedFiles.map(async (file) => ({
-      base64: await convertToBase64(file),
-      type: file.type,
-    }))
-  );
+ const newFiles = await Promise.all(
+   selectedFiles.map(async (file) => ({
+     base64: await convertToBase64(file),
+     type: file.type,
+     name: file.name,
+   }))
+ );
 
   const payload = {
     extendedProps: {
@@ -228,7 +233,7 @@ const saveFiles = async (selectedFiles: File[]) => {
   const updated = await res.json();
 
   setExistingFiles(updated.photos || []);
-  setFiles([]);
+
 };
 const [searchParticipant, setSearchParticipant] = useState("");
  const openParticipantModal = () => {
@@ -281,104 +286,157 @@ const [searchParticipant, setSearchParticipant] = useState("");
   };
 
 
+const confirmParticipants = () => {
+  const selected: Participant[] = [];
 
-  const confirmParticipants = () => {
-    const selected: Participant[] = [];
+  // Mères
+  selected.push(
+    ...allMeres
+      .filter((m) =>
+        selectedParticipants.includes(`MERE-${m.id}`)
+      )
+      .map((p) => ({
+        ...p,
+        uniqueKey: `MERE-${p.id}`,
+        type: "MERE" as const,
+      }))
+  );
 
-    // Ajouter uniquement les mères sélectionnées
-    selected.push(...allMeres
-      .filter(m => selectedParticipants.includes(`MERE-${m.id}`))
-      .map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" }))
-    );
+  // Enfants
+  selected.push(
+    ...allEnfants
+      .filter((e) =>
+        selectedParticipants.includes(`ENFANT-${e.id}`)
+      )
+      .map((p) => ({
+        ...p,
+        uniqueKey: `ENFANT-${p.id}`,
+        type: "ENFANT" as const,
+      }))
+  );
 
-    // Ajouter les enfants si tu veux
-    selected.push(...allEnfants
-      .filter(e => selectedParticipants.includes(`ENFANT-${e.id}`))
-      .map(p => ({ ...p, uniqueKey: `ENFANT-${p.id}`, type: "ENFANT" }))
-    );
+  // Familles
+  selected.push(
+    ...allFamilles
+      .filter((f) =>
+        selectedParticipants.includes(`FAMILLE-${f.id}`)
+      )
+      .map((p) => ({
+        ...p,
+        uniqueKey: `FAMILLE-${p.id}`,
+        type: "FAMILLE" as const,
+      }))
+  );
 
-    // ❌ On supprime la partie familles
-    // selected.push(...allFamilles ... ) => supprimer cette partie
+  setParticipantsList(selected);
+  setIsModalOpen(false);
+};
 
-    setParticipantsList(selected);
-    setIsModalOpen(false);
+const saveEvent = async () => {
+  if (!event) return;
+
+  setIsSaving(true);
+  setIsSaved(false);
+
+  const allFilesBase64 = existingFiles.map((f) => ({
+    base64: f.base64,
+    type: f.type,
+    name: f.name,
+  }));
+
+  const payload: any = {
+    extendedProps: {
+      description: description,
+      files: allFilesBase64,
+
+      meresParticipants: participantsList
+        .filter((p) => p.type === "MERE")
+        .map((p) => ({
+          id: p.id,
+          present: p.present ?? true,
+          motif: p.motif ?? null,
+        })),
+
+      enfantsParticipants: participantsList
+        .filter((p) => p.type === "ENFANT")
+        .map((p) => ({
+          id: p.id,
+          present: p.present ?? true,
+          motif: p.motif ?? null,
+        })),
+
+      famillesParticipants: participantsList
+        .filter((p) => p.type === "FAMILLE")
+        .map((p) => ({
+          id: p.id,
+          present: p.present ?? true,
+          motif: p.motif ?? null,
+        })),
+    },
   };
 
-
-
-  const saveEvent = async () => {
-    if (!event) return;
-
-    // Convert new files to base64 safely
-    const newFilesBase64 = await Promise.all(
-      files.map(async (file) => {
-        try {
-          const base64 = await convertToBase64(file);
-          return { base64, type: file.type };
-        } catch (err) {
-          console.error("Erreur conversion fichier en Base64 :", file.name, err);
-          return null; // Ignorer ce fichier
-        }
-      })
-    );
-
-    // Merge with existing files, filter out invalid ones
-    const allFilesBase64 = [
-      ...existingFiles.map(f => ({ base64: f.base64, type: f.type })),
-      ...newFilesBase64.filter(f => f !== null) // keep only valid
-    ];
-
-    const payload: any = { extendedProps: {} };
-    if (description) payload.extendedProps.description = description;
-    if (allFilesBase64.length) payload.extendedProps.files = allFilesBase64;
-
-    // Participants
-    payload.extendedProps.meresParticipants = participantsList
-      .filter((p) => allMeres.some((m) => m.id === p.id))
-      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
-
-    payload.extendedProps.enfantsParticipants = participantsList
-      .filter((p) => allEnfants.some((e) => e.id === p.id))
-      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
-
- /**    payload.extendedProps.famillesParticipants = participantsList
-      .filter((p) => allFamilles.some((f) => f.id === p.id))
-      .map((p) => ({ id: p.id, present: p.present ?? true, motif: p.motif ?? null }));
-*/
-    try {
-      console.log("Payload envoyé :", payload); // Pour debug avant envoi
-      const res = await fetch(`http://localhost:8080/api/events/details/${event.id}`, {
+  try {
+    const res = await fetch(
+      `http://localhost:8080/api/events/details/${event.id}`,
+      {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Save error:", errorText);
-        alert(`Erreur lors de la sauvegarde: ${errorText}`);
-        return;
       }
+    );
 
-    await res.json();
-
-    // Recharger les détails complets après save
-    const refreshedRes = await fetch(`http://localhost:8080/api/events/${event.id}`);
-    const refreshed = await refreshedRes.json();
-
-    setEvent(refreshed);
-    setExistingFiles(refreshed.photos || []);
-    setDescription(refreshed.description || "");
-    setFiles([]);
-
-
-      alert("Événement mis à jour avec succès !");
-    } catch (err) {
-      console.error("Erreur lors de la sauvegarde de l'événement :", err);
-      alert("Erreur réseau lors de la sauvegarde.");
+    if (!res.ok) {
+      throw new Error(await res.text());
     }
-  };
 
+    setIsSaved(true);
+  } catch (err) {
+    console.error("Erreur sauvegarde automatique :", err);
+    setIsSaved(false);
+  } finally {
+    setIsSaving(false);
+  }
+};
+const deleteFile = async (indexToDelete: number) => {
+  if (!event) return;
+
+  const updatedFiles = existingFiles.filter(
+    (_, index) => index !== indexToDelete
+  );
+
+  setIsSaving(true);
+  setIsSaved(false);
+
+  try {
+    const res = await fetch(
+      `http://localhost:8080/api/events/details/${event.id}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          extendedProps: {
+            files: updatedFiles,
+          },
+        }),
+      }
+    );
+
+    if (!res.ok) {
+      throw new Error(await res.text());
+    }
+
+    setExistingFiles(updatedFiles);
+    setIsSaved(true);
+  } catch (error) {
+    console.error("Erreur suppression :", error);
+  } finally {
+    setIsSaving(false);
+  }
+};
 const importFromExcel = (file: File) => {
   const reader = new FileReader();
 
@@ -435,7 +493,23 @@ const filteredParticipants = participants.filter((p: any) => {
   );
 });
 
+useEffect(() => {
+  if (!event) return;
 
+  // Ne pas sauvegarder immédiatement au premier chargement
+  if (firstLoad.current) {
+    firstLoad.current = false;
+    return;
+  }
+
+  setIsSaved(false);
+
+  const timer = setTimeout(() => {
+    saveEvent();
+  }, 600);
+
+  return () => clearTimeout(timer);
+}, [description, participantsList]);
   if (!event) return <p>جاري التحميل...</p>;
 
   return (
@@ -443,154 +517,908 @@ const filteredParticipants = participants.filter((p: any) => {
       <PageMeta title="تفاصيل النشاط" description="تفاصيل وإدارة المشاركين للنشاط" />
       <PageBreadcrumb pageTitle="تفاصيل النشاط" />
 
-      {/* Event Info */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 lg:p-6 mb-6 text-right">
-        <h3 className="mb-5 text-lg font-bold text-gray-800 dark:text-white">{event.title}</h3>
-        <p className="text-gray-500 dark:text-gray-400">
-        <strong>الفئة المستهدفة :</strong>{" "}
-        {event.cibles?.map(getCibleLabel).join("، ")}
-         <br />
-          <strong>من :</strong> {event.startDate} <strong>إلى :</strong> {event.endDate} <br />
-       <strong>مكان النشاط :</strong> {event.place}
+    {/* ====================== EVENT HEADER ====================== */}
+    <div
+      dir="rtl"
+      className="
+        mb-6 overflow-hidden rounded-3xl
+        border border-gray-200 bg-white
+        shadow-sm
+        dark:border-gray-800 dark:bg-gray-900
+      "
+    >
+      {/* HEADER */}
+      <div className="border-b border-gray-100 px-6 py-6 dark:border-gray-800 lg:px-8">
+
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+
+          {/* TITRE */}
+          <div className="flex items-center gap-4">
+
+            <div
+              className="
+                flex h-14 w-14 shrink-0 items-center justify-center
+                rounded-2xl bg-blue-50 text-blue-600
+                dark:bg-blue-500/10 dark:text-blue-400
+              "
+            >
+              <svg
+                width="26"
+                height="26"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+              >
+                <rect x="3" y="5" width="18" height="16" rx="2" />
+                <path d="M16 3v4M8 3v4M3 10h18" />
+              </svg>
+            </div>
+
+            <div>
+              <p className="mb-1 text-xs font-semibold text-blue-600">
+                تفاصيل النشاط
+              </p>
+
+              <h1 className="text-xl font-bold text-gray-900 dark:text-white lg:text-2xl">
+                {event.title}
+              </h1>
+
+              <p className="mt-1 text-sm text-gray-400">
+                المعلومات الأساسية الخاصة بالنشاط
+              </p>
+            </div>
+          </div>
+
+
+          {/* CIBLES BADGES */}
+          <div className="flex flex-wrap gap-2">
+            {event.cibles?.map((cible) => (
+              <span
+                key={cible}
+                className="
+                  inline-flex items-center gap-1.5
+                  rounded-full border border-blue-100
+                  bg-blue-50 px-3 py-1.5
+                  text-xs font-semibold text-blue-600
+                  dark:border-blue-500/20 dark:bg-blue-500/10
+                "
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-500" />
+
+                {getCibleLabel(cible)}
+              </span>
+            ))}
+          </div>
+
+        </div>
+      </div>
+
+
+      {/* INFORMATION CARDS */}
+      <div className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2 lg:grid-cols-4 lg:p-8">
+
+        {/* DATE */}
+        <div
+          className="
+            rounded-2xl border border-gray-100
+            bg-gray-50/70 p-4
+            transition duration-200
+            hover:-translate-y-0.5 hover:shadow-sm
+            dark:border-gray-800 dark:bg-gray-800/40
+          "
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect x="3" y="5" width="18" height="16" rx="2" />
+                <path d="M16 3v4M8 3v4M3 10h18" />
+              </svg>
+            </div>
+
+            <span className="text-xs font-semibold text-gray-400">
+              تاريخ النشاط
+            </span>
+          </div>
+
+          <div className="space-y-1 text-sm">
+            <p className="font-semibold text-gray-700 dark:text-gray-200">
+              من {event.startDate}
+            </p>
+
+            <p className="text-gray-500">
+              إلى {event.endDate}
+            </p>
+          </div>
+        </div>
+
+
+        {/* PLACE */}
+        <div
+          className="
+            rounded-2xl border border-gray-100
+            bg-gray-50/70 p-4
+            transition duration-200
+            hover:-translate-y-0.5 hover:shadow-sm
+            dark:border-gray-800 dark:bg-gray-800/40
+          "
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" />
+                <circle cx="12" cy="10" r="2.5" />
+              </svg>
+            </div>
+
+            <span className="text-xs font-semibold text-gray-400">
+              مكان النشاط
+            </span>
+          </div>
+
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            {event.place || "غير محدد"}
+          </p>
+        </div>
+
+
+        {/* DEGRE */}
+        <div
+          className="
+            rounded-2xl border border-gray-100
+            bg-gray-50/70 p-4
+            transition duration-200
+            hover:-translate-y-0.5 hover:shadow-sm
+            dark:border-gray-800 dark:bg-gray-800/40
+          "
+        >
+          <div className="mb-3 flex items-center gap-2">
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M4 19V9" />
+                <path d="M10 19V5" />
+                <path d="M16 19V12" />
+                <path d="M22 19V3" />
+              </svg>
+            </div>
+
+            <span className="text-xs font-semibold text-gray-400">
+              درجة العائلة
+            </span>
+          </div>
+
+          {event.degresFamille?.length ? (
+            <div className="flex flex-wrap gap-2">
+              {event.degresFamille.map((degre) => (
+                <span
+                  key={degre}
+                  className="
+                    rounded-lg bg-amber-50
+                    px-2.5 py-1
+                    text-xs font-bold text-amber-700
+                  "
+                >
+                  الدرجة {degre}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400">
+              جميع الدرجات
+            </p>
+          )}
+        </div>
+
+
+        {/* AGE */}
+        <div
+          className="
+            rounded-2xl border border-gray-100
+            bg-gray-50/70 p-4
+            transition duration-200
+            hover:-translate-y-0.5 hover:shadow-sm
+            dark:border-gray-800 dark:bg-gray-800/40
+          "
+        >
+          <div className="mb-3 flex items-center gap-2">
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-600">
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21a8 8 0 0 1 16 0" />
+              </svg>
+            </div>
+
+            <span className="text-xs font-semibold text-gray-400">
+              الفئة العمرية
+            </span>
+          </div>
+
+          {event.cibles?.includes("ENFANT") ? (
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+              من {event.ageMin ?? 0} إلى {event.ageMax ?? "∞"} سنة
+            </p>
+          ) : (
+            <p className="text-sm text-gray-400">
+              غير مطبق
+            </p>
+          )}
+        </div>
+
+      </div>
+    </div>
+{/* ====================== DESCRIPTION ====================== */}
+<div
+  dir="rtl"
+  className="
+    mb-6 overflow-hidden rounded-3xl
+    border border-gray-200 bg-white
+    shadow-sm
+    dark:border-gray-800 dark:bg-gray-900
+  "
+>
+  {/* HEADER */}
+  <div className="flex items-center justify-between border-b border-gray-100 px-6 py-5 dark:border-gray-800">
+
+    <div className="flex items-center gap-3">
+
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
+        <svg
+          width="21"
+          height="21"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <path d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+      </div>
+
+      <div>
+        <h4 className="font-bold text-gray-800 dark:text-white">
+          معلومات حول النشاط
+        </h4>
+
+        <p className="mt-1 text-xs text-gray-400">
+          أضف وصف النشاط، الأهداف، الملاحظات أو النتائج
         </p>
       </div>
 
-      {/* Description */}
-      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
-        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">معلومات حول النشاط</h4>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="اكتب هنا وصف النشاط أو النتائج..."
-          className="w-full border border-gray-300 rounded-lg p-3 text-sm text-gray-800 dark:text-white dark:bg-gray-900"
-          rows={6}
-        />
-      </div>
+    </div>
 
-      {/* Fichiers */}
-      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
-        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">صور النشاط</h4>
-        <DropzoneComponent1
-          label="استيراد ملفات النشاط"
-          id="eventFiles"
-          accept={{
-            "image/*": [],
-            "application/pdf": [],
-            "application/msword": [],
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [],
-            "application/vnd.ms-excel": [],
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [],
-          }}
-          multiple
-       onFileSelect={async (fileOrFiles) => {
-         const selectedFiles = Array.isArray(fileOrFiles)
-           ? fileOrFiles
-           : [fileOrFiles];
+    {/* AUTOSAVE */}
+    <div className="flex items-center gap-2">
+      {isSaving ? (
+        <>
+          <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+          <span className="text-xs text-gray-400">
+            جاري الحفظ...
+          </span>
+        </>
+      ) : isSaved ? (
+        <>
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-[10px] font-bold text-green-600">
+            ✓
+          </span>
 
-         setFiles((prev) => [...prev, ...selectedFiles]);
+          <span className="text-xs font-medium text-green-600">
+            تم الحفظ
+          </span>
+        </>
+      ) : null}
+    </div>
 
-         // Sauvegarder automatiquement
-         await saveFiles(selectedFiles);
-       }}
-        />
+  </div>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          {/* Existing files (loaded from backend) */}
-          {existingFiles.map((file, idx) => {
-            const blobFile = base64ToFile(file.base64, file.type, `file-${idx}`);
-            const fileUrl = URL.createObjectURL(blobFile);
-            const renderPreview = () => {
-              if (file.type.startsWith("image/"))
-                return <img src={fileUrl} alt={`file-${idx}`} className="max-w-full max-h-full object-contain" />;
-              if (file.type === "application/pdf") return <span>PDF: file-{idx}</span>;
-              if (
-                file.type === "application/msword" ||
-                file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              )
-                return <span>DOC: file-{idx}</span>;
-              if (
-                file.type === "application/vnd.ms-excel" ||
-                file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              )
-                return <span>XLS: file-{idx}</span>;
-              return <span>FILE: file-{idx}</span>;
-            };
-            return (
-              <div key={`existing-${idx}`} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
-                <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
-                  {renderPreview()}
-                </div>
-                <div className="flex gap-1 mt-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setExistingFiles((prev) => prev.filter((_, i) => i !== idx));
-                    }}
-                    className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
-                  >
-                    ×
-                  </button>
-                  <a
-                    href={fileUrl}
-                    download={`file-${idx}`}
-                    className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    ⬇
-                  </a>
-                </div>
-              </div>
-            );
-          })}
-          {/* New uploaded files */}
-          {files.map((file, idx) => {
-            const fileUrl = URL.createObjectURL(file);
-            const renderPreview = () => {
-              if (file.type.startsWith("image/"))
-                return <img src={fileUrl} alt={file.name} className="max-w-full max-h-full object-contain" />;
-              if (file.type === "application/pdf") return <span>PDF: {file.name}</span>;
-              if (
-                file.type === "application/msword" ||
-                               file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                             )
-                               return <span>DOC: {file.name}</span>;
-                             if (
-                               file.type === "application/vnd.ms-excel" ||
-                               file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                             )
-                               return <span>XLS: {file.name}</span>;
-                             return <span>FILE: {file.name}</span>;
-                           };
-                           return (
-                             <div key={idx} className="border p-2 rounded relative w-24 h-24 flex flex-col items-center justify-center cursor-pointer bg-gray-50 hover:bg-gray-100">
-                               <div className="flex-1 w-full flex items-center justify-center" onClick={() => window.open(fileUrl, "_blank")}>
-                                 {renderPreview()}
-                               </div>
-                               <div className="flex gap-1 mt-1">
-                                 <button
-                                   onClick={(e) => {
-                                     e.stopPropagation();
-                                     setFiles((prev) => prev.filter((_, i) => i !== idx));
-                                   }}
-                                   className="text-red-500 bg-white rounded-full p-1 text-xs hover:bg-red-50"
-                                 >
-                                   ×
-                                 </button>
-                                 <a
-                                   href={fileUrl}
-                                   download={file.name}
-                                   className="text-blue-500 bg-white rounded-full p-1 text-xs hover:bg-blue-50"
-                                   onClick={(e) => e.stopPropagation()}
-                                 >
-                                   ⬇
-                                 </a>
-                               </div>
-                             </div>
-                           );
-                         })}
+
+  {/* TOOLBAR */}
+  <div className="flex flex-wrap items-center gap-1 border-b border-gray-100 bg-gray-50/60 px-6 py-2 dark:border-gray-800 dark:bg-gray-800/30">
+
+    <button
+      type="button"
+      title="إضافة نقطة"
+      onClick={() =>
+        setDescription((prev) =>
+          prev ? `${prev}\n• ` : "• "
+        )
+      }
+      className="
+        flex h-8 items-center gap-2 rounded-lg
+        px-3 text-sm font-medium text-gray-600
+        transition hover:bg-white hover:text-blue-600
+        hover:shadow-sm
+      "
+    >
+      <span className="text-lg">•</span>
+      قائمة
+    </button>
+
+    <button
+      type="button"
+      title="إضافة ترقيم"
+      onClick={() =>
+        setDescription((prev) =>
+          prev ? `${prev}\n1. ` : "1. "
+        )
+      }
+      className="
+        flex h-8 items-center gap-2 rounded-lg
+        px-3 text-sm font-medium text-gray-600
+        transition hover:bg-white hover:text-blue-600
+        hover:shadow-sm
+      "
+    >
+      <span>1.</span>
+      ترقيم
+    </button>
+
+    <div className="mx-2 h-5 w-px bg-gray-200" />
+
+    <span className="text-xs text-gray-400">
+      يتم الحفظ تلقائياً أثناء الكتابة
+    </span>
+
+  </div>
+
+
+  {/* EDITOR */}
+  <div className="p-6">
+    <textarea
+      value={description}
+      onChange={(e) => setDescription(e.target.value)}
+      placeholder={`اكتب معلومات النشاط هنا...
+
+مثال:
+• الهدف من النشاط
+• الفئة المستفيدة
+• أهم النتائج والملاحظات`}
+      rows={8}
+      className="
+        min-h-[190px] w-full resize-y
+        rounded-2xl border border-gray-200
+        bg-gray-50/40 px-5 py-4
+        text-sm leading-8 text-gray-700
+        outline-none transition-all
+        placeholder:text-gray-300
+
+        focus:border-blue-400
+        focus:bg-white
+        focus:ring-4
+        focus:ring-blue-500/5
+
+        dark:border-gray-700
+        dark:bg-gray-800/40
+        dark:text-gray-200
+      "
+    />
+  </div>
+</div>
+
+     {/* ====================== FICHIERS DU النشاط ====================== */}
+     <div
+       dir="rtl"
+       className="
+         mb-6 overflow-hidden rounded-2xl
+         border border-gray-200
+         bg-white
+         shadow-sm
+         dark:border-gray-800
+         dark:bg-gray-900
+       "
+     >
+       {/* Header */}
+       <div
+         className="
+           flex flex-col gap-2
+           border-b border-gray-100
+           px-6 py-5
+           dark:border-gray-800
+         "
+       >
+         <div className="flex items-center justify-between">
+
+           <div className="flex items-center gap-3">
+             <div
+               className="
+                 flex h-11 w-11 items-center justify-center
+                 rounded-xl bg-blue-50 text-blue-600
+               "
+             >
+               <svg
+                 width="22"
+                 height="22"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 strokeWidth="1.8"
+               >
+                 <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+               </svg>
+             </div>
+
+             <div>
+               <h4 className="text-lg font-bold text-gray-800 dark:text-white">
+                 ملفات النشاط
+               </h4>
+
+               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                 أضف الصور والوثائق المتعلقة بالنشاط
+               </p>
+             </div>
+           </div>
+
+           {existingFiles.length > 0 && (
+             <span
+               className="
+                 rounded-full bg-blue-50
+                 px-3 py-1.5
+                 text-xs font-semibold text-blue-600
+               "
+             >
+               {existingFiles.length} ملف
+             </span>
+           )}
+
+         </div>
+       </div>
+
+       <div className="p-6">
+
+         {/* ================= DROPZONE ================= */}
+
+         <DropzoneComponent1
+           label="إضافة ملفات"
+           id="eventFiles"
+           accept={{
+             "image/jpeg": [".jpg", ".jpeg"],
+             "image/png": [".png"],
+             "image/webp": [".webp"],
+
+             "application/pdf": [".pdf"],
+
+             "application/msword": [".doc"],
+
+             "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+               [".docx"],
+
+             "application/vnd.ms-excel": [".xls"],
+
+             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+               [".xlsx"],
+           }}
+           multiple
+           onFileSelect={async (fileOrFiles) => {
+
+             const selectedFiles = Array.isArray(fileOrFiles)
+               ? fileOrFiles
+               : [fileOrFiles];
+
+             await saveFiles(selectedFiles);
+           }}
+         />
+
+
+         {/* ================= FICHIERS ================= */}
+
+         {existingFiles.length > 0 && (
+
+           <div className="mt-7">
+
+             {/* titre liste */}
+
+             <div className="mb-4 flex items-center justify-between">
+
+               <div>
+                 <h5 className="font-bold text-gray-800 dark:text-white">
+                   الملفات المرفقة
+                 </h5>
+
+                 <p className="mt-1 text-xs text-gray-400">
+                   اضغط على الملف لفتحه أو تحميله
+                 </p>
+               </div>
+
+             </div>
+
+
+             {/* GRID */}
+
+             <div
+               className="
+                 grid grid-cols-1 gap-3
+                 md:grid-cols-2
+                 xl:grid-cols-3
+               "
+             >
+
+               {existingFiles.map((file, idx) => {
+
+                 const fileName =
+                   file.name || `ملف-${idx + 1}`;
+
+                 const blobFile = base64ToFile(
+                   file.base64,
+                   file.type,
+                   fileName
+                 );
+
+                 const fileUrl =
+                   URL.createObjectURL(blobFile);
+
+
+                 /* TYPES */
+
+                 const isImage =
+                   file.type?.startsWith("image/");
+
+                 const isPdf =
+                   file.type === "application/pdf";
+
+                 const isWord =
+                   file.type === "application/msword" ||
+                   file.type ===
+                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+                 const isExcel =
+                   file.type === "application/vnd.ms-excel" ||
+                   file.type ===
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
+
+                 /* LABEL */
+
+                 const fileTypeLabel = isImage
+                   ? "صورة"
+                   : isPdf
+                   ? "PDF"
+                   : isWord
+                   ? "Word"
+                   : isExcel
+                   ? "Excel"
+                   : "ملف";
+
+
+                 return (
+
+                   <div
+                     key={`file-${idx}`}
+                     className="
+                       group
+                       flex items-center gap-4
+                       rounded-xl
+                       border border-gray-200
+                       bg-white
+                       p-3
+                       transition-all duration-200
+
+                       hover:-translate-y-[2px]
+                       hover:border-blue-200
+                       hover:shadow-md
+
+                       dark:border-gray-700
+                       dark:bg-gray-800
+                     "
+                   >
+
+                     {/* ================= ICON / IMAGE ================= */}
+
+                     <button
+                       type="button"
+                       onClick={() =>
+                         window.open(fileUrl, "_blank")
+                       }
+                       className="
+                         flex h-14 w-14
+                         shrink-0
+                         items-center justify-center
+                         overflow-hidden
+                         rounded-xl
+                         bg-gray-50
+                         transition
+                         group-hover:bg-blue-50
+                         dark:bg-gray-700
+                       "
+                     >
+
+                       {isImage ? (
+
+                         <img
+                        src={file.base64}
+                           alt={fileName}
+                           className="
+                             h-full w-full
+                             object-cover
+                           "
+                         />
+
+                       ) : isPdf ? (
+
+                         <div
+                           className="
+                             flex h-full w-full
+                             items-center justify-center
+                             rounded-xl
+                             bg-red-50
+                             text-red-500
+                           "
+                         >
+                           <span className="text-xl font-bold">
+                             PDF
+                           </span>
+                         </div>
+
+                       ) : isWord ? (
+
+                         <div
+                           className="
+                             flex h-full w-full
+                             items-center justify-center
+                             rounded-xl
+                             bg-blue-50
+                             text-blue-600
+                           "
+                         >
+                           <span className="text-lg font-bold">
+                             W
+                           </span>
+                         </div>
+
+                       ) : isExcel ? (
+
+                         <div
+                           className="
+                             flex h-full w-full
+                             items-center justify-center
+                             rounded-xl
+                             bg-green-50
+                             text-green-600
+                           "
+                         >
+                           <span className="text-lg font-bold">
+                             X
+                           </span>
+                         </div>
+
+                       ) : (
+
+                         <div
+                           className="
+                             flex h-full w-full
+                             items-center justify-center
+                             rounded-xl
+                             bg-gray-100
+                             text-gray-500
+                           "
+                         >
+                           📎
+                         </div>
+
+                       )}
+
+                     </button>
+
+
+                     {/* ================= INFORMATION ================= */}
+
+                     <div className="min-w-0 flex-1">
+
+                       <button
+                         type="button"
+                         onClick={() =>
+                           window.open(fileUrl, "_blank")
+                         }
+                         title={fileName}
+                         className="
+                           block w-full
+                           truncate
+                           text-right
+                           text-sm
+                           font-semibold
+                           text-gray-800
+                           transition
+                           hover:text-blue-600
+                           dark:text-white
+                         "
+                       >
+                         {fileName}
+                       </button>
+
+
+                       <div className="mt-1.5 flex items-center gap-2">
+
+                         <span
+                           className={`
+                             rounded-md px-2 py-0.5
+                             text-[10px] font-semibold
+
+                             ${
+                               isPdf
+                                 ? "bg-red-50 text-red-500"
+                                 : isWord
+                                 ? "bg-blue-50 text-blue-600"
+                                 : isExcel
+                                 ? "bg-green-50 text-green-600"
+                                 : isImage
+                                 ? "bg-purple-50 text-purple-600"
+                                 : "bg-gray-100 text-gray-500"
+                             }
+                           `}
+                         >
+                           {fileTypeLabel}
+                         </span>
+
                        </div>
+
                      </div>
 
+
+                     {/* ================= ACTIONS ================= */}
+
+                     <div className="flex shrink-0 items-center gap-1">
+
+                       {/* OUVRIR */}
+
+                       <button
+                         type="button"
+                         title="فتح الملف"
+                         onClick={() =>
+                           window.open(fileUrl, "_blank")
+                         }
+                         className="
+                           flex h-9 w-9
+                           items-center justify-center
+                           rounded-lg
+                           text-gray-400
+                           transition
+
+                           hover:bg-blue-50
+                           hover:text-blue-600
+                         "
+                       >
+                         <svg
+                           width="17"
+                           height="17"
+                           viewBox="0 0 24 24"
+                           fill="none"
+                           stroke="currentColor"
+                           strokeWidth="2"
+                         >
+                           <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" />
+                           <circle cx="12" cy="12" r="3" />
+                         </svg>
+                       </button>
+
+
+                       {/* DOWNLOAD */}
+
+                       <a
+                         href={fileUrl}
+                         download={fileName}
+                         title="تحميل الملف"
+                         className="
+                           flex h-9 w-9
+                           items-center justify-center
+                           rounded-lg
+                           text-gray-400
+                           transition
+
+                           hover:bg-green-50
+                           hover:text-green-600
+                         "
+                       >
+                         <svg
+                           width="17"
+                           height="17"
+                           viewBox="0 0 24 24"
+                           fill="none"
+                           stroke="currentColor"
+                           strokeWidth="2"
+                         >
+                           <path d="M12 3v12" />
+                           <path d="m7 10 5 5 5-5" />
+                           <path d="M5 21h14" />
+                         </svg>
+                       </a>
+
+
+                       {/* DELETE */}
+
+                  <button
+                    type="button"
+                    title="حذف الملف"
+                    onClick={() => deleteFile(idx)}
+                    className="
+                      flex h-9 w-9
+                      items-center justify-center
+                      rounded-lg
+                      text-gray-400
+                      transition
+                      hover:bg-red-50
+                      hover:text-red-500
+                    "
+                  >
+                    <svg
+                      width="17"
+                      height="17"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                    >
+                      <path d="M3 6h18" />
+                      <path d="M8 6V4h8v2" />
+                      <path d="M19 6l-1 14H6L5 6" />
+                      <path d="M10 11v5" />
+                      <path d="M14 11v5" />
+                    </svg>
+                  </button>
+
+                     </div>
+
+                   </div>
+
+                 );
+               })}
+
+             </div>
+
+           </div>
+
+         )}
+
+
+         {/* ================= EMPTY STATE ================= */}
+
+         {existingFiles.length === 0 && (
+
+           <div
+             className="
+               mt-5
+               rounded-xl
+               border border-gray-100
+               bg-gray-50
+               px-4 py-3
+               text-center
+               text-xs text-gray-400
+             "
+           >
+             لا توجد ملفات مرفقة حتى الآن
+           </div>
+
+         )}
+
+       </div>
+     </div>
                      {/* Participants */}
                      <div className="p-5 border border-gray-200 rounded-2xl dark:border-gray-800 lg:p-6 mb-6 text-right">
                        <h4 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">
@@ -735,7 +1563,16 @@ const filteredParticipants = participants.filter((p: any) => {
                                        onChange={(e) => {
                                          setParticipantsList((prev) =>
                                            prev.map((part) =>
-                                             part.id === p.id ? { ...part, present: e.target.value === "oui" } : part
+                                            part.id === p.id && part.type === p.type
+                                              ? {
+                                                  ...part,
+                                                  present: e.target.value === "oui",
+                                                  motif:
+                                                    e.target.value === "oui"
+                                                      ? ""
+                                                      : part.motif,
+                                                }
+                                              : part
                                            )
                                          );
                                        }}
@@ -754,7 +1591,12 @@ const filteredParticipants = participants.filter((p: any) => {
                                          onChange={(e) => {
                                            setParticipantsList((prev) =>
                                              prev.map((part) =>
-                                               part.id === p.id ? { ...part, motif: e.target.value } : part
+                                              part.id === p.id && part.type === p.type
+                                                ? {
+                                                    ...part,
+                                                    motif: e.target.value,
+                                                  }
+                                                : part
                                              )
                                            );
                                          }}
@@ -773,11 +1615,33 @@ const filteredParticipants = participants.filter((p: any) => {
                      </div>
 
                      {/* Save Button */}
-                     <div className="mt-6 text-right">
-                       <button onClick={saveEvent} className="px-4 py-2 bg-blue-500 text-white rounded">
-                         حفظ
-                       </button>
-                     </div>
+                  <div
+                    dir="rtl"
+                    className="mt-6 flex min-h-[24px] items-center justify-end gap-2 text-sm"
+                  >
+                    {isSaving ? (
+                      <>
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+                        <span className="text-gray-500">
+                          جاري الحفظ...
+                        </span>
+                      </>
+                    ) : isSaved ? (
+                      <>
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-600">
+                          ✓
+                        </span>
+
+                        <span className="font-medium text-green-600">
+                          تم الحفظ تلقائياً
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-red-500">
+                        تعذر الحفظ
+                      </span>
+                    )}
+                  </div>
                    </div>
                  );
                };
