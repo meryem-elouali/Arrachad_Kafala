@@ -6,6 +6,7 @@ import com.example.backend.service.EventService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -166,26 +167,124 @@ public class EventController {
                 event.setFiles(eventFiles);
             }
 
-            // Participants
-            List<Map<String, Object>> participantsData = (List<Map<String, Object>>) props.get("participants");
-            if (participantsData != null) {
-                List<EventParticipant> participants = new ArrayList<>();
-                for (Map<String, Object> p : participantsData) {
-                    EventParticipant ep = new EventParticipant();
-                    ep.setEvent(event);
-                    ep.setParticipantType(ParticipantType.valueOf((String) p.get("type")));
-                    ep.setPresent((Boolean) p.getOrDefault("present", true));
-                    ep.setAbsenceReason((String) p.getOrDefault("absenceReason", null));
+            // ================= PARTICIPANTS AUTOMATIQUES =================
 
-                    switch (ep.getParticipantType()) {
-                        case MERE -> ep.setMere(eventService.getMereById(Long.valueOf(p.get("mereId").toString())));
-                        case ENFANT -> ep.setEnfant(eventService.getEnfantById(Long.valueOf(p.get("enfantId").toString())));
-                        case FAMILLE -> ep.setFamille(eventService.getFamilleById(Long.valueOf(p.get("familleId").toString())));
-                    }
+            List<EventParticipant> participants = new ArrayList<>();
+
+
+// ================= MÈRES =================
+            if (cibles.contains(Cible.MERE)) {
+
+                List<Mere> meres = eventService.getAllMeres();
+
+                for (Mere mere : meres) {
+
+                    EventParticipant ep = new EventParticipant();
+
+                    ep.setEvent(event);
+                    ep.setParticipantType(ParticipantType.MERE);
+                    ep.setMere(mere);
+
+                    // sélectionnée par défaut
+                    ep.setPresent(true);
+                    ep.setAbsenceReason(null);
+
+                    // aucun montant au moment de la création
+                    ep.setMontant(BigDecimal.ZERO);
+
                     participants.add(ep);
                 }
-                event.setParticipants(participants);
             }
+
+
+// ================= ENFANTS =================
+            if (cibles.contains(Cible.ENFANT)) {
+
+                List<Enfant> enfants = eventService.getAllEnfants();
+
+                Integer ageMin = event.getAgeMin();
+                Integer ageMax = event.getAgeMax();
+
+                for (Enfant enfant : enfants) {
+
+                    Integer age = enfant.getAge();
+
+                    boolean ageValide = true;
+
+                    if (age != null) {
+
+                        if (ageMin != null && age < ageMin) {
+                            ageValide = false;
+                        }
+
+                        if (ageMax != null && age > ageMax) {
+                            ageValide = false;
+                        }
+                    }
+
+                    if (!ageValide) {
+                        continue;
+                    }
+
+                    EventParticipant ep = new EventParticipant();
+
+                    ep.setEvent(event);
+                    ep.setParticipantType(ParticipantType.ENFANT);
+                    ep.setEnfant(enfant);
+
+                    ep.setPresent(true);
+                    ep.setAbsenceReason(null);
+                    ep.setMontant(BigDecimal.ZERO);
+
+                    participants.add(ep);
+                }
+            }
+
+
+// ================= FAMILLES =================
+            if (cibles.contains(Cible.FAMILLE)) {
+
+                List<Famille> familles = eventService.getAllFamilles();
+
+                for (Famille famille : familles) {
+
+                    boolean degreValide = true;
+
+                    // Si l'événement précise certains degrés
+                    if (
+                            degresFamille != null &&
+                                    !degresFamille.isEmpty()
+                    ) {
+
+                        Integer degreFamille =
+                                famille.getDegreFamille();
+
+                        degreValide =
+                                degreFamille != null &&
+                                        degresFamille.contains(degreFamille);
+                    }
+
+                    if (!degreValide) {
+                        continue;
+                    }
+
+                    EventParticipant ep = new EventParticipant();
+
+                    ep.setEvent(event);
+                    ep.setParticipantType(ParticipantType.FAMILLE);
+                    ep.setFamille(famille);
+
+                    ep.setPresent(true);
+                    ep.setAbsenceReason(null);
+                    ep.setMontant(BigDecimal.ZERO);
+
+                    participants.add(ep);
+                }
+            }
+
+
+// Affecter tous les participants éligibles
+            event.setParticipants(participants);
 
             Event saved = eventService.saveEvent(event);
             return ResponseEntity.ok(saved);
@@ -210,6 +309,40 @@ public class EventController {
                     map.put("place", ev.getPlace());
                     map.put("ageMin", ev.getAgeMin());
                     map.put("ageMax", ev.getAgeMax());
+                    map.put(
+                            "montantTotal",
+                            ev.getMontantTotal()
+                    );
+                    map.put(
+                            "typeMontant",
+                            ev.getTypeMontant()
+                    );
+
+                    map.put(
+                            "modeRepartition",
+                            ev.getModeRepartition()
+                    );
+
+                    map.put(
+                            "montantGlobal",
+                            ev.getMontantGlobal()
+                    );
+                    map.put(
+                            "montantsParDegre",
+                            ev.getMontantsParDegre() != null
+                                    ? ev.getMontantsParDegre()
+                                    : new HashMap<>()
+                    );
+                    map.put(
+                            "montantEgal",
+                            ev.getMontantEgal()
+                    );
+                    map.put(
+                            "degresFamille",
+                            ev.getDegresFamille() != null
+                                    ? ev.getDegresFamille()
+                                    : new ArrayList<>()
+                    );
                     map.put("cibles", ev.getCibles() != null
                             ? ev.getCibles().stream().map(Enum::name).collect(Collectors.toList())
                             : null);
@@ -247,6 +380,12 @@ public class EventController {
                                 participantMap.put("prenom", p.getMere() != null ? p.getMere().getPrenom() : null);
                                 participantMap.put("present", p.getPresent());
                                 participantMap.put("motif", p.getAbsenceReason());
+                                participantMap.put(
+                                        "montant",
+                                        p.getMontant() != null
+                                                ? p.getMontant()
+                                                : BigDecimal.ZERO
+                                );
                                 return participantMap;
                             }).collect(Collectors.toList()));
 
@@ -260,18 +399,56 @@ public class EventController {
                                 participantMap.put("age", p.getEnfant().getAge());
                                 participantMap.put("present", p.getPresent());
                                 participantMap.put("motif", p.getAbsenceReason());
+                                participantMap.put(
+                                        "montant",
+                                        p.getMontant() != null
+                                                ? p.getMontant()
+                                                : BigDecimal.ZERO
+                                );
                                 return participantMap;
                             }).collect(Collectors.toList()));
 
-                    map.put("famillesParticipants", ev.getParticipants().stream()
-                            .filter(p -> p.getParticipantType() == ParticipantType.FAMILLE && p.getFamille() != null)
-                            .map(p -> {
-                                Map<String, Object> participantMap = new HashMap<>();
-                                participantMap.put("id", p.getFamille() != null ? p.getFamille().getId() : null);
-                                participantMap.put("present", p.getPresent());
-                                participantMap.put("motif", p.getAbsenceReason());
-                                return participantMap;
-                            }).collect(Collectors.toList()));
+                    map.put(
+                            "famillesParticipants",
+                            ev.getParticipants()
+                                    .stream()
+                                    .filter(
+                                            p ->
+                                                    p.getParticipantType()
+                                                            == ParticipantType.FAMILLE
+                                                            && p.getFamille() != null
+                                    )
+                                    .map(p -> {
+
+                                        Map<String, Object> participantMap =
+                                                new HashMap<>();
+
+                                        participantMap.put(
+                                                "id",
+                                                p.getFamille().getId()
+                                        );
+
+                                        participantMap.put(
+                                                "present",
+                                                p.getPresent()
+                                        );
+
+                                        participantMap.put(
+                                                "motif",
+                                                p.getAbsenceReason()
+                                        );
+
+                                        participantMap.put(
+                                                "montant",
+                                                p.getMontant() != null
+                                                        ? p.getMontant()
+                                                        : BigDecimal.ZERO
+                                        );
+
+                                        return participantMap;
+
+                                    }).collect(Collectors.toList())
+                    );
 
                     return ResponseEntity.ok(map);
                 }).orElse(ResponseEntity.notFound().build());
@@ -395,16 +572,27 @@ public class EventController {
                     existingEvent.setDescription(((String) props.get("description")).trim());
 
                 // Files
-                List<Map<String, String>> files = (List<Map<String, String>>) props.get("files");
-                if (files != null) {
+                // ================= FILES =================
+// Ne modifier les fichiers QUE si le frontend envoie réellement "files"
+                if (props.containsKey("files")) {
+
+                    List<Map<String, String>> files =
+                            (List<Map<String, String>>) props.get("files");
+
                     existingEvent.getFiles().clear();
-                    for (Map<String, String> f : files) {
-                        EventFile ef = new EventFile();
-                        ef.setBase64(f.get("base64"));
-                        ef.setType(f.get("type"));
-                        ef.setName(f.get("name"));
-                        ef.setEvent(existingEvent);
-                        existingEvent.getFiles().add(ef);
+
+                    if (files != null) {
+                        for (Map<String, String> f : files) {
+
+                            EventFile ef = new EventFile();
+
+                            ef.setBase64(f.get("base64"));
+                            ef.setType(f.get("type"));
+                            ef.setName(f.get("name"));
+                            ef.setEvent(existingEvent);
+
+                            existingEvent.getFiles().add(ef);
+                        }
                     }
                 }
 
@@ -422,6 +610,20 @@ public class EventController {
                         ep.setAbsenceReason((String) p.getOrDefault("motif", null));
                         Long mereId = Long.valueOf(p.get("id").toString());
                         ep.setMere(eventService.getMereById(mereId));
+                        Object montantObj =
+                                p.get("montant");
+
+                        BigDecimal montant =
+                                BigDecimal.ZERO;
+
+                        if (montantObj != null) {
+                            montant =
+                                    new BigDecimal(
+                                            montantObj.toString()
+                                    );
+                        }
+
+                        ep.setMontant(montant);
                         updatedParticipants.add(ep);
                     }
                 }
@@ -437,25 +639,192 @@ public class EventController {
                         ep.setAbsenceReason((String) p.getOrDefault("motif", null));
                         Long enfantId = Long.valueOf(p.get("id").toString());
                         ep.setEnfant(eventService.getEnfantById(enfantId));
+                        Object montantObj =
+                                p.get("montant");
+
+                        BigDecimal montant =
+                                BigDecimal.ZERO;
+
+                        if (montantObj != null) {
+                            montant =
+                                    new BigDecimal(
+                                            montantObj.toString()
+                                    );
+                        }
+
+                        ep.setMontant(montant);
                         updatedParticipants.add(ep);
                     }
                 }
 
                 // Familles
-                List<Map<String, Object>> famillesParticipants = (List<Map<String, Object>>) props.get("famillesParticipants");
+                // Familles
+                List<Map<String, Object>> famillesParticipants =
+                        (List<Map<String, Object>>) props.get("famillesParticipants");
+
+
                 if (famillesParticipants != null) {
+
                     for (Map<String, Object> p : famillesParticipants) {
+
                         EventParticipant ep = new EventParticipant();
+
                         ep.setEvent(existingEvent);
                         ep.setParticipantType(ParticipantType.FAMILLE);
-                        ep.setPresent((Boolean) p.getOrDefault("present", true));
-                        ep.setAbsenceReason((String) p.getOrDefault("motif", null));
-                        Long familleId = Long.valueOf(p.get("id").toString());
-                        ep.setFamille(eventService.getFamilleById(familleId));
+
+                        ep.setPresent(
+                                (Boolean) p.getOrDefault("present", true)
+                        );
+
+                        ep.setAbsenceReason(
+                                (String) p.getOrDefault("motif", null)
+                        );
+
+                        Long familleId =
+                                Long.valueOf(p.get("id").toString());
+
+                        ep.setFamille(
+                                eventService.getFamilleById(familleId)
+                        );
+
+                        // ================= MONTANT =================
+                        Object montantObj = p.get("montant");
+
+                        BigDecimal montant = BigDecimal.ZERO;
+
+                        if (montantObj != null) {
+                            montant = new BigDecimal(
+                                    montantObj.toString()
+                            );
+                        }
+
+                        ep.setMontant(montant);
+
+
+
                         updatedParticipants.add(ep);
                     }
                 }
 
+// total de l'événement
+// ================= MONTANT EVENT =================
+
+                String typeMontant =
+                        (String)
+                                props.getOrDefault(
+                                        "typeMontant",
+                                        "GLOBAL"
+                                );
+
+                existingEvent.setTypeMontant(
+                        typeMontant
+                );
+                Object modeObj =
+                        props.get("modeRepartition");
+
+                existingEvent.setModeRepartition(
+                        modeObj != null
+                                ? modeObj.toString()
+                                : null
+                );
+                Object montantEgalObj =
+                        props.get("montantEgal");
+
+                BigDecimal montantEgal =
+                        BigDecimal.ZERO;
+
+                if (montantEgalObj != null) {
+                    montantEgal =
+                            new BigDecimal(
+                                    montantEgalObj.toString()
+                            );
+                }
+
+                existingEvent.setMontantEgal(
+                        montantEgal
+                );
+// GLOBAL
+                // ================= MONTANTS PAR DEGRE =================
+
+                Object montantsParDegreObj =
+                        props.get("montantsParDegre");
+
+                Map<Integer, BigDecimal> montantsParDegre =
+                        new HashMap<>();
+
+                if (montantsParDegreObj instanceof Map<?, ?> rawMap) {
+
+                    for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+
+                        Integer degre =
+                                Integer.valueOf(
+                                        entry.getKey().toString()
+                                );
+
+                        BigDecimal montant =
+                                new BigDecimal(
+                                        entry.getValue().toString()
+                                );
+
+                        montantsParDegre.put(
+                                degre,
+                                montant
+                        );
+                    }
+                }
+
+                existingEvent.setMontantsParDegre(
+                        montantsParDegre
+                );
+                if ("GLOBAL".equals(typeMontant)) {
+
+                    Object montantGlobalObj =
+                            props.get("montantGlobal");
+
+                    BigDecimal montantGlobal =
+                            BigDecimal.ZERO;
+
+                    if (montantGlobalObj != null) {
+                        montantGlobal =
+                                new BigDecimal(
+                                        montantGlobalObj.toString()
+                                );
+                    }
+
+                    existingEvent.setMontantGlobal(
+                            montantGlobal
+                    );
+
+                    existingEvent.setMontantTotal(
+                            montantGlobal
+                    );
+
+                } else {
+
+                    // DISTRIBUE
+
+                    BigDecimal montantTotal =
+                            updatedParticipants
+                                    .stream()
+                                    .map(
+                                            ep ->
+                                                    ep.getMontant() != null
+                                                            ? ep.getMontant()
+                                                            : BigDecimal.ZERO
+                                    )
+                                    .reduce(
+                                            BigDecimal.ZERO,
+                                            BigDecimal::add
+                                    );
+
+                    existingEvent.setMontantGlobal(
+                            BigDecimal.ZERO
+                    );
+
+                    existingEvent.setMontantTotal(
+                            montantTotal
+                    );
+                }
                 existingEvent.getParticipants().clear();
                 existingEvent.getParticipants().addAll(updatedParticipants);
             }

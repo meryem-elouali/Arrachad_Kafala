@@ -5,16 +5,31 @@ import PageMeta from "../components/common/PageMeta";
 import DropzoneComponent1 from "../components/form/form-elements/DropZone1";
 import Button from "../components/ui/button/Button";
 import * as XLSX from "xlsx";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
 
+import TextAlign from "@tiptap/extension-text-align";
+
+import { Color } from "@tiptap/extension-color";
+import { TextStyle } from "@tiptap/extension-text-style";
 import { PDFDownloadLink } from "@react-pdf/renderer";
 import ParticipantsPdf from "./ParticipantsPdf";
 interface Participant {
   id: number;
-  nom: string;
-  prenom: string;
+  nom?: string;
+  prenom?: string;
+
+  pere?: {
+    nom?: string;
+    prenom?: string;
+  };
+
   age?: number;
   present?: boolean;
   motif?: string;
+
+  montant?: number;
+
   uniqueKey?: string;
   type?: "MERE" | "ENFANT" | "FAMILLE";
 }
@@ -38,6 +53,18 @@ interface EventDetail {
   enfantsParticipants?: Participant[];
   famillesParticipants?: Participant[];
   place?: string;
+
+  montantTotal?: number;
+
+  typeMontant?: "GLOBAL" | "DISTRIBUE";
+
+  modeRepartition?: "EGAL" | "DEGRE";
+
+  montantGlobal?: number;
+
+  montantEgal?: number;
+
+  montantsParDegre?: Record<number, number>;
 }
 
 const EventDetails: React.FC = () => {
@@ -46,18 +73,62 @@ const EventDetails: React.FC = () => {
   const [participantsList, setParticipantsList] = useState<Participant[]>([]);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selectedParticipants, setSelectedParticipants] = useState<string[]>([]);
-
-  const [existingFiles, setExistingFiles] = useState<EventFile[]>([]); // To hold loaded files
+ const [existingFiles, setExistingFiles] = useState<EventFile[]>([]); // To hold loaded files
   const [description, setDescription] = useState<string>("");
+  const editor = useEditor({
+  extensions: [
+    StarterKit.configure({
+      link: {
+        openOnClick: false,
+        HTMLAttributes: {
+          class: "text-blue-600 underline",
+        },
+      },
+    }),
+
+    TextStyle,
+    Color,
+
+    TextAlign.configure({
+      types: ["heading", "paragraph"],
+    }),
+  ],
+    content: description,
+
+    editorProps: {
+      attributes: {
+        dir: "rtl",
+        class:
+          "min-h-[260px] px-6 py-5 text-right text-[15px] leading-8 text-gray-700 dark:text-gray-200 focus:outline-none",
+      },
+    },
+
+    onUpdate: ({ editor }) => {
+      setDescription(editor.getHTML());
+    },
+  });
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectAll, setSelectAll] = useState(false);
-
+const [searchParticipant, setSearchParticipant] = useState("");
   const [allMeres, setAllMeres] = useState<Participant[]>([]);
   const [allEnfants, setAllEnfants] = useState<Participant[]>([]);
   const [allFamilles, setAllFamilles] = useState<Participant[]>([]);
 const [isSaving, setIsSaving] = useState(false);
 const [isSaved, setIsSaved] = useState(true);
+const [typeMontant, setTypeMontant] = useState<
+  "GLOBAL" | "DISTRIBUE"
+>("GLOBAL");
 
+const [modeRepartition, setModeRepartition] = useState<
+  "EGAL" | "DEGRE"
+>("EGAL");
+
+const [montantGlobal, setMontantGlobal] = useState<number>(0);
+
+const [montantEgal, setMontantEgal] = useState<number>(0);
+
+const [montantsParDegre, setMontantsParDegre] =
+  useState<Record<number, number>>({});
 const firstLoad = useRef(true);
   const convertToBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -164,9 +235,10 @@ const toggleSelectAll = () => {
       try {
         const meresData = await fetch("http://localhost:8080/api/meres").then((res) => res.json());
         setAllMeres(Array.isArray(meresData) ? meresData : []);
-      } catch {
-        setAllMeres([]);
-      }
+    } catch (error) {
+      console.error("Erreur chargement mères :", error);
+      setAllMeres([]);
+    }
       try {
         const enfantsData = await fetch("http://localhost:8080/api/enfant").then((res) => res.json());
         setAllEnfants(Array.isArray(enfantsData) ? enfantsData : []);
@@ -190,7 +262,23 @@ const toggleSelectAll = () => {
         setEvent(data);
         setDescription(data.description || "");
         setExistingFiles(data.photos || []); // Now properly loaded from backend
+setTypeMontant(data.typeMontant || "GLOBAL");
 
+setModeRepartition(
+  data.modeRepartition || "EGAL"
+);
+
+setMontantGlobal(
+  Number(data.montantGlobal || 0)
+);
+
+setMontantEgal(
+  Number(data.montantEgal || 0)
+);
+
+setMontantsParDegre(
+  data.montantsParDegre || {}
+);
         // Populate participantsList with unique keys (using entity IDs)
         const eventList: Participant[] = [];
         if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" })));
@@ -200,6 +288,15 @@ const toggleSelectAll = () => {
       })
       .catch(console.error);
   }, [id]);
+useEffect(() => {
+  if (!editor || editor.isDestroyed || !event) return;
+
+  const newHtml = event.description || "";
+
+  editor.commands.setContent(newHtml, {
+    emitUpdate: false,
+  });
+}, [editor, event?.id]);
 const saveFiles = async (selectedFiles: File[]) => {
   if (!event) return;
 
@@ -235,56 +332,125 @@ const saveFiles = async (selectedFiles: File[]) => {
   setExistingFiles(updated.photos || []);
 
 };
-const [searchParticipant, setSearchParticipant] = useState("");
- const openParticipantModal = () => {
+const openParticipantModal = async () => {
     if (!event) return;
+setSelectAll(false);
 
-    const cibles = event.cibles || [];
-    // Au lieu de pré-sélectionner depuis event (données sauvegardées), utilise participantsList actuel (changements non sauvegardés)
-    const currentKeys = participantsList.map(p => p.uniqueKey!);
-    let preselectedKeys: string[] = currentKeys; // Pré-sélectionne ce qui est déjà dans participantsList
+    try {
+      // Recharger les données au moment du clic
+      const [meresRes, enfantsRes, famillesRes] = await Promise.all([
+        fetch("http://localhost:8080/api/meres"),
+        fetch("http://localhost:8080/api/enfant"),
+        fetch("http://localhost:8080/api/famille"),
+      ]);
 
-    const list: Participant[] = [];
+      if (!meresRes.ok) {
+        throw new Error("Erreur chargement mères");
+      }
 
-    // Mères
-    if (cibles.includes("MERE")) {
-      list.push(...allMeres.map(p => ({
-        ...p,
-        uniqueKey: `MERE-${p.id}`,
-        type: "MERE",
-        present: participantsList.some(mp => mp.id === p.id && mp.type === "MERE") ? true : undefined
-      })));
+      if (!enfantsRes.ok) {
+        throw new Error("Erreur chargement enfants");
+      }
+
+      if (!famillesRes.ok) {
+        throw new Error("Erreur chargement familles");
+      }
+
+      const meresData = await meresRes.json();
+      const enfantsData = await enfantsRes.json();
+      const famillesData = await famillesRes.json();
+
+      const meres = Array.isArray(meresData) ? meresData : [];
+      const enfants = Array.isArray(enfantsData) ? enfantsData : [];
+      const familles = Array.isArray(famillesData) ? famillesData : [];
+
+      // Mettre également à jour les states globaux
+      setAllMeres(meres);
+      setAllEnfants(enfants);
+      setAllFamilles(familles);
+
+      const cibles = (event.cibles || []).map((c) =>
+        String(c).trim().toUpperCase()
+      );
+
+      const list: Participant[] = [];
+
+      console.log("EVENT =", event);
+      console.log("CIBLES =", cibles);
+
+      console.log("MERES API =", meres);
+      console.log("ENFANTS API =", enfants);
+      console.log("FAMILLES API =", familles);
+
+      // ================= MÈRES =================
+      if (cibles.includes("MERE")) {
+        meres.forEach((p: Participant) => {
+          list.push({
+            ...p,
+            uniqueKey: `MERE-${p.id}`,
+            type: "MERE",
+          });
+        });
+      }
+
+      // ================= ENFANTS =================
+      if (cibles.includes("ENFANT")) {
+        const ageMin = event.ageMin ?? 0;
+        const ageMax = event.ageMax ?? 100;
+
+        enfants
+          .filter((p: Participant) => {
+            if (p.age == null) {
+              return true;
+            }
+
+            return p.age >= ageMin && p.age <= ageMax;
+          })
+          .forEach((p: Participant) => {
+            list.push({
+              ...p,
+              uniqueKey: `ENFANT-${p.id}`,
+              type: "ENFANT",
+            });
+          });
+      }
+
+      // ================= FAMILLES =================
+      if (cibles.includes("FAMILLE")) {
+        familles.forEach((p: Participant) => {
+          list.push({
+            ...p,
+            uniqueKey: `FAMILLE-${p.id}`,
+            type: "FAMILLE",
+          });
+        });
+      }
+
+      console.log("LISTE FINALE MODAL =", list);
+
+      const currentKeys = participantsList
+        .map((p) => p.uniqueKey)
+        .filter((key): key is string => Boolean(key));
+
+      setParticipants(list);
+      setSelectedParticipants(currentKeys);
+
+      setSelectAll(
+        list.length > 0 &&
+          list.every((p) => currentKeys.includes(p.uniqueKey!))
+      );
+
+      setSearchParticipant("");
+      setIsModalOpen(true);
+    } catch (error) {
+      console.error("Erreur chargement participants :", error);
+
+      setParticipants([]);
+      setSearchParticipant("");
+      setSelectAll(false);
+      setIsModalOpen(true);
     }
-
-    // Enfants
-    if (cibles.includes("ENFANT")) {
-      const ageMin = event.ageMin ?? 0;
-      const ageMax = event.ageMax ?? 100;
-      const filtered = allEnfants.filter(e => e.age != null && e.age >= ageMin && e.age <= ageMax);
-      list.push(...filtered.map(p => ({
-        ...p,
-        uniqueKey: `ENFANT-${p.id}`,
-        type: "ENFANT",
-        present: participantsList.some(ep => ep.id === p.id && ep.type === "ENFANT") ? true : undefined
-      })));
-    }
-
-    // Familles
-    if (cibles.includes("FAMILLE")) {
-      list.push(...allFamilles.map(p => ({
-        ...p,
-        uniqueKey: `FAMILLE-${p.id}`,
-        type: "FAMILLE",
-        present: participantsList.some(fp => fp.id === p.id && fp.type === "FAMILLE") ? true : undefined
-      })));
-    }
-
-    setSelectedParticipants(preselectedKeys);
-    setParticipants(list);
-    setSelectAll(preselectedKeys.length === list.length);
-    setIsModalOpen(true);
   };
-
 
 const confirmParticipants = () => {
   const selected: Participant[] = [];
@@ -338,40 +504,74 @@ const saveEvent = async () => {
   setIsSaving(true);
   setIsSaved(false);
 
-  const allFilesBase64 = existingFiles.map((f) => ({
-    base64: f.base64,
-    type: f.type,
-    name: f.name,
-  }));
+
 
   const payload: any = {
     extendedProps: {
+        typeMontant,
+        modeRepartition:
+          typeMontant === "DISTRIBUE"
+            ? modeRepartition
+            : null,
+
+        montantGlobal:
+          typeMontant === "GLOBAL"
+            ? montantGlobal
+            : 0,
+
+        montantEgal:
+          typeMontant === "DISTRIBUE" &&
+          modeRepartition === "EGAL"
+            ? montantEgal
+            : 0,
+
+        montantsParDegre:
+          typeMontant === "DISTRIBUE" &&
+          modeRepartition === "DEGRE"
+            ? montantsParDegre
+            : {},
+
+        montantTotal: montantTotalEvent,
       description: description,
-      files: allFilesBase64,
 
-      meresParticipants: participantsList
-        .filter((p) => p.type === "MERE")
-        .map((p) => ({
-          id: p.id,
-          present: p.present ?? true,
-          motif: p.motif ?? null,
-        })),
 
-      enfantsParticipants: participantsList
-        .filter((p) => p.type === "ENFANT")
-        .map((p) => ({
-          id: p.id,
-          present: p.present ?? true,
-          motif: p.motif ?? null,
-        })),
+    meresParticipants: participantsList
+      .filter((p) => p.type === "MERE")
+      .map((p) => ({
+        id: p.id,
+        present: p.present ?? true,
+        motif: p.motif ?? null,
 
-      famillesParticipants: participantsList
-        .filter((p) => p.type === "FAMILLE")
-        .map((p) => ({
-          id: p.id,
-          present: p.present ?? true,
-          motif: p.motif ?? null,
-        })),
+        montant:
+          typeMontant === "DISTRIBUE"
+            ? getMontantParticipant(p)
+            : 0,
+      })),
+     enfantsParticipants: participantsList
+       .filter((p) => p.type === "ENFANT")
+       .map((p) => ({
+         id: p.id,
+         present: p.present ?? true,
+         motif: p.motif ?? null,
+
+         montant:
+           typeMontant === "DISTRIBUE"
+             ? getMontantParticipant(p)
+             : 0,
+       })),
+
+   famillesParticipants: participantsList
+     .filter((p) => p.type === "FAMILLE")
+     .map((p) => ({
+       id: p.id,
+       present: p.present ?? true,
+       motif: p.motif ?? null,
+
+       montant:
+         typeMontant === "DISTRIBUE"
+           ? getMontantParticipant(p)
+           : 0,
+     })),
     },
   };
 
@@ -399,6 +599,87 @@ const saveEvent = async () => {
     setIsSaving(false);
   }
 };
+
+
+const getMontantParticipant = (p: Participant) => {
+  // ================= GLOBAL =================
+  // En mode GLOBAL, le montant n'est pas attribué individuellement.
+  if (typeMontant === "GLOBAL") {
+    return 0;
+  }
+
+  // ================= EGAL =================
+  if (modeRepartition === "EGAL") {
+    return Number(montantEgal || 0);
+  }
+
+  // ================= PAR DEGRE =================
+  // Pour l'instant le degré concerne les familles.
+  if (p.type === "FAMILLE") {
+    const famille: any =
+      allFamilles.find(
+        (f) => f.id === p.id
+      );
+
+    const degre =
+      famille?.degreFamille ??
+      famille?.degre ??
+      famille?.degree;
+
+    if (degre == null) {
+      return 0;
+    }
+
+    return Number(
+      montantsParDegre[
+        Number(degre)
+      ] || 0
+    );
+  }
+
+  // Mère/enfant en mode DEGRE :
+  // 0 tant qu'on ne récupère pas leur famille/degré.
+  return 0;
+};
+const totalMeres =
+  typeMontant === "DISTRIBUE"
+    ? participantsList
+        .filter((p) => p.type === "MERE")
+        .reduce(
+          (total, p) =>
+            total + getMontantParticipant(p),
+          0
+        )
+    : 0;
+
+const totalEnfants =
+  typeMontant === "DISTRIBUE"
+    ? participantsList
+        .filter((p) => p.type === "ENFANT")
+        .reduce(
+          (total, p) =>
+            total + getMontantParticipant(p),
+          0
+        )
+    : 0;
+
+const totalFamilles =
+  typeMontant === "DISTRIBUE"
+    ? participantsList
+        .filter((p) => p.type === "FAMILLE")
+        .reduce(
+          (total, p) =>
+            total + getMontantParticipant(p),
+          0
+        )
+    : 0;
+
+const montantTotalEvent =
+  typeMontant === "GLOBAL"
+    ? Number(montantGlobal || 0)
+    : totalMeres +
+      totalEnfants +
+      totalFamilles;
 const deleteFile = async (indexToDelete: number) => {
   if (!event) return;
 
@@ -487,9 +768,12 @@ const importFromExcel = (file: File) => {
 const filteredParticipants = participants.filter((p: any) => {
   const search = searchParticipant.toLowerCase().trim();
 
+  if (!search) return true;
+
   return (
     p.nom?.toLowerCase().includes(search) ||
-    p.prenom?.toLowerCase().includes(search)
+    p.prenom?.toLowerCase().includes(search) ||
+    p.pere?.nom?.toLowerCase().includes(search)
   );
 });
 
@@ -509,7 +793,18 @@ useEffect(() => {
   }, 600);
 
   return () => clearTimeout(timer);
-}, [description, participantsList]);
+}, [
+  description,
+  participantsList,
+
+  typeMontant,
+  modeRepartition,
+
+  montantGlobal,
+  montantEgal,
+
+  montantsParDegre,
+]);
   if (!event) return <p>جاري التحميل...</p>;
 
   return (
@@ -676,109 +971,136 @@ useEffect(() => {
         </div>
 
 
-        {/* DEGRE */}
-        <div
-          className="
-            rounded-2xl border border-gray-100
-            bg-gray-50/70 p-4
-            transition duration-200
-            hover:-translate-y-0.5 hover:shadow-sm
-            dark:border-gray-800 dark:bg-gray-800/40
-          "
-        >
-          <div className="mb-3 flex items-center gap-2">
-
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M4 19V9" />
-                <path d="M10 19V5" />
-                <path d="M16 19V12" />
-                <path d="M22 19V3" />
-              </svg>
-            </div>
-
-            <span className="text-xs font-semibold text-gray-400">
-              درجة العائلة
-            </span>
+    {/* ====================== DEGRE FAMILLE ====================== */}
+    {event.degresFamille && event.degresFamille.length > 0 && (
+      <div
+        className="
+          rounded-2xl border border-gray-100
+          bg-gray-50/70 p-4
+          transition duration-200
+          hover:-translate-y-0.5 hover:shadow-sm
+          dark:border-gray-800 dark:bg-gray-800/40
+        "
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <div className="
+            flex h-9 w-9 items-center justify-center
+            rounded-xl bg-amber-50 text-amber-600
+          ">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M4 19V9" />
+              <path d="M10 19V5" />
+              <path d="M16 19V12" />
+              <path d="M22 19V3" />
+            </svg>
           </div>
 
-          {event.degresFamille?.length ? (
-            <div className="flex flex-wrap gap-2">
-              {event.degresFamille.map((degre) => (
-                <span
-                  key={degre}
-                  className="
-                    rounded-lg bg-amber-50
-                    px-2.5 py-1
-                    text-xs font-bold text-amber-700
-                  "
-                >
-                  الدرجة {degre}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-gray-400">
-              جميع الدرجات
-            </p>
-          )}
+          <span className="text-xs font-semibold text-gray-400">
+            درجة العائلة المستهدفة
+          </span>
         </div>
 
-
-        {/* AGE */}
-        <div
-          className="
-            rounded-2xl border border-gray-100
-            bg-gray-50/70 p-4
-            transition duration-200
-            hover:-translate-y-0.5 hover:shadow-sm
-            dark:border-gray-800 dark:bg-gray-800/40
-          "
-        >
-          <div className="mb-3 flex items-center gap-2">
-
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-green-50 text-green-600">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <circle cx="12" cy="8" r="4" />
-                <path d="M4 21a8 8 0 0 1 16 0" />
-              </svg>
-            </div>
-
-            <span className="text-xs font-semibold text-gray-400">
-              الفئة العمرية
+        <div className="flex flex-wrap gap-2">
+          {event.degresFamille.map((degre) => (
+            <span
+              key={degre}
+              className="
+                inline-flex items-center gap-1.5
+                rounded-lg border border-amber-100
+                bg-amber-50 px-3 py-1.5
+                text-xs font-bold text-amber-700
+              "
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              الدرجة {degre}
             </span>
-          </div>
-
-          {event.cibles?.includes("ENFANT") ? (
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-              من {event.ageMin ?? 0} إلى {event.ageMax ?? "∞"} سنة
-            </p>
-          ) : (
-            <p className="text-sm text-gray-400">
-              غير مطبق
-            </p>
-          )}
+          ))}
         </div>
-
       </div>
-    </div>
-{/* ====================== DESCRIPTION ====================== */}
-<div
-  dir="rtl"
+    )}
+
+
+    {/* ====================== AGE - ENFANT UNIQUEMENT ====================== */}
+    {event.cibles?.includes("ENFANT") && (
+      <div
+        className="
+          rounded-2xl border border-gray-100
+          bg-gray-50/70 p-4
+          transition duration-200
+          hover:-translate-y-0.5 hover:shadow-sm
+          dark:border-gray-800 dark:bg-gray-800/40
+        "
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <div className="
+            flex h-9 w-9 items-center justify-center
+            rounded-xl bg-green-50 text-green-600
+          ">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 21a8 8 0 0 1 16 0" />
+            </svg>
+          </div>
+
+          <span className="text-xs font-semibold text-gray-400">
+            الفئة العمرية المستهدفة
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {event.ageMin != null && (
+            <span className="
+              rounded-lg bg-green-50
+              px-3 py-1.5
+              text-sm font-bold text-green-700
+            ">
+              من {event.ageMin} سنة
+            </span>
+          )}
+
+          {event.ageMin != null && event.ageMax != null && (
+            <span className="text-xs text-gray-400">
+              إلى
+            </span>
+          )}
+
+          {event.ageMax != null && (
+            <span className="
+              rounded-lg bg-green-50
+              px-3 py-1.5
+              text-sm font-bold text-green-700
+            ">
+              {event.ageMax} سنة
+            </span>
+          )}
+        </div>
+           </div>
+         )}
+
+       </div>
+       {/* FIN INFORMATION CARDS */}
+
+     </div>
+     {/* FIN EVENT HEADER */}
+
+
+     {/* ====================== DESCRIPTION ====================== */}
+     <div
+       dir="rtl"
   className="
     mb-6 overflow-hidden rounded-3xl
     border border-gray-200 bg-white
@@ -841,92 +1163,351 @@ useEffect(() => {
   </div>
 
 
-  {/* TOOLBAR */}
-  <div className="flex flex-wrap items-center gap-1 border-b border-gray-100 bg-gray-50/60 px-6 py-2 dark:border-gray-800 dark:bg-gray-800/30">
+ {/* ====================== HTML EDITOR ====================== */}
+ <div className="p-6">
 
-    <button
-      type="button"
-      title="إضافة نقطة"
-      onClick={() =>
-        setDescription((prev) =>
-          prev ? `${prev}\n• ` : "• "
-        )
-      }
-      className="
-        flex h-8 items-center gap-2 rounded-lg
-        px-3 text-sm font-medium text-gray-600
-        transition hover:bg-white hover:text-blue-600
-        hover:shadow-sm
-      "
-    >
-      <span className="text-lg">•</span>
-      قائمة
-    </button>
+   <div
+     className="
+       overflow-hidden rounded-2xl
+       border border-gray-200 bg-white
+       shadow-sm transition-all
+       focus-within:border-indigo-300
+       focus-within:ring-4 focus-within:ring-indigo-500/5
+       dark:border-gray-700 dark:bg-gray-900
+     "
+   >
 
-    <button
-      type="button"
-      title="إضافة ترقيم"
-      onClick={() =>
-        setDescription((prev) =>
-          prev ? `${prev}\n1. ` : "1. "
-        )
-      }
-      className="
-        flex h-8 items-center gap-2 rounded-lg
-        px-3 text-sm font-medium text-gray-600
-        transition hover:bg-white hover:text-blue-600
-        hover:shadow-sm
-      "
-    >
-      <span>1.</span>
-      ترقيم
-    </button>
-
-    <div className="mx-2 h-5 w-px bg-gray-200" />
-
-    <span className="text-xs text-gray-400">
-      يتم الحفظ تلقائياً أثناء الكتابة
-    </span>
-
-  </div>
-
-
-  {/* EDITOR */}
-  <div className="p-6">
-    <textarea
-      value={description}
-      onChange={(e) => setDescription(e.target.value)}
-      placeholder={`اكتب معلومات النشاط هنا...
-
-مثال:
-• الهدف من النشاط
-• الفئة المستفيدة
-• أهم النتائج والملاحظات`}
-      rows={8}
-      className="
-        min-h-[190px] w-full resize-y
-        rounded-2xl border border-gray-200
-        bg-gray-50/40 px-5 py-4
-        text-sm leading-8 text-gray-700
-        outline-none transition-all
-        placeholder:text-gray-300
-
-        focus:border-blue-400
-        focus:bg-white
-        focus:ring-4
-        focus:ring-blue-500/5
-
-        dark:border-gray-700
-        dark:bg-gray-800/40
-        dark:text-gray-200
-      "
-    />
-  </div>
-</div>
-
-     {/* ====================== FICHIERS DU النشاط ====================== */}
+     {/* TOOLBAR */}
      <div
        dir="rtl"
+       className="
+         flex flex-wrap items-center gap-1.5
+         border-b border-gray-100
+         bg-gray-50/80 px-4 py-3
+         dark:border-gray-800 dark:bg-gray-800/50
+       "
+     >
+
+       {/* UNDO */}
+       <button
+         type="button"
+         title="تراجع"
+         onClick={() => editor?.chain().focus().undo().run()}
+         disabled={!editor?.can().undo()}
+         className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-white hover:text-indigo-600 hover:shadow-sm disabled:opacity-30"
+       >
+         ↶
+       </button>
+
+       {/* REDO */}
+       <button
+         type="button"
+         title="إعادة"
+         onClick={() => editor?.chain().focus().redo().run()}
+         disabled={!editor?.can().redo()}
+         className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-500 transition hover:bg-white hover:text-indigo-600 hover:shadow-sm disabled:opacity-30"
+       >
+         ↷
+       </button>
+
+       <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
+
+       {/* BOLD */}
+       <button
+         type="button"
+         title="عريض"
+         onClick={() => editor?.chain().focus().toggleBold().run()}
+         className={`
+           flex h-9 w-9 items-center justify-center rounded-lg
+           text-sm font-bold transition
+           ${
+             editor?.isActive("bold")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white hover:text-indigo-600"
+           }
+         `}
+       >
+         B
+       </button>
+
+       {/* ITALIC */}
+       <button
+         type="button"
+         title="مائل"
+         onClick={() => editor?.chain().focus().toggleItalic().run()}
+         className={`
+           flex h-9 w-9 items-center justify-center rounded-lg
+           text-sm italic transition
+           ${
+             editor?.isActive("italic")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white hover:text-indigo-600"
+           }
+         `}
+       >
+         I
+       </button>
+
+       {/* UNDERLINE */}
+       <button
+         type="button"
+         title="تحته خط"
+         onClick={() => editor?.chain().focus().toggleUnderline().run()}
+         className={`
+           flex h-9 w-9 items-center justify-center rounded-lg
+           text-sm underline transition
+           ${
+             editor?.isActive("underline")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white hover:text-indigo-600"
+           }
+         `}
+       >
+         U
+       </button>
+
+       <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
+
+       {/* PARAGRAPH */}
+       <button
+         type="button"
+         onClick={() => editor?.chain().focus().setParagraph().run()}
+         className={`
+           h-9 rounded-lg px-3 text-xs font-semibold transition
+           ${
+             editor?.isActive("paragraph")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white"
+           }
+         `}
+       >
+         نص
+       </button>
+
+       {/* H2 */}
+       <button
+         type="button"
+         onClick={() =>
+           editor?.chain().focus().toggleHeading({ level: 2 }).run()
+         }
+         className={`
+           h-9 rounded-lg px-3 text-xs font-bold transition
+           ${
+             editor?.isActive("heading", { level: 2 })
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white"
+           }
+         `}
+       >
+         عنوان
+       </button>
+
+       {/* H3 */}
+       <button
+         type="button"
+         onClick={() =>
+           editor?.chain().focus().toggleHeading({ level: 3 }).run()
+         }
+         className={`
+           h-9 rounded-lg px-3 text-xs font-semibold transition
+           ${
+             editor?.isActive("heading", { level: 3 })
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white"
+           }
+         `}
+       >
+         عنوان فرعي
+       </button>
+
+       <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
+
+       {/* BULLET LIST */}
+       <button
+         type="button"
+         title="قائمة نقطية"
+         onClick={() =>
+           editor?.chain().focus().toggleBulletList().run()
+         }
+         className={`
+           flex h-9 items-center gap-2 rounded-lg px-3
+           text-xs font-medium transition
+           ${
+             editor?.isActive("bulletList")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white"
+           }
+         `}
+       >
+         <span className="text-lg">•</span>
+         قائمة
+       </button>
+
+       {/* ORDERED LIST */}
+       <button
+         type="button"
+         title="قائمة مرقمة"
+         onClick={() =>
+           editor?.chain().focus().toggleOrderedList().run()
+         }
+         className={`
+           flex h-9 items-center gap-2 rounded-lg px-3
+           text-xs font-medium transition
+           ${
+             editor?.isActive("orderedList")
+               ? "bg-indigo-100 text-indigo-700"
+               : "text-gray-600 hover:bg-white"
+           }
+         `}
+       >
+         <span className="font-bold">1.</span>
+         ترقيم
+       </button>
+
+       <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700" />
+
+       {/* ALIGN RIGHT */}
+       <button
+         type="button"
+         title="محاذاة إلى اليمين"
+         onClick={() =>
+           editor?.chain().focus().setTextAlign("right").run()
+         }
+         className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition hover:bg-white hover:text-indigo-600"
+       >
+         ≡
+       </button>
+
+       {/* ALIGN CENTER */}
+       <button
+         type="button"
+         title="توسيط"
+         onClick={() =>
+           editor?.chain().focus().setTextAlign("center").run()
+         }
+         className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition hover:bg-white hover:text-indigo-600"
+       >
+         ≣
+       </button>
+
+       {/* COLOR */}
+       <div
+         className="
+           mr-auto flex h-9 items-center gap-2
+           rounded-lg border border-gray-200
+           bg-white px-3
+         "
+       >
+         <span className="text-xs text-gray-500">
+           لون النص
+         </span>
+
+         <input
+           type="color"
+           title="لون النص"
+           onInput={(e) =>
+             editor
+               ?.chain()
+               .focus()
+               .setColor((e.target as HTMLInputElement).value)
+               .run()
+           }
+           className="h-5 w-6 cursor-pointer border-0 bg-transparent p-0"
+         />
+       </div>
+
+     </div>
+
+
+     {/* EDITABLE AREA */}
+     <div
+       dir="rtl"
+       className="
+         relative min-h-[280px]
+         bg-white
+         dark:bg-gray-900
+
+         [&_.ProseMirror]:min-h-[280px]
+         [&_.ProseMirror]:outline-none
+
+         [&_.ProseMirror_h2]:mb-3
+         [&_.ProseMirror_h2]:mt-5
+         [&_.ProseMirror_h2]:text-xl
+         [&_.ProseMirror_h2]:font-bold
+
+         [&_.ProseMirror_h3]:mb-2
+         [&_.ProseMirror_h3]:mt-4
+         [&_.ProseMirror_h3]:text-lg
+         [&_.ProseMirror_h3]:font-bold
+
+         [&_.ProseMirror_p]:my-2
+
+         [&_.ProseMirror_ul]:my-3
+         [&_.ProseMirror_ul]:list-disc
+         [&_.ProseMirror_ul]:pr-7
+
+         [&_.ProseMirror_ol]:my-3
+         [&_.ProseMirror_ol]:list-decimal
+         [&_.ProseMirror_ol]:pr-7
+
+         [&_.ProseMirror_li]:my-1
+       "
+     >
+       <EditorContent editor={editor} />
+     </div>
+
+
+     {/* FOOTER */}
+     <div
+       className="
+         flex items-center justify-between
+         border-t border-gray-100
+         bg-gray-50/50 px-5 py-2.5
+         dark:border-gray-800 dark:bg-gray-800/30
+       "
+     >
+
+       <span className="text-[11px] text-gray-400">
+         محرر النصوص
+       </span>
+
+       <div className="flex items-center gap-2">
+         {isSaving ? (
+           <>
+             <span className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
+             <span className="text-xs text-gray-400">
+               جاري الحفظ...
+             </span>
+           </>
+         ) : isSaved ? (
+           <>
+             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-[10px] font-bold text-green-600">
+               ✓
+             </span>
+
+             <span className="text-xs font-medium text-green-600">
+               تم الحفظ تلقائياً
+             </span>
+           </>
+         ) : (
+           <span className="text-xs text-red-500">
+             تعذر الحفظ
+           </span>
+         )}
+       </div>
+
+     </div>
+
+      </div>
+    </div>
+
+  </div>
+  {/* FIN DESCRIPTION */}
+
+
+  {/* ====================== FICHIERS DU النشاط ====================== */}
+  <div
+    dir="rtl"
        className="
          mb-6 overflow-hidden rounded-2xl
          border border-gray-200
@@ -1494,18 +2075,21 @@ useEffect(() => {
                                   key={p.uniqueKey}
                                   className="flex cursor-pointer items-center justify-between rounded-lg border p-3 hover:bg-gray-50"
                                 >
-                                  <div>
-                                    <p className="font-semibold text-gray-800">
-                                      {p.nom} {p.prenom}
-                                    </p>
-                                    <p className="text-xs text-gray-500">
-                                      {p.type === "MERE"
-                                        ? "أم"
-                                        : p.type === "ENFANT"
-                                        ? "طفل"
-                                        : "عائلة"}
-                                    </p>
-                                  </div>
+                            <div>
+                            <p className="font-semibold text-gray-800">
+                              {p.type === "FAMILLE"
+                                ? `عائلة ${p.pere?.nom || ""}`
+                                : `${p.nom || ""} ${p.prenom || ""}`}
+                            </p>
+
+                              <p className="text-xs text-gray-500">
+                                {p.type === "MERE"
+                                  ? "أم"
+                                  : p.type === "ENFANT"
+                                  ? "طفل"
+                                  : "عائلة"}
+                              </p>
+                            </div>
 
                                   <input
                                     type="checkbox"
@@ -1538,25 +2122,181 @@ useEffect(() => {
                           </div>
                         </div>
                       </div>
-                    )}
+                    )}<div
+                        dir="rtl"
+                        className="mb-6 rounded-2xl border border-green-200 bg-green-50/40 p-5"
+                      >
+                        <h4 className="mb-4 text-lg font-bold text-gray-800">
+                          توزيع المبلغ
+                        </h4>
 
+                        <div className="mb-4">
+                          <label className="mb-2 block text-sm font-semibold text-gray-700">
+                            طريقة احتساب المبلغ
+                          </label>
+
+                          <select
+                            value={typeMontant}
+                            onChange={(e) =>
+                              setTypeMontant(
+                                e.target.value as "GLOBAL" | "DISTRIBUE"
+                              )
+                            }
+                            className="w-full rounded-lg border px-3 py-2"
+                          >
+                            <option value="GLOBAL">
+                              مبلغ إجمالي للنشاط
+                            </option>
+
+                            <option value="DISTRIBUE">
+                              توزيع المبلغ على المستفيدين
+                            </option>
+                          </select>
+                        </div>
+
+                        {typeMontant === "GLOBAL" && (
+                          <div className="mb-4">
+                            <label className="mb-2 block text-sm font-semibold">
+                              المبلغ الإجمالي للنشاط
+                            </label>
+
+                            <input
+                              type="number"
+                              min="0"
+                              value={montantGlobal}
+                              onChange={(e) =>
+                                setMontantGlobal(Number(e.target.value))
+                              }
+                              className="w-full rounded-lg border px-3 py-2"
+                            />
+                          </div>
+                        )}
+
+                        {typeMontant === "DISTRIBUE" && (
+                          <>
+                            <div className="mb-4">
+                              <label className="mb-2 block text-sm font-semibold text-gray-700">
+                                طريقة توزيع المبلغ
+                              </label>
+
+                              <select
+                                value={modeRepartition}
+                                onChange={(e) =>
+                                  setModeRepartition(
+                                    e.target.value as "EGAL" | "DEGRE"
+                                  )
+                                }
+                                className="w-full rounded-lg border px-3 py-2"
+                              >
+                                <option value="EGAL">
+                                  مبلغ متساوٍ لجميع المستفيدين
+                                </option>
+
+                                <option value="DEGRE">
+                                  مبلغ حسب درجة العائلة
+                                </option>
+                              </select>
+                            </div>
+
+                            {modeRepartition === "EGAL" && (
+                              <div className="mb-4">
+                                <label className="mb-2 block text-sm font-semibold">
+                                  المبلغ لكل مستفيد
+                                </label>
+
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={montantEgal}
+                                  onChange={(e) =>
+                                    setMontantEgal(Number(e.target.value))
+                                  }
+                                  className="w-full rounded-lg border px-3 py-2"
+                                />
+                              </div>
+                            )}
+
+                            {modeRepartition === "DEGRE" && (
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                {(event.degresFamille || []).map((degre) => (
+                                  <div key={degre}>
+                                    <label className="mb-1 block text-sm">
+                                      الدرجة {degre}
+                                    </label>
+
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={montantsParDegre[degre] || ""}
+                                      onChange={(e) =>
+                                        setMontantsParDegre((prev) => ({
+                                          ...prev,
+                                          [degre]: Number(e.target.value),
+                                        }))
+                                      }
+                                      className="w-full rounded-lg border px-3 py-2"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+
+                        <div className="mt-5 rounded-xl bg-white p-4">
+                          <span className="font-bold text-gray-800">
+                            المجموع الكلي :
+                          </span>
+
+                          <span className="mr-2 text-lg font-bold text-green-600">
+                            {montantTotalEvent.toFixed(2)} DH
+                          </span>
+                        </div>
+                      </div>
                        {participantsList.length > 0 ? (
                          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">
                            <thead className="bg-gray-100 font-semibold text-gray-800">
                              <tr>
                                <th className="p-3 border">الاسم</th>
                                <th className="p-3 border">اللقب</th>
+                           <th className="p-3 border">المبلغ</th>
                                <th className="p-3 border">الحضور</th>
                                <th className="p-3 border">سبب الغياب</th>
+
                              </tr>
                            </thead>
                            <tbody>
-                             {participantsList.map((p) => {
-                               const isPresent = p.present ?? true;
-                               return (
-                                 <tr key={p.uniqueKey || p.id} className="border-b">
-                                   <td className="p-2 border">{p.nom}</td>
-                                   <td className="p-2 border">{p.prenom}</td>
+                         {participantsList.map((p) => {
+                        const isPresent = p.present ?? true;
+                           const fullFamille =
+                             p.type === "FAMILLE"
+                               ? allFamilles.find((f) => f.id === p.id)
+                               : undefined;
+
+                           const pereNom =
+                             p.pere?.nom ||
+                             fullFamille?.pere?.nom ||
+                             "";
+
+                           return (
+                             <tr key={p.uniqueKey || p.id} className="border-b">
+
+                               <td className="p-2 border">
+                                 {p.type === "FAMILLE"
+                                   ? "عائلة"
+                                   : p.nom}
+                               </td>
+
+                               <td className="p-2 border">
+                                 {p.type === "FAMILLE"
+                                   ? pereNom
+                                   : p.prenom}
+                               </td>
+                          <td className="p-2 border text-center font-semibold">
+                            {typeMontant === "GLOBAL"
+                              ? "-"
+                              : `${getMontantParticipant(p).toFixed(2)} DH`}
+                          </td>
                                    <td className="p-2 border text-center">
                                      <select
                                        value={isPresent ? "oui" : "non"}
@@ -1641,9 +2381,12 @@ useEffect(() => {
                         تعذر الحفظ
                       </span>
                     )}
-                  </div>
-                   </div>
-                 );
-               };
+                                   </div>
+                                 </div>
 
-               export default EventDetails;
+
+
+                             );
+                           };
+
+                 export default EventDetails;

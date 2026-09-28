@@ -5,7 +5,10 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.math.BigDecimal;
+import java.util.Map;
 
 @Entity
 @Table(name = "events")
@@ -26,7 +29,27 @@ public class Event {
     // ------------------------------------
     @Column(nullable = false)
     private String title;
-
+    @Column(
+            precision = 14,
+            scale = 2
+    )
+    private BigDecimal montantTotal =
+            BigDecimal.ZERO;
+    @Column(
+            name = "type_montant"
+    )
+    private String typeMontant;
+    @Column(
+            name = "mode_repartition"
+    )
+    private String modeRepartition;
+    @Column(
+            name = "montant_global",
+            precision = 14,
+            scale = 2
+    )
+    private BigDecimal montantGlobal =
+            BigDecimal.ZERO;
     @Column(name = "start_date", nullable = false)
     private LocalDate startDate;
     @Column(name = "place", nullable = true)
@@ -72,7 +95,41 @@ public class Event {
 
     public List<EventParticipant> getParticipants() { return participants; }
     public void setParticipants(List<EventParticipant> participants) { this.participants = participants; }
+    @Column(
+            name = "montant_egal",
+            precision = 14,
+            scale = 2
+    )
+    private BigDecimal montantEgal = BigDecimal.ZERO;
+    public BigDecimal getMontantEgal() {
+        return montantEgal;
+    }
 
+    public void setMontantEgal(BigDecimal montantEgal) {
+        this.montantEgal = montantEgal;
+    }
+    @ElementCollection
+    @CollectionTable(
+            name = "event_montants_degre",
+            joinColumns = @JoinColumn(name = "event_id")
+    )
+    @MapKeyColumn(name = "degre")
+    @Column(
+            name = "montant",
+            precision = 14,
+            scale = 2
+    )
+    private Map<Integer, BigDecimal> montantsParDegre =
+            new HashMap<>();
+    public Map<Integer, BigDecimal> getMontantsParDegre() {
+        return montantsParDegre;
+    }
+
+    public void setMontantsParDegre(
+            Map<Integer, BigDecimal> montantsParDegre
+    ) {
+        this.montantsParDegre = montantsParDegre;
+    }
     // ------------------------------------
     // Type de l'événement
     // ------------------------------------
@@ -83,6 +140,44 @@ public class Event {
     // ------------------------------------
     // Getters & Setters
     // ------------------------------------
+    public String getTypeMontant() {
+        return typeMontant;
+    }
+
+    public void setTypeMontant(
+            String typeMontant
+    ) {
+        this.typeMontant = typeMontant;
+    }
+
+    public String getModeRepartition() {
+        return modeRepartition;
+    }
+
+    public void setModeRepartition(
+            String modeRepartition
+    ) {
+        this.modeRepartition =
+                modeRepartition;
+    }
+
+    public BigDecimal getMontantGlobal() {
+        return montantGlobal;
+    }
+
+    public void setMontantGlobal(
+            BigDecimal montantGlobal
+    ) {
+        this.montantGlobal =
+                montantGlobal;
+    }
+    public BigDecimal getMontantTotal() {
+        return montantTotal;
+    }
+
+    public void setMontantTotal(BigDecimal montantTotal) {
+        this.montantTotal = montantTotal;
+    }
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 

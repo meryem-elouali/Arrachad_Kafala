@@ -5,6 +5,8 @@ import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import java.io.Serializable;
+import jakarta.persistence.Column;
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "event_participants")
@@ -18,7 +20,13 @@ public class EventParticipant implements Serializable {
     @JoinColumn(name = "event_id", nullable = false)
     @JsonBackReference("event_participants") // OK
     private Event event;
-
+    @Column(
+            precision = 14,
+            scale = 2,
+            nullable = false
+    )
+    private BigDecimal montant =
+            BigDecimal.ZERO;
     @ManyToOne
     @JoinColumn(name = "mere_id")
     @JsonBackReference // au lieu de @JsonIgnore
@@ -39,7 +47,15 @@ public class EventParticipant implements Serializable {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ParticipantType participantType;
+    public BigDecimal getMontant() {
+        return montant;
+    }
 
+    public void setMontant(
+            BigDecimal montant
+    ) {
+        this.montant = montant;
+    }
     // présence
     @Column(nullable = false)
     private Boolean present = true;

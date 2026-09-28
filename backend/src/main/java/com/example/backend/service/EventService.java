@@ -75,7 +75,17 @@ public class EventService {
         return mereRepository.findById(Long.valueOf(id))
                 .orElseThrow(() -> new RuntimeException("Mere not found"));
     }
+    public List<Mere> getAllMeres() {
+        return mereRepository.findAll();
+    }
 
+    public List<Enfant> getAllEnfants() {
+        return enfantRepository.findAll();
+    }
+
+    public List<Famille> getAllFamilles() {
+        return familleRepository.findAll();
+    }
     // ENFANTS
     public List<Enfant> getEnfantsByIds(List<Integer> ids) {
         List<Long> longIds = ids.stream().map(Integer::longValue).collect(Collectors.toList());
