@@ -78,7 +78,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: COLORS.muted,
   },
-
+h1: { fontSize: 17, fontWeight: 700, marginTop: 5, marginBottom: 4 },
+quote: {
+  borderRightWidth: 3,
+  borderRightColor: COLORS.accent,
+  paddingRight: 8,
+  marginVertical: 3,
+  color: COLORS.muted,
+  lineHeight: 1.5,
+},
+hr: { borderBottomWidth: 1, borderBottomColor: COLORS.border, marginVertical: 6 },
   section: { marginBottom: 16 },
   sectionHead: {
     borderRightWidth: 4,
@@ -273,15 +282,35 @@ const Card: React.FC<{
     {children ?? <Text style={styles.cardValue}>{value || "-"}</Text>}
   </View>
 );
+type Run = {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+  bg?: string;
+};
 
-/* ============ Conversion HTML (éditeur) → blocs ============ */
-
-type Run = { text: string; bold?: boolean; underline?: boolean; color?: string };
 type Block = {
-  kind: "h2" | "h3" | "p" | "li";
+  kind: "h1" | "h2" | "h3" | "p" | "li" | "quote" | "hr";
   runs: Run[];
   align: "right" | "center" | "left" | "justify";
   mark?: string;
+  depth?: number;
+};
+
+// rgb(255, 0, 0) -> #ff0000 (plus fiable pour react-pdf)
+const toHex = (c?: string) => {
+  if (!c) return undefined;
+  const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  if (!m) return c;
+  return (
+    "#" +
+    [m[1], m[2], m[3]]
+      .map((n) => Number(n).toString(16).padStart(2, "0"))
+      .join("")
+  );
 };
 
 const collectRuns = (node: Node, style: Omit<Run, "text">, out: Run[]) => {
@@ -295,6 +324,7 @@ const collectRuns = (node: Node, style: Omit<Run, "text">, out: Run[]) => {
   const el = node as HTMLElement;
   const tag = el.tagName.toLowerCase();
 
+  if (tag === "ul" || tag === "ol") return; // gérées à part (listes imbriquées)
   if (tag === "br") {
     out.push({ text: "\n", ...style });
     return;
@@ -302,57 +332,89 @@ const collectRuns = (node: Node, style: Omit<Run, "text">, out: Run[]) => {
 
   const next = { ...style };
   if (tag === "strong" || tag === "b") next.bold = true;
+  if (tag === "em" || tag === "i") next.italic = true;
   if (tag === "u") next.underline = true;
-  if (el.style?.color) next.color = el.style.color;
+  if (tag === "s" || tag === "strike" || tag === "del") next.strike = true;
+  if (tag === "mark") next.bg = toHex(el.style?.backgroundColor) || "#fef08a";
+  if (tag === "a") {
+    next.color = "#2563eb";
+    next.underline = true;
+  }
+  if (el.style?.color) next.color = toHex(el.style.color);
+  if (el.style?.fontWeight === "bold" || Number(el.style?.fontWeight) >= 600)
+    next.bold = true;
 
   el.childNodes.forEach((c) => collectRuns(c, next, out));
 };
 
-const htmlToBlocks = (html: string): Block[] => {
-  if (!html || typeof DOMParser === "undefined") return [];
+const hasText = (runs: Run[]) => runs.some((r) => r.text.trim());
 
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const blocks: Block[] = [];
+const alignOf = (el: HTMLElement): Block["align"] => {
+  const a = el.style?.textAlign;
+  return a === "center" || a === "left" || a === "justify" ? a : "right";
+};
 
-  const alignOf = (el: HTMLElement): Block["align"] => {
-    const a = el.style?.textAlign;
-    return a === "center" || a === "left" || a === "justify" ? a : "right";
-  };
-
-  const hasText = (runs: Run[]) => runs.some((r) => r.text.trim());
-
-  Array.from(doc.body.children).forEach((el) => {
-    const h = el as HTMLElement;
-    const tag = h.tagName.toLowerCase();
+const walk = (parent: Element, out: Block[], depth = 0, inQuote = false) => {
+  Array.from(parent.children).forEach((child) => {
+    const el = child as HTMLElement;
+    const tag = el.tagName.toLowerCase();
 
     if (tag === "ul" || tag === "ol") {
-      Array.from(h.children).forEach((li, i) => {
+      Array.from(el.children).forEach((li, i) => {
         const runs: Run[] = [];
         collectRuns(li, {}, runs);
         if (hasText(runs)) {
-          blocks.push({
+          out.push({
             kind: "li",
             runs,
-            align: "right",
-            mark: tag === "ol" ? `${i + 1}.` : "•",
+            align: alignOf(li as HTMLElement),
+            mark: tag === "ol" ? `${i + 1}.` : depth > 0 ? "◦" : "•",
+            depth,
           });
         }
+        walk(li, out, depth + 1); // sous-listes
       });
       return;
     }
 
+    if (tag === "blockquote") {
+      walk(el, out, depth, true);
+      return;
+    }
+
+    if (tag === "hr") {
+      out.push({ kind: "hr", runs: [], align: "right" });
+      return;
+    }
+
     const runs: Run[] = [];
-    collectRuns(h, {}, runs);
-    if (!hasText(runs)) return;
+    collectRuns(el, {}, runs);
 
-    blocks.push({
-      kind: tag === "h1" || tag === "h2" ? "h2" : tag === "h3" ? "h3" : "p",
-      runs,
-      align: alignOf(h),
-    });
+    if (!hasText(runs)) {
+      if (tag === "p") out.push({ kind: "p", runs: [{ text: " " }], align: "right" });
+      return;
+    }
+
+    const kind: Block["kind"] = inQuote
+      ? "quote"
+      : tag === "h1"
+      ? "h1"
+      : tag === "h2"
+      ? "h2"
+      : tag === "h3" || tag === "h4" || tag === "h5" || tag === "h6"
+      ? "h3"
+      : "p";
+
+    out.push({ kind, runs, align: alignOf(el) });
   });
+};
 
-  return blocks;
+const htmlToBlocks = (html: string): Block[] => {
+  if (!html || typeof DOMParser === "undefined") return [];
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const out: Block[] = [];
+  walk(doc.body, out);
+  return out;
 };
 
 const renderRuns = (runs: Run[]) =>
@@ -361,8 +423,17 @@ const renderRuns = (runs: Run[]) =>
       key={i}
       style={{
         fontWeight: r.bold ? 700 : 400,
-        textDecoration: r.underline ? "underline" : "none",
+        fontStyle: r.italic ? "italic" : "normal",
+        textDecoration:
+          r.underline && r.strike
+            ? "underline line-through"
+            : r.underline
+            ? "underline"
+            : r.strike
+            ? "line-through"
+            : "none",
         ...(r.color ? { color: r.color } : {}),
+        ...(r.bg ? { backgroundColor: r.bg } : {}),
       }}
     >
       {r.text}
@@ -467,42 +538,50 @@ const EventPdf: React.FC<EventPdfProps> = ({
           </View>
         </Section>
 
-        {/* ============ DESCRIPTION ============ */}
-        <Section title="وصف النشاط">
-          <View style={styles.description}>
-            {blocks.length === 0 ? (
-              <Text style={{ textAlign: "right", color: COLORS.muted }}>
-                لا يوجد وصف
-              </Text>
-            ) : (
-              blocks.map((b, i) =>
-                b.kind === "li" ? (
-                  <View key={i} style={styles.li}>
-                    <Text style={styles.liMark}>{b.mark}</Text>
-                    <Text style={[styles.liText, { textAlign: "right" }]}>
-                      {renderRuns(b.runs)}
-                    </Text>
-                  </View>
-                ) : (
-                  <Text
-                    key={i}
-                    style={[
-                      b.kind === "h2"
-                        ? styles.h2
-                        : b.kind === "h3"
-                        ? styles.h3
-                        : styles.p,
-                      { textAlign: b.align },
-                    ]}
-                  >
-                    {renderRuns(b.runs)}
-                  </Text>
-                )
-              )
-            )}
-          </View>
-        </Section>
+     <Section title="وصف النشاط">
+       <View style={styles.description}>
+         {blocks.length === 0 ? (
+           <Text style={{ textAlign: "right", color: COLORS.muted }}>
+             لا يوجد وصف
+           </Text>
+         ) : (
+           blocks.map((b, i) => {
+             if (b.kind === "hr") return <View key={i} style={styles.hr} />;
 
+             if (b.kind === "li") {
+               return (
+                 <View
+                   key={i}
+                   style={[styles.li, { marginRight: (b.depth || 0) * 14 }]}
+                 >
+                   <Text style={styles.liMark}>{b.mark}</Text>
+                   <Text style={[styles.liText, { textAlign: b.align }]}>
+                     {renderRuns(b.runs)}
+                   </Text>
+                 </View>
+               );
+             }
+
+             const base =
+               b.kind === "h1"
+                 ? styles.h1
+                 : b.kind === "h2"
+                 ? styles.h2
+                 : b.kind === "h3"
+                 ? styles.h3
+                 : b.kind === "quote"
+                 ? styles.quote
+                 : styles.p;
+
+             return (
+               <Text key={i} style={[base, { textAlign: b.align }]}>
+                 {renderRuns(b.runs)}
+               </Text>
+             );
+           })
+         )}
+       </View>
+     </Section>
         {/* ============ FINANCES + STATISTIQUES ============ */}
         <Section title="المعلومات المالية والإحصائيات">
           <View style={styles.grid}>
