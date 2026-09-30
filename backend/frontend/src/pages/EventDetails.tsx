@@ -12,8 +12,9 @@ import TextAlign from "@tiptap/extension-text-align";
 
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
-import { PDFDownloadLink } from "@react-pdf/renderer";
-import ParticipantsPdf from "./ParticipantsPdf";
+import { PDFDownloadLink, pdf } from "@react-pdf/renderer";
+import ParticipantsPdf, { ParticipantRow } from "./ParticipantsPdf";
+import EventPdf from "./EventPdf";
 interface Participant {
   id: number;
   nom?: string;
@@ -43,6 +44,11 @@ interface EventDetail {
   title: string;
   startDate: string;
   endDate: string;
+  eventType?: {
+      id: number;
+      name: string;
+    };
+
   cibles: string[];
   description?: string;
   photos?: EventFile[];
@@ -748,6 +754,109 @@ const importFromExcel = (file: File) => {
 
   reader.readAsArrayBuffer(file);
 };
+const getParticipantTypeLabel = (
+  type?: "MERE" | "ENFANT" | "FAMILLE"
+) => {
+  switch (type) {
+    case "MERE":
+      return "أم";
+    case "ENFANT":
+      return "طفل";
+    case "FAMILLE":
+      return "عائلة";
+    default:
+      return "";
+  }
+};
+const [isExportingEvent, setIsExportingEvent] = useState(false);
+
+const downloadBlob = (blob: Blob, filename: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+const buildRows = (): ParticipantRow[] =>
+  participantsList.map((p) => {
+    const fullFamille: any =
+      p.type === "FAMILLE"
+        ? allFamilles.find((f) => f.id === p.id)
+        : undefined;
+
+    const pereNom = p.pere?.nom || fullFamille?.pere?.nom || "";
+
+    const degreValue =
+      fullFamille?.degreFamille ??
+      fullFamille?.degre ??
+      fullFamille?.degree;
+
+    return {
+      typeLabel: getParticipantTypeLabel(p.type),
+      prefixe: p.type === "FAMILLE" ? "عائلة" : "",
+      nomComplet:
+        p.type === "FAMILLE"
+          ? pereNom
+          : `${p.nom || ""} ${p.prenom || ""}`.trim(),
+      degre:
+        p.type === "FAMILLE" && degreValue != null ? String(degreValue) : "-",
+      montant:
+        typeMontant === "GLOBAL"
+          ? "-"
+          : `${getMontantParticipant(p).toFixed(2)} DH`,
+      present: p.present ?? true,
+      motif: p.motif || "",
+    };
+  });
+
+const exportParticipantsPdf = async () => {
+  if (!event) return;
+  try {
+    const blob = await pdf(
+      <ParticipantsPdf
+        title={event.title}
+        startDate={event.startDate}
+        endDate={event.endDate}
+        place={event.place || ""}
+        rows={buildRows()}
+        showMontant
+        montantTotal={`${montantTotalEvent.toFixed(2)} DH`}
+      />
+    ).toBlob();
+    downloadBlob(blob, `المشاركون_${event.title || "النشاط"}.pdf`);
+  } catch (error) {
+    console.error("Erreur génération PDF participants :", error);
+  }
+};
+
+const exportEventPdf = async () => {
+  if (!event) return;
+  setIsExportingEvent(true);
+  try {
+    const blob = await pdf(
+      <EventPdf
+        event={event}
+        description={description}
+        rows={buildRows()}
+        files={existingFiles}
+        typeMontant={typeMontant}
+        modeRepartition={modeRepartition}
+        montantGlobal={montantGlobal}
+        montantEgal={montantEgal}
+        montantTotal={montantTotalEvent}
+        montantsParDegre={montantsParDegre}
+      />
+    ).toBlob();
+    downloadBlob(blob, `تقرير_النشاط_${event.title || "النشاط"}.pdf`);
+  } catch (error) {
+    console.error("Erreur génération rapport :", error);
+  } finally {
+    setIsExportingEvent(false);
+  }
+};
+
   const exportToExcel = () => {
     if (!participantsList.length) return;
   const wsData = participantsList.map((p: any) => ({
@@ -2006,41 +2115,163 @@ useEffect(() => {
                          الحاضرين
                        </h4>
 
-                       <div className="flex gap-2 mb-4">
-                         <Button onClick={exportToExcel} className="bg-green-500 text-white">تصدير Excel</Button>
-                     <label className="cursor-pointer rounded bg-blue-500 px-4 py-2 text-white">
-                       استيراد Excel
-                       <input
-                         type="file"
-                         accept=".xlsx,.xls"
-                         className="hidden"
-                         onChange={(e) => {
-                           const file = e.target.files?.[0];
-                           if (file) importFromExcel(file);
-                           e.target.value = "";
-                         }}
-                       />
-                     </label>
-                     <PDFDownloadLink
-                       document={
-                         <ParticipantsPdf
-                           event={event!}
-                           participants={participantsList}
-                         />
-                       }
-                       fileName={`المشاركون_${event?.title}.pdf`}
+                 <div
+                   dir="rtl"
+                   className="
+                     mb-6
+                     flex flex-wrap items-center gap-3
+                   "
+                 >
+                   {/* ================= AJOUT PARTICIPANTS ================= */}
+                   <button
+                     type="button"
+                     onClick={openParticipantModal}
+                     className="
+                       inline-flex h-11 items-center justify-center gap-2
+                       rounded-xl
+                       bg-indigo-600 px-5
+                       text-sm font-semibold text-white
+                       shadow-sm
+                       transition-all duration-200
+                       hover:-translate-y-0.5
+                       hover:bg-indigo-700
+                       hover:shadow-md
+                       active:translate-y-0
+                     "
+                   >
+                     <svg
+                       width="18"
+                       height="18"
+                       viewBox="0 0 24 24"
+                       fill="none"
+                       stroke="currentColor"
+                       strokeWidth="2"
                      >
-                       {({ loading }) => (
-                         <Button className="bg-red-500 text-white">
-                           {loading ? "جاري إنشاء PDF..." : "تصدير PDF"}
-                         </Button>
-                       )}
-                     </PDFDownloadLink>
-                       </div>
+                       <path d="M12 5v14M5 12h14" />
+                     </svg>
 
-                       <Button onClick={openParticipantModal} className="mb-4 bg-blue-500 text-white">
-                         إضافة المشاركين
-                       </Button>
+                     إضافة المشاركين
+                   </button>
+
+
+                   {/* ================= EXPORT EXCEL ================= */}
+                   <button
+                     type="button"
+                     onClick={exportToExcel}
+                     className="
+                       inline-flex h-11 items-center justify-center gap-2
+                       rounded-xl
+                       border border-emerald-200
+                       bg-emerald-50 px-5
+                       text-sm font-semibold text-emerald-700
+                       transition-all duration-200
+                       hover:-translate-y-0.5
+                       hover:border-emerald-300
+                       hover:bg-emerald-100
+                       hover:shadow-sm
+                       active:translate-y-0
+                     "
+                   >
+                     <svg
+                       width="18"
+                       height="18"
+                       viewBox="0 0 24 24"
+                       fill="none"
+                       stroke="currentColor"
+                       strokeWidth="2"
+                     >
+                       <path d="M12 3v12" />
+                       <path d="m7 10 5 5 5-5" />
+                       <path d="M5 21h14" />
+                     </svg>
+
+                     تصدير Excel
+                   </button>
+
+
+                   {/* ================= IMPORT EXCEL ================= */}
+                   <label
+                     className="
+                       inline-flex h-11 cursor-pointer
+                       items-center justify-center gap-2
+                       rounded-xl
+                       border border-blue-200
+                       bg-blue-50 px-5
+                       text-sm font-semibold text-blue-700
+                       transition-all duration-200
+                       hover:-translate-y-0.5
+                       hover:border-blue-300
+                       hover:bg-blue-100
+                       hover:shadow-sm
+                       active:translate-y-0
+                     "
+                   >
+                     <svg
+                       width="18"
+                       height="18"
+                       viewBox="0 0 24 24"
+                       fill="none"
+                       stroke="currentColor"
+                       strokeWidth="2"
+                     >
+                       <path d="M12 21V9" />
+                       <path d="m7 14 5-5 5 5" />
+                       <path d="M5 3h14" />
+                     </svg>
+
+                     استيراد Excel
+
+                     <input
+                       type="file"
+                       accept=".xlsx,.xls"
+                       className="hidden"
+                       onChange={(e) => {
+                         const file = e.target.files?.[0];
+
+                         if (file) {
+                           importFromExcel(file);
+                         }
+
+                         e.target.value = "";
+                       }}
+                     />
+                   </label>
+
+
+                   {/* ================= EXPORT PDF ================= */}
+             <button
+               type="button"
+               onClick={exportParticipantsPdf}
+               className="
+                 inline-flex h-11 items-center justify-center gap-2
+                 rounded-xl
+                 border border-red-200
+                 bg-red-50 px-5
+                 text-sm font-semibold text-red-600
+                 transition-all duration-200
+                 hover:-translate-y-0.5
+                 hover:border-red-300
+                 hover:bg-red-100
+                 hover:shadow-sm
+                 active:translate-y-0
+               "
+             >
+               <svg
+                 width="18"
+                 height="18"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 strokeWidth="2"
+               >
+                 <path d="M12 3v12" />
+                 <path d="m7 10 5 5 5-5" />
+                 <path d="M5 21h14" />
+               </svg>
+
+               تصدير PDF
+             </button>
+                 </div>
 
                        {/* Modal */}
                     {isModalOpen && (
@@ -2255,7 +2486,7 @@ useEffect(() => {
                       </div>
                        {participantsList.length > 0 ? (
                          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">
-                           <thead className="bg-gray-100 font-semibold text-gray-800">
+                           <thead clacd ssName="bg-gray-100 font-semibold text-gray-800">
                              <tr>
                                <th className="p-3 border">الاسم</th>
                                <th className="p-3 border">اللقب</th>
@@ -2381,7 +2612,39 @@ useEffect(() => {
                         تعذر الحفظ
                       </span>
                     )}
+                {/* ================= EXPORT COMPLET EVENT ================= */}
+                <div
+                  dir="rtl"
+                  className="
+                    mt-8 flex justify-center
+                    border-t border-gray-200
+                    pt-6
+                  "
+                >
+               <button
+                 type="button"
+                 onClick={exportEventPdf}
+                 disabled={isExportingEvent}
+                 className="
+                   inline-flex min-h-12 items-center justify-center gap-3
+                   rounded-2xl bg-slate-900 px-7 py-3
+                   text-sm font-bold text-white shadow-md
+                   transition-all duration-200
+                   hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-lg
+                   disabled:opacity-60
+                 "
+               >
+                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                   <path d="M6 2h9l5 5v15H6z" />
+                   <path d="M14 2v6h6" />
+                   <path d="M9 13h6M9 17h6" />
+                 </svg>
+                 {isExportingEvent ? "جاري إعداد تقرير النشاط..." : "تصدير تقرير النشاط PDF"}
+               </button>
+                </div>
                                    </div>
+
+
                                  </div>
 
 

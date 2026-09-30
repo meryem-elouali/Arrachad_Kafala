@@ -1,13 +1,27 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap")
-layer(base);
-
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
 @import "tailwindcss";
+
+@font-face {
+  font-family: "Amiri";
+  src: url("/fonts/Amiri-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Amiri";
+  src: url("/fonts/Amiri-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
 
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-*: initial;
   --font-outfit: Outfit, sans-serif;
+  --font-amiri: Amiri, serif;
 
   --breakpoint-*: initial;
   --breakpoint-2xsm: 375px;
