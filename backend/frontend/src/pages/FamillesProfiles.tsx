@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
@@ -59,6 +59,37 @@ interface Famille {
   typeFamille?: { id: number; nom: string };
   habitationFamille?: { id: number; nom: string };
   enfants?: Enfant[];
+}
+
+interface SoutienEtude {
+  id: number;
+  enfantId: number;
+  enfantNom: string;
+  anneeScolaire: string;
+  mois: string;
+  centre?: string;
+  intervenant?: string;
+  montant: number;
+  montantPaye: number;
+  effectue: boolean;
+}
+
+interface ConsoEtudes {
+  totalConsomme: number;
+  totalPaye: number;
+  totalNonPaye: number;
+  details: SoutienEtude[];
+  parEnfant: Record<
+    number,
+    {
+      enfantId: number;
+      enfantNom: string;
+      totalConsomme: number;
+      totalPaye: number;
+      totalNonPaye: number;
+      soutiens: SoutienEtude[];
+    }
+  >;
 }
 
 type Role = "mere" | "pere";
@@ -546,7 +577,9 @@ const printFamilleReport = (
   f: Famille,
   etudes: Record<number, any>,
   conso: { total: number; presentCount: number; absentCount: number; events: any[] },
-  year: string
+  consoEtudes: ConsoEtudes,
+  year: string,
+  studyYear: string
 ) => {
   const w = window.open("", "_blank");
   if (!w) {
@@ -557,6 +590,13 @@ const printFamilleReport = (
   const nomFamille = f.pere?.nom || f.nomFamille || f.mere?.nom || "غير محدد";
   const enfants = f.enfants || [];
   const yearLabel = year === "all" ? "كل السنوات" : year;
+  const studyYearLabel = studyYear === "all" ? "كل السنوات الدراسية" : studyYear;
+  const totalEvenements = Number(conso.total || 0);
+  const totalEtudesConsomme = Number(consoEtudes.totalConsomme || 0);
+  const totalEtudesPaye = Number(consoEtudes.totalPaye || 0);
+  const totalEtudesNonPaye = Number(consoEtudes.totalNonPaye || 0);
+  const totalPrisEnChargeAssociation = totalEvenements + totalEtudesPaye;
+  const totalConsommationGlobale = totalEvenements + totalEtudesConsomme;
 
   // consommation par personne
   const byPerson: Record<string, { total: number; present: number; absent: number }> = {};
@@ -641,6 +681,35 @@ const printFamilleReport = (
     )
     .join("");
 
+  const soutienRows = consoEtudes.details
+    .map((s, i) => {
+      const nonPaye = Math.max(Number(s.montant || 0) - Number(s.montantPaye || 0), 0);
+      return `<tr>
+        <td>${i + 1}</td>
+        <td class="r"><b>${esc(s.enfantNom)}</b></td>
+        <td>${esc(s.anneeScolaire || "-")}</td>
+        <td>${esc(s.mois || "-")}</td>
+        <td>${esc(s.centre || "-")}</td>
+        <td>${esc(s.intervenant || "-")}</td>
+        <td class="m">${fmtMoney(s.montant)}</td>
+        <td class="m">${fmtMoney(s.montantPaye)}</td>
+        <td class="m np">${fmtMoney(nonPaye)}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const soutienParEnfantRows = Object.values(consoEtudes.parEnfant)
+    .sort((a, b) => b.totalPaye - a.totalPaye)
+    .map(
+      (v) => `<tr>
+        <td class="r"><b>${esc(v.enfantNom)}</b></td>
+        <td class="m">${fmtMoney(v.totalConsomme)}</td>
+        <td class="m">${fmtMoney(v.totalPaye)}</td>
+        <td class="m np">${fmtMoney(v.totalNonPaye)}</td>
+      </tr>`
+    )
+    .join("");
+
   w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <title>ملف عائلة ${esc(nomFamille)}</title>
 <style>
@@ -676,6 +745,8 @@ const printFamilleReport = (
   td{padding:6px;border:1px solid #e5e7eb;text-align:center;vertical-align:middle}
   td.r{text-align:right} td.l .ph{width:34px;height:34px}
   td.m{font-weight:bold;color:#047857;white-space:nowrap}
+  td.np{color:#b45309}
+  .stats5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}
   tr:nth-child(even) td{background:#f9fafb}
   thead{display:table-header-group} tr{break-inside:avoid}
   .tag{display:inline-block;border-radius:99px;padding:2px 10px;font-weight:bold;font-size:10px}
@@ -730,9 +801,24 @@ ${
     : `<p class="muted">لا توجد معلومات عن الأطفال</p>`
 }
 
+<h2>الاستهلاك الإجمالي للعائلة</h2>
+<div class="stats5">
+  <div class="st" style="background:#eff6ff"><b style="color:#1d4ed8">${fmtMoney(totalEvenements)}</b><span>مصاريف الأنشطة</span></div>
+  <div class="st" style="background:#f5f3ff"><b style="color:#6d28d9">${fmtMoney(totalEtudesConsomme)}</b><span>الدعم الدراسي المستهلك</span></div>
+  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(totalEtudesPaye)}</b><span>الدعم المؤدى من الجمعية</span></div>
+  <div class="st" style="background:#fffbeb"><b style="color:#b45309">${fmtMoney(totalEtudesNonPaye)}</b><span>غير مؤدى من الجمعية</span></div>
+  <div class="st" style="background:#ecfeff"><b style="color:#0e7490">${fmtMoney(totalPrisEnChargeAssociation)}</b><span>إجمالي ما دفعته الجمعية</span></div>
+</div>
+<div class="card" style="margin-bottom:12px">
+  <div class="grid2">
+    ${row("القيمة الإجمالية المستهلكة", fmtMoney(totalConsommationGlobale))}
+    ${row("إجمالي ما دفعته الجمعية", fmtMoney(totalPrisEnChargeAssociation))}
+  </div>
+</div>
+
 <h2>الأنشطة والمبالغ المصروفة — ${esc(yearLabel)}</h2>
 <div class="stats">
-  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(conso.total)}</b><span>المبلغ المصروف</span></div>
+  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(conso.total)}</b><span>المبلغ المصروف في الأنشطة</span></div>
   <div class="st" style="background:#eef2ff"><b style="color:#4338ca">${conso.events.length}</b><span>عدد المشاركات</span></div>
   <div class="st" style="background:#f0fdf4"><b style="color:#15803d">${conso.presentCount}</b><span>حضور</span></div>
   <div class="st" style="background:#fef2f2"><b style="color:#dc2626">${conso.absentCount}</b><span>غياب</span></div>
@@ -752,6 +838,28 @@ ${
     : `<p class="muted">لا توجد مشاركات في هذه الفترة</p>`
 }
 
+<h2>الدعم الدراسي — ${esc(studyYearLabel)}</h2>
+<div class="stats">
+  <div class="st" style="background:#f5f3ff"><b style="color:#6d28d9">${fmtMoney(totalEtudesConsomme)}</b><span>المبلغ المستهلك</span></div>
+  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(totalEtudesPaye)}</b><span>المؤدى من الجمعية</span></div>
+  <div class="st" style="background:#fffbeb"><b style="color:#b45309">${fmtMoney(totalEtudesNonPaye)}</b><span>غير مؤدى من الجمعية</span></div>
+  <div class="st" style="background:#eef2ff"><b style="color:#4338ca">${consoEtudes.details.length}</b><span>عدد حصص/سجلات الدعم</span></div>
+</div>
+
+${
+  soutienParEnfantRows
+    ? `<h3>الدعم حسب الطفل</h3>
+<table><thead><tr><th>الطفل</th><th>المستهلك</th><th>المؤدى من الجمعية</th><th>غير المؤدى من الجمعية</th></tr></thead><tbody>${soutienParEnfantRows}</tbody></table>`
+    : ""
+}
+
+<h3 style="margin-top:14px">تفاصيل الدعم الدراسي</h3>
+${
+  soutienRows
+    ? `<table><thead><tr><th>#</th><th>الطفل</th><th>السنة الدراسية</th><th>الشهر</th><th>المركز</th><th>المتدخل</th><th>المبلغ</th><th>المؤدى</th><th>غير المؤدى</th></tr></thead><tbody>${soutienRows}</tbody></table>`
+    : `<p class="muted">لا توجد مصاريف دعم دراسي في هذه الفترة</p>`
+}
+
 <div class="foot">تم إنشاء هذا التقرير بتاريخ ${esc(new Date().toLocaleDateString("fr-FR"))}</div>
 </body></html>`);
   w.document.close();
@@ -768,6 +876,11 @@ export default function FamillesProfiles() {
   const [famille, setFamille] = useState<Famille | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [etudes, setEtudes] = useState<Record<number, any>>({});
+
+  const [soutiensEtudes, setSoutiensEtudes] = useState<SoutienEtude[]>([]);
+  const [studyYear, setStudyYear] = useState<string>("all");
+  const [customStudyYear, setCustomStudyYear] = useState("");
+  const [loadingSoutiens, setLoadingSoutiens] = useState(false);
 
   const [types, setTypes] = useState<Option[]>([]);
   const [habitations, setHabitations] = useState<Option[]>([]);
@@ -856,6 +969,70 @@ export default function FamillesProfiles() {
     ).then((entries) => {
       if (!cancelled) setEtudes(Object.fromEntries(entries));
     });
+    return () => {
+      cancelled = true;
+    };
+  }, [famille?.enfants]);
+
+  /* ---------- Chargement des soutiens scolaires de tous les enfants ---------- */
+  useEffect(() => {
+    const enfants = famille?.enfants || [];
+
+    if (!enfants.length) {
+      setSoutiensEtudes([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAllSoutiens = async () => {
+      setLoadingSoutiens(true);
+
+      try {
+        const result = await Promise.all(
+          enfants.map(async (enfant) => {
+            try {
+              const res = await fetch(`${API}/soutiens/all/${enfant.id}`);
+
+              if (!res.ok) {
+                return [] as SoutienEtude[];
+              }
+
+              const data = await res.json();
+
+              return (Array.isArray(data) ? data : []).map(
+                (item: any): SoutienEtude => ({
+                  id: Number(item.id),
+                  enfantId: enfant.id,
+                  enfantNom: `${enfant.nom || ""} ${enfant.prenom || ""}`.trim(),
+                  anneeScolaire: item.anneeScolaire ?? "",
+                  mois: item.mois ?? "",
+                  centre: item.centre ?? "",
+                  intervenant: item.intervenant ?? "",
+                  montant: Number(item.montant || 0),
+                  montantPaye: Number(item.montantPaye || 0),
+                  effectue: Boolean(item.effectue),
+                })
+              );
+            } catch (error) {
+              console.error(`Erreur soutien enfant ${enfant.id}`, error);
+              return [] as SoutienEtude[];
+            }
+          })
+        );
+
+        if (!cancelled) {
+          setSoutiensEtudes(result.flat());
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingSoutiens(false);
+        }
+      }
+    };
+
+    void loadAllSoutiens();
+
     return () => {
       cancelled = true;
     };
@@ -983,22 +1160,146 @@ export default function FamillesProfiles() {
     });
   };
 
+ const [year, setYear] = useState("all");
+ const [exportYearOpen, setExportYearOpen] = useState(false);
+ const [exportYear, setExportYear] = useState("all");
+ const [exportStudyYear, setExportStudyYear] = useState("all");
+
+ const [conso, setConso] = useState<{
+   total: number;
+   presentCount: number;
+   absentCount: number;
+   events: any[];
+ }>({
+   total: 0,
+   presentCount: 0,
+   absentCount: 0,
+   events: [],
+ });
+
+ const studyYears = useMemo(() => {
+   const years = soutiensEtudes
+     .map((s) => s.anneeScolaire)
+     .filter(Boolean);
+
+   return Array.from(new Set(years)).sort(
+     (a, b) => Number(b.split("/")[0]) - Number(a.split("/")[0])
+   );
+ }, [soutiensEtudes]);
+
+ const buildConsoEtudes = useCallback(
+   (selectedYear: string): ConsoEtudes => {
+     const filtered = soutiensEtudes.filter((s) => {
+       if (!s.effectue) return false;
+       return selectedYear === "all" || s.anneeScolaire === selectedYear;
+     });
+
+     const parEnfant: ConsoEtudes["parEnfant"] = {};
+     let totalConsomme = 0;
+     let totalPaye = 0;
+     let totalNonPaye = 0;
+
+     filtered.forEach((s) => {
+       const consomme = Math.max(Number(s.montant || 0), 0);
+       const paye = Math.min(
+         Math.max(Number(s.montantPaye || 0), 0),
+         consomme
+       );
+       const nonPaye = Math.max(consomme - paye, 0);
+
+       totalConsomme += consomme;
+       totalPaye += paye;
+       totalNonPaye += nonPaye;
+
+       if (!parEnfant[s.enfantId]) {
+         parEnfant[s.enfantId] = {
+           enfantId: s.enfantId,
+           enfantNom: s.enfantNom,
+           totalConsomme: 0,
+           totalPaye: 0,
+           totalNonPaye: 0,
+           soutiens: [],
+         };
+       }
+
+       parEnfant[s.enfantId].totalConsomme += consomme;
+       parEnfant[s.enfantId].totalPaye += paye;
+       parEnfant[s.enfantId].totalNonPaye += nonPaye;
+       parEnfant[s.enfantId].soutiens.push(s);
+     });
+
+     return {
+       totalConsomme,
+       totalPaye,
+       totalNonPaye,
+       details: filtered,
+       parEnfant,
+     };
+   },
+   [soutiensEtudes]
+ );
+
+ const consoEtudes = useMemo(
+   () => buildConsoEtudes(studyYear),
+   [buildConsoEtudes, studyYear]
+ );
+
+ const totalEvenements = Number(conso.total || 0);
+ const totalEtudesConsomme = Number(consoEtudes.totalConsomme || 0);
+ const totalEtudesPaye = Number(consoEtudes.totalPaye || 0);
+ const totalEtudesNonPaye = Number(consoEtudes.totalNonPaye || 0);
+
+ // Argent réellement dépensé par l'association pour cette famille.
+ const totalPrisEnChargeAssociation =
+   totalEvenements + totalEtudesPaye;
+
+ // Valeur totale des aides consommées, même si une partie scolaire
+ // n'a pas été payée par l'association.
+ const totalConsommationGlobale =
+   totalEvenements + totalEtudesConsomme;
+
+ const addCustomStudyYear = () => {
+   const value = customStudyYear.trim().replace("-", "/");
+
+   if (!/^\d{4}\/\d{4}$/.test(value)) {
+     alert("أدخل السنة بهذا الشكل: 2026/2027");
+     return;
+   }
+
+   const [startYear, endYear] = value.split("/").map(Number);
+
+   if (endYear !== startYear + 1) {
+     alert("السنة الدراسية غير صحيحة");
+     return;
+   }
+
+   setStudyYear(value);
+   setCustomStudyYear("");
+ };
+
  const exportPdf = () => {
    if (!famille) return;
-   setExportYear(year); // par défaut : l'année affichée à l'écran
+
+   setExportYear(year);
+   setExportStudyYear(studyYear);
    setExportYearOpen(true);
  };
 
  const confirmExport = async () => {
    if (!famille) return;
+
    setExporting(true);
+
    try {
      let data = conso;
+
      if (exportYear !== year) {
        const r = await fetch(
          `${API}/events/stats/familles${exportYear === "all" ? "" : `?year=${exportYear}`}`
        );
+
        const list: any[] = r.ok ? await r.json() : [];
+
        data =
          list.find((x) => String(x.familleId) === String(familleId)) || {
            total: 0,
@@ -1007,34 +1308,58 @@ export default function FamillesProfiles() {
            events: [],
          };
      }
-     printFamilleReport(famille, etudes, data, exportYear);
+
+     const studyData = buildConsoEtudes(exportStudyYear);
+
+     printFamilleReport(
+       famille,
+       etudes,
+       data,
+       studyData,
+       exportYear,
+       exportStudyYear
+     );
+
      setExportYearOpen(false);
-   } catch {
-     alert("تعذر تحميل بيانات السنة المختارة");
+   } catch (error) {
+     console.error(error);
+     alert("تعذر تحميل بيانات الفترة المختارة");
    } finally {
      setExporting(false);
    }
  };
-const [year, setYear] = useState("all");
-const [exportYearOpen, setExportYearOpen] = useState(false);
-const [exportYear, setExportYear] = useState("all");
-const [conso, setConso] = useState<{ total: number; presentCount: number; absentCount: number; events: any[] }>({
-  total: 0,
-  presentCount: 0,
-  absentCount: 0,
-  events: [],
-});
 
-useEffect(() => {
-  if (isNaN(familleId)) return;
-  fetch(`${API}/events/stats/familles${year === "all" ? "" : `?year=${year}`}`)
-    .then((r) => (r.ok ? r.json() : []))
-    .then((list: any[]) => {
-      const mine = list.find((x) => String(x.familleId) === String(familleId));
-      setConso(mine || { total: 0, presentCount: 0, absentCount: 0, events: [] });
-    })
-    .catch(() => setConso({ total: 0, presentCount: 0, absentCount: 0, events: [] }));
-}, [familleId, year]);
+ useEffect(() => {
+   if (isNaN(familleId)) return;
+
+   fetch(
+     `${API}/events/stats/familles${year === "all" ? "" : `?year=${year}`}`
+   )
+     .then((r) => (r.ok ? r.json() : []))
+     .then((list: any[]) => {
+       const mine = list.find(
+         (x) => String(x.familleId) === String(familleId)
+       );
+
+       setConso(
+         mine || {
+           total: 0,
+           presentCount: 0,
+           absentCount: 0,
+           events: [],
+         }
+       );
+     })
+     .catch(() =>
+       setConso({
+         total: 0,
+         presentCount: 0,
+         absentCount: 0,
+         events: [],
+       })
+     );
+ }, [familleId, year]);
+
   /* ---------- États de chargement ---------- */
   if (notFound)
     return (
@@ -1535,99 +1860,450 @@ useEffect(() => {
             </div>
           )}
         </Section>
-        <Section title="الأنشطة والمبالغ المصروفة" subtitle="مشاركات العائلة والأم والأطفال">
-          <div className="mb-4 flex items-center gap-2" data-html2canvas-ignore="true">
-            <span className="text-xs font-semibold text-gray-500">السنة</span>
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
-            >
-              <option value="all">كل السنوات</option>
-              {Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
+        <Section
+          title="الاستهلاك والمبالغ المصروفة"
+          subtitle="الأنشطة + الدعم الدراسي للأطفال"
+        >
+          {/* ====== TOTAL GENERAL ====== */}
+          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+            <div className="rounded-2xl bg-blue-50 p-4">
+              <p className="text-xs text-gray-500">مصاريف الأنشطة</p>
+              <p className="mt-1 text-lg font-extrabold text-blue-700">
+                {fmtMoney(totalEvenements)}
+              </p>
+            </div>
 
-          <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-2xl bg-violet-50 p-4">
+              <p className="text-xs text-gray-500">الدعم الدراسي المستهلك</p>
+              <p className="mt-1 text-lg font-extrabold text-violet-700">
+                {fmtMoney(totalEtudesConsomme)}
+              </p>
+            </div>
+
             <div className="rounded-2xl bg-emerald-50 p-4">
-              <p className="text-xs text-gray-500">المبلغ المصروف</p>
-              <p className="text-lg font-extrabold text-emerald-700">{fmtMoney(conso.total)}</p>
+              <p className="text-xs text-gray-500">الدعم المؤدى من الجمعية</p>
+              <p className="mt-1 text-lg font-extrabold text-emerald-700">
+                {fmtMoney(totalEtudesPaye)}
+              </p>
             </div>
-            <div className="rounded-2xl bg-indigo-50 p-4">
-              <p className="text-xs text-gray-500">المشاركات</p>
-              <p className="text-lg font-extrabold text-indigo-700">{conso.events.length}</p>
+
+            <div className="rounded-2xl bg-amber-50 p-4">
+              <p className="text-xs text-gray-500">غير مؤدى من الجمعية</p>
+              <p className="mt-1 text-lg font-extrabold text-amber-700">
+                {fmtMoney(totalEtudesNonPaye)}
+              </p>
             </div>
-            <div className="rounded-2xl bg-green-50 p-4">
-              <p className="text-xs text-gray-500">حضور</p>
-              <p className="text-lg font-extrabold text-green-700">{conso.presentCount}</p>
+
+            <div className="rounded-2xl bg-cyan-50 p-4">
+              <p className="text-xs text-gray-500">إجمالي ما دفعته الجمعية</p>
+              <p className="mt-1 text-lg font-extrabold text-cyan-700">
+                {fmtMoney(totalPrisEnChargeAssociation)}
+              </p>
             </div>
-            <div className="rounded-2xl bg-red-50 p-4">
-              <p className="text-xs text-gray-500">غياب</p>
-              <p className="text-lg font-extrabold text-red-600">{conso.absentCount}</p>
+
+            <div className="rounded-2xl bg-slate-100 p-4">
+              <p className="text-xs text-gray-500">القيمة الإجمالية المستهلكة</p>
+              <p className="mt-1 text-lg font-extrabold text-slate-800">
+                {fmtMoney(totalConsommationGlobale)}
+              </p>
             </div>
           </div>
 
-          {conso.events.length === 0 ? (
-            <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
-              لا توجد مشاركات في هذه الفترة
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-2xl border border-gray-100">
-              <table className="min-w-full text-right text-sm">
-                <thead className="bg-gray-50 text-xs font-semibold text-gray-500">
-                  <tr>
-                    <th className="px-4 py-3">النشاط</th>
-                    <th className="px-4 py-3">التاريخ</th>
-                    <th className="px-4 py-3">المشارك</th>
-                    <th className="px-4 py-3">الحالة</th>
-                    <th className="px-4 py-3">المبلغ</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {conso.events.map((ev, i) => (
-                    <tr key={i} className="hover:bg-indigo-50/40">
-                      <td className="px-4 py-3 font-bold text-gray-800">{ev.title}</td>
-                      <td className="px-4 py-3 text-gray-500">{ev.startDate}</td>
-                      <td className="px-4 py-3 text-gray-600">{ev.participant}</td>
-                      <td className="px-4 py-3">
-                        {ev.present ? (
-                          <Badge tone="green">حاضر</Badge>
-                        ) : (
-                          <Badge tone="red">غائب{ev.motif ? ` (${ev.motif})` : ""}</Badge>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-bold text-emerald-700">{fmtMoney(ev.montant)}</td>
-                    </tr>
+          {/* ====== ACTIVITES ====== */}
+          <div className="mb-7 rounded-3xl border border-gray-100 p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="font-extrabold text-gray-800">الأنشطة</h3>
+                <p className="text-xs text-gray-400">
+                  استهلاك العائلة والأم والأطفال في الأنشطة
+                </p>
+              </div>
+
+              <div
+                className="flex items-center gap-2"
+                data-html2canvas-ignore="true"
+              >
+                <span className="text-xs font-semibold text-gray-500">السنة</span>
+
+                <select
+                  value={year}
+                  onChange={(e) => setYear(e.target.value)}
+                  className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
+                >
+                  <option value="all">كل السنوات</option>
+
+                  {Array.from(
+                    { length: 8 },
+                    (_, i) => String(new Date().getFullYear() - i)
+                  ).map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
                   ))}
-                </tbody>
-              </table>
+                </select>
+              </div>
             </div>
-          )}
+
+            <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <div className="rounded-2xl bg-emerald-50 p-4">
+                <p className="text-xs text-gray-500">المبلغ المصروف</p>
+                <p className="text-lg font-extrabold text-emerald-700">
+                  {fmtMoney(conso.total)}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-indigo-50 p-4">
+                <p className="text-xs text-gray-500">المشاركات</p>
+                <p className="text-lg font-extrabold text-indigo-700">
+                  {conso.events.length}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-green-50 p-4">
+                <p className="text-xs text-gray-500">حضور</p>
+                <p className="text-lg font-extrabold text-green-700">
+                  {conso.presentCount}
+                </p>
+              </div>
+
+              <div className="rounded-2xl bg-red-50 p-4">
+                <p className="text-xs text-gray-500">غياب</p>
+                <p className="text-lg font-extrabold text-red-600">
+                  {conso.absentCount}
+                </p>
+              </div>
+            </div>
+
+            {conso.events.length === 0 ? (
+              <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                لا توجد مشاركات في هذه الفترة
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-2xl border border-gray-100">
+                <table className="min-w-full text-right text-sm">
+                  <thead className="bg-gray-50 text-xs font-semibold text-gray-500">
+                    <tr>
+                      <th className="px-4 py-3">النشاط</th>
+                      <th className="px-4 py-3">التاريخ</th>
+                      <th className="px-4 py-3">المشارك</th>
+                      <th className="px-4 py-3">الحالة</th>
+                      <th className="px-4 py-3">المبلغ</th>
+                    </tr>
+                  </thead>
+
+                  <tbody className="divide-y divide-gray-100">
+                    {conso.events.map((ev, i) => (
+                      <tr key={i} className="hover:bg-indigo-50/40">
+                        <td className="px-4 py-3 font-bold text-gray-800">
+                          {ev.title}
+                        </td>
+
+                        <td className="px-4 py-3 text-gray-500">
+                          {ev.startDate}
+                        </td>
+
+                        <td className="px-4 py-3 text-gray-600">
+                          {ev.participant}
+                        </td>
+
+                        <td className="px-4 py-3">
+                          {ev.present ? (
+                            <Badge tone="green">حاضر</Badge>
+                          ) : (
+                            <Badge tone="red">
+                              غائب{ev.motif ? ` (${ev.motif})` : ""}
+                            </Badge>
+                          )}
+                        </td>
+
+                        <td className="whitespace-nowrap px-4 py-3 font-bold text-emerald-700">
+                          {fmtMoney(ev.montant)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* ====== SOUTIEN SCOLAIRE ====== */}
+          <div className="rounded-3xl border border-gray-100 p-4">
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-4">
+              <div>
+                <h3 className="font-extrabold text-gray-800">
+                  الدعم الدراسي للأطفال
+                </h3>
+
+                <p className="text-xs text-gray-400">
+                  يعرض فقط السجلات المنجزة فعليا، مع المبلغ المؤدى وغير المؤدى من الجمعية
+                </p>
+              </div>
+
+              <div
+                className="flex flex-wrap items-end gap-2"
+                data-html2canvas-ignore="true"
+              >
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-gray-500">
+                    السنة الدراسية
+                  </span>
+
+                  <select
+                    value={studyYear}
+                    onChange={(e) => setStudyYear(e.target.value)}
+                    className="h-10 min-w-[170px] rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
+                  >
+                    <option value="all">كل السنوات الدراسية</option>
+
+                    {studyYears.map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-gray-500">
+                    سنة مخصصة
+                  </span>
+
+                  <input
+                    value={customStudyYear}
+                    onChange={(e) => setCustomStudyYear(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addCustomStudyYear();
+                      }
+                    }}
+                    placeholder="2026/2027"
+                    className="h-10 w-[150px] rounded-xl border border-gray-200 bg-gray-50 px-3 text-center text-sm font-semibold outline-none focus:border-indigo-300"
+                  />
+                </label>
+
+                <button
+                  type="button"
+                  onClick={addCustomStudyYear}
+                  className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white hover:bg-indigo-700"
+                >
+                  تطبيق
+                </button>
+              </div>
+            </div>
+
+            {loadingSoutiens ? (
+              <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                جاري تحميل بيانات الدعم الدراسي...
+              </p>
+            ) : (
+              <>
+                <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <div className="rounded-2xl bg-violet-50 p-4">
+                    <p className="text-xs text-gray-500">المبلغ المستهلك</p>
+                    <p className="text-lg font-extrabold text-violet-700">
+                      {fmtMoney(consoEtudes.totalConsomme)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-emerald-50 p-4">
+                    <p className="text-xs text-gray-500">المؤدى من الجمعية</p>
+                    <p className="text-lg font-extrabold text-emerald-700">
+                      {fmtMoney(consoEtudes.totalPaye)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-amber-50 p-4">
+                    <p className="text-xs text-gray-500">غير مؤدى من الجمعية</p>
+                    <p className="text-lg font-extrabold text-amber-700">
+                      {fmtMoney(consoEtudes.totalNonPaye)}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-indigo-50 p-4">
+                    <p className="text-xs text-gray-500">عدد السجلات المنجزة</p>
+                    <p className="text-lg font-extrabold text-indigo-700">
+                      {consoEtudes.details.length}
+                    </p>
+                  </div>
+                </div>
+
+                {Object.values(consoEtudes.parEnfant).length > 0 && (
+                  <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {Object.values(consoEtudes.parEnfant).map((item) => (
+                      <div
+                        key={item.enfantId}
+                        className="rounded-2xl border border-gray-100 bg-gray-50 p-4"
+                      >
+                        <p className="font-extrabold text-gray-800">
+                          {item.enfantNom}
+                        </p>
+
+                        <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                          <div>
+                            <p className="text-[10px] text-gray-400">المستهلك</p>
+                            <p className="text-xs font-bold text-violet-700">
+                              {fmtMoney(item.totalConsomme)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] text-gray-400">المؤدى</p>
+                            <p className="text-xs font-bold text-emerald-700">
+                              {fmtMoney(item.totalPaye)}
+                            </p>
+                          </div>
+
+                          <div>
+                            <p className="text-[10px] text-gray-400">غير المؤدى</p>
+                            <p className="text-xs font-bold text-amber-700">
+                              {fmtMoney(item.totalNonPaye)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {consoEtudes.details.length === 0 ? (
+                  <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                    لا توجد مصاريف دعم دراسي منجزة في هذه السنة
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-2xl border border-gray-100">
+                    <table className="min-w-full text-right text-sm">
+                      <thead className="bg-gray-50 text-xs font-semibold text-gray-500">
+                        <tr>
+                          <th className="px-4 py-3">الطفل</th>
+                          <th className="px-4 py-3">السنة</th>
+                          <th className="px-4 py-3">الشهر</th>
+                          <th className="px-4 py-3">المركز</th>
+                          <th className="px-4 py-3">المتدخل</th>
+                          <th className="px-4 py-3">المبلغ</th>
+                          <th className="px-4 py-3">المؤدى</th>
+                          <th className="px-4 py-3">غير المؤدى</th>
+                        </tr>
+                      </thead>
+
+                      <tbody className="divide-y divide-gray-100">
+                        {consoEtudes.details.map((s) => {
+                          const nonPaye = Math.max(
+                            Number(s.montant || 0) - Number(s.montantPaye || 0),
+                            0
+                          );
+
+                          return (
+                            <tr
+                              key={`${s.enfantId}-${s.id}`}
+                              className="hover:bg-indigo-50/40"
+                            >
+                              <td className="px-4 py-3 font-bold text-gray-800">
+                                {s.enfantNom}
+                              </td>
+
+                              <td className="px-4 py-3 text-gray-600">
+                                {s.anneeScolaire || "-"}
+                              </td>
+
+                              <td className="px-4 py-3 text-gray-600">
+                                {s.mois || "-"}
+                              </td>
+
+                              <td className="px-4 py-3 text-gray-600">
+                                {s.centre || "-"}
+                              </td>
+
+                              <td className="px-4 py-3 text-gray-600">
+                                {s.intervenant || "-"}
+                              </td>
+
+                              <td className="whitespace-nowrap px-4 py-3 font-bold text-violet-700">
+                                {fmtMoney(s.montant)}
+                              </td>
+
+                              <td className="whitespace-nowrap px-4 py-3 font-bold text-emerald-700">
+                                {fmtMoney(s.montantPaye)}
+                              </td>
+
+                              <td className="whitespace-nowrap px-4 py-3 font-bold text-amber-700">
+                                {fmtMoney(nonPaye)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </Section>
       </div>
 {exportYearOpen && (
   <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
-    <div dir="rtl" className="w-[420px] max-w-full rounded-2xl bg-white p-6 shadow-xl">
-      <h3 className="text-lg font-extrabold text-gray-800">تصدير ملف العائلة</h3>
-      <p className="mt-1 text-xs text-gray-400">اختر الفترة التي تريد تضمينها في التقرير</p>
+    <div
+      dir="rtl"
+      className="w-[560px] max-w-full rounded-3xl bg-white p-6 shadow-xl"
+    >
+      <h3 className="text-lg font-extrabold text-gray-800">
+        تصدير ملف العائلة
+      </h3>
 
-      <div className="mt-5 grid grid-cols-2 gap-2">
-        {["all", ...Array.from({ length: 6 }, (_, i) => String(new Date().getFullYear() - i))].map((y) => (
-          <button
-            key={y}
-            type="button"
-            onClick={() => setExportYear(y)}
-            className={`rounded-xl border px-3 py-3 text-sm font-bold transition ${
-              exportYear === y
-                ? "border-indigo-300 bg-indigo-50 text-indigo-700"
-                : "border-gray-200 text-gray-600 hover:bg-gray-50"
-            } ${y === "all" ? "col-span-2" : ""}`}
+      <p className="mt-1 text-xs text-gray-400">
+        اختر سنة الأنشطة والسنة الدراسية التي تريد تضمينها في التقرير
+      </p>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+            فترة الأنشطة
+          </span>
+
+          <select
+            value={exportYear}
+            onChange={(e) => setExportYear(e.target.value)}
+            className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
           >
-            {y === "all" ? "كل السنوات" : y}
-          </button>
-        ))}
+            <option value="all">كل السنوات</option>
+
+            {Array.from(
+              { length: 8 },
+              (_, i) => String(new Date().getFullYear() - i)
+            ).map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+            فترة الدعم الدراسي
+          </span>
+
+          <select
+            value={exportStudyYear}
+            onChange={(e) => setExportStudyYear(e.target.value)}
+            className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
+          >
+            <option value="all">كل السنوات الدراسية</option>
+
+            {studyYears.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+
+            {exportStudyYear !== "all" &&
+              !studyYears.includes(exportStudyYear) && (
+                <option value={exportStudyYear}>{exportStudyYear}</option>
+              )}
+          </select>
+        </label>
       </div>
 
       <div className="mt-6 flex justify-end gap-2">
@@ -1638,6 +2314,7 @@ useEffect(() => {
         >
           إلغاء
         </button>
+
         <button
           type="button"
           onClick={confirmExport}

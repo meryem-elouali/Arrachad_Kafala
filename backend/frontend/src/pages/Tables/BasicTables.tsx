@@ -13,6 +13,27 @@ type Orientation = "landscape" | "portrait";
 type Group = "FAMILLE" | "PARENT" | "ENFANT" | "PARTICIPATION";
 type FieldDef = { key: string; label: string; kind?: "money" | "number" };
 
+type SoutienEtude = {
+  id: number;
+  enfantId: number;
+  familleId: number | null;
+  enfantNom: string;
+  anneeScolaire: string;
+  mois: string;
+  centre: string;
+  intervenant: string;
+  montant: number;
+  montantPaye: number;
+  effectue: boolean;
+};
+
+type ConsoScolaireFamille = {
+  totalConsomme: number;
+  totalPaye: number;
+  totalNonPaye: number;
+  details: SoutienEtude[];
+};
+
 const EXPORT_TYPES: { value: ExportType; label: string; group: Group; hint: string }[] = [
   { value: "FAMILLES", label: "العائلات", group: "FAMILLE", hint: "لائحة العائلات" },
   { value: "CONSO", label: "المبالغ المصروفة", group: "FAMILLE", hint: "المصروف لكل عائلة" },
@@ -41,7 +62,12 @@ const FIELDS: Record<Group, FieldDef[]> = {
     { key: "nbParticipations", label: "عدد المشاركات", kind: "number" },
     { key: "present", label: "حضور", kind: "number" },
     { key: "absent", label: "غياب", kind: "number" },
-    { key: "total", label: "المبلغ المصروف", kind: "money" },
+    { key: "totalEvenements", label: "مصاريف الأنشطة", kind: "money" },
+    { key: "scolaireConsomme", label: "الدعم الدراسي المستهلك", kind: "money" },
+    { key: "scolairePaye", label: "الدعم الدراسي المؤدى من الجمعية", kind: "money" },
+    { key: "scolaireNonPaye", label: "الدعم الدراسي غير المؤدى من الجمعية", kind: "money" },
+    { key: "total", label: "إجمالي ما دفعته الجمعية", kind: "money" },
+    { key: "totalConsomme", label: "القيمة الإجمالية المستهلكة", kind: "money" },
   ],
   PARENT: [
     { key: "nom", label: "الاسم" },
@@ -89,7 +115,7 @@ const FIELDS: Record<Group, FieldDef[]> = {
 
 const DEFAULT_FIELDS: Record<ExportType, string[]> = {
   FAMILLES: ["nomFamille", "mere", "nombreEnfants", "typeFamille", "degre"],
-  CONSO: ["nomFamille", "degre", "typeFamille", "nbParticipations", "present", "absent", "total"],
+  CONSO: ["nomFamille", "degre", "typeFamille", "totalEvenements", "scolairePaye", "scolaireNonPaye", "total", "nbParticipations", "present", "absent"],
   MERES: ["nom", "prenom", "familleNom", "nombreEnfants", "degre"],
   PERES: ["nom", "prenom", "familleNom", "nombreEnfants", "degre"],
   ENFANTS: ["nom", "prenom", "age", "familleNom", "degre"],
@@ -141,6 +167,10 @@ const fmt = (n: any) =>
 
 const currentYear = new Date().getFullYear();
 const YEARS = Array.from({ length: 6 }, (_, i) => String(currentYear - i));
+const currentSchoolYear =
+  new Date().getMonth() + 1 >= 9
+    ? `${currentYear}/${currentYear + 1}`
+    : `${currentYear - 1}/${currentYear}`;
 
 const AVATARS = [
   "from-blue-500 to-indigo-500",
@@ -441,7 +471,12 @@ export default function FamillesTable() {
 
   // ===== Année + consommation =====
   const [year, setYear] = useState<string>(String(currentYear));
+  const [studyYear, setStudyYear] = useState<string>(currentSchoolYear);
+  const [customStudyYear, setCustomStudyYear] = useState("");
   const [conso, setConso] = useState<Record<string, any>>({});
+  const [consoScolaire, setConsoScolaire] = useState<Record<string, ConsoScolaireFamille>>({});
+  const [soutiensLoading, setSoutiensLoading] = useState(false);
+  const [allSoutiens, setAllSoutiens] = useState<SoutienEtude[]>([]);
   const [detailFamille, setDetailFamille] = useState<any | null>(null);
 
   // ===== Export =====
@@ -456,6 +491,7 @@ export default function FamillesTable() {
   const [selectedFields, setSelectedFields] = useState<Record<ExportType, string[]>>(DEFAULT_FIELDS);
   const [exportConso, setExportConso] = useState<Record<string, any>>({});
   const [exportConsoLoading, setExportConsoLoading] = useState(false);
+  const [exportStudyYear, setExportStudyYear] = useState<string>(currentSchoolYear);
   const [enfantsApi, setEnfantsApi] = useState<any[]>([]);
 
   // ===== Chargement des familles =====
@@ -496,6 +532,206 @@ export default function FamillesTable() {
       .catch(() => setConso({}));
   }, [year]);
 
+  // ===== Soutien scolaire de tous les enfants =====
+  useEffect(() => {
+    if (!familles.length) {
+      setAllSoutiens([]);
+      return;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setSoutiensLoading(true);
+
+      try {
+        // 1) Priorité aux enfants déjà inclus dans /famille.
+        const embedded = familles.flatMap((f: any) =>
+          (Array.isArray(f.enfants) ? f.enfants : []).map((e: any) => ({
+            ...e,
+            familleId: e.familleId ?? e.famille?.id ?? f.id,
+          }))
+        );
+
+        // 2) Si certains enfants ne sont pas inclus, récupérer /enfant.
+        let children = embedded;
+
+        try {
+          const res = await axios.get(`${API}/enfant`);
+          const apiChildren = Array.isArray(res.data) ? res.data : [];
+
+          if (apiChildren.length) {
+            const byId = new Map<number, any>();
+
+            [...embedded, ...apiChildren].forEach((e: any) => {
+              const id = Number(e.id);
+              if (!id) return;
+
+              const familleId =
+                e.familleId ??
+                e.famille?.id ??
+                familles.find(
+                  (f: any) =>
+                    (Array.isArray(f.enfants) &&
+                      f.enfants.some((x: any) => String(x.id) === String(e.id))) ||
+                    (f.mere?.id != null &&
+                      String(f.mere.id) === String(e.mere?.id ?? e.mereId))
+                )?.id ??
+                null;
+
+              byId.set(id, {
+                ...byId.get(id),
+                ...e,
+                familleId,
+              });
+            });
+
+            children = Array.from(byId.values());
+          }
+        } catch {
+          // /famille contient déjà les enfants : on continue avec eux.
+        }
+
+        if (cancelled) return;
+
+
+        const supports = await Promise.all(
+          children.map(async (enfant: any) => {
+            try {
+              const res = await axios.get(`${API}/soutiens/all/${enfant.id}`);
+              const data = Array.isArray(res.data) ? res.data : [];
+
+              const familleId =
+                enfant.familleId ??
+                enfant.famille?.id ??
+                familles.find(
+                  (f: any) =>
+                    (Array.isArray(f.enfants) &&
+                      f.enfants.some((x: any) => String(x.id) === String(enfant.id))) ||
+                    (f.mere?.id != null &&
+                      String(f.mere.id) === String(enfant.mere?.id ?? enfant.mereId))
+                )?.id ??
+                null;
+
+              return data.map(
+                (item: any): SoutienEtude => ({
+                  id: Number(item.id),
+                  enfantId: Number(enfant.id),
+                  familleId: familleId == null ? null : Number(familleId),
+                  enfantNom: `${enfant.nom ?? ""} ${enfant.prenom ?? ""}`.trim() || `Enfant ${enfant.id}`,
+                  anneeScolaire: String(item.anneeScolaire ?? ""),
+                  mois: String(item.mois ?? ""),
+                  centre: String(item.centre ?? ""),
+                  intervenant: String(item.intervenant ?? ""),
+                  montant: Number(item.montant || 0),
+                  montantPaye: Number(item.montantPaye || 0),
+                  effectue: Boolean(item.effectue),
+                })
+              );
+            } catch {
+              return [] as SoutienEtude[];
+            }
+          })
+        );
+
+        if (!cancelled) {
+          setAllSoutiens(supports.flat());
+        }
+      } finally {
+        if (!cancelled) {
+          setSoutiensLoading(false);
+        }
+      }
+    };
+
+    void load();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [familles]);
+
+  const studyYears = useMemo(() => {
+    return Array.from(
+      new Set<string>(
+        allSoutiens
+          .map((s) => String(s.anneeScolaire || ""))
+          .filter((y): y is string => Boolean(y))
+      )
+    ).sort((a, b) => Number(b.split("/")[0]) - Number(a.split("/")[0]));
+  }, [allSoutiens]);
+
+  const buildConsoScolaire = useMemo(() => {
+    const build = (selectedYear: string) => {
+      const result: Record<string, ConsoScolaireFamille> = {};
+
+      familles.forEach((f: any) => {
+        result[String(f.id)] = {
+          totalConsomme: 0,
+          totalPaye: 0,
+          totalNonPaye: 0,
+          details: [],
+        };
+      });
+
+      allSoutiens.forEach((s) => {
+        if (!s.effectue) return;
+        if (selectedYear !== "all" && s.anneeScolaire !== selectedYear) return;
+        if (s.familleId == null) return;
+
+        const key = String(s.familleId);
+
+        if (!result[key]) {
+          result[key] = {
+            totalConsomme: 0,
+            totalPaye: 0,
+            totalNonPaye: 0,
+            details: [],
+          };
+        }
+
+        const consomme = Math.max(Number(s.montant || 0), 0);
+        const paye = Math.min(
+          Math.max(Number(s.montantPaye || 0), 0),
+          consomme
+        );
+        const nonPaye = Math.max(consomme - paye, 0);
+
+        result[key].totalConsomme += consomme;
+        result[key].totalPaye += paye;
+        result[key].totalNonPaye += nonPaye;
+        result[key].details.push(s);
+      });
+
+      return result;
+    };
+
+    return build;
+  }, [allSoutiens, familles]);
+
+  useEffect(() => {
+    setConsoScolaire(buildConsoScolaire(studyYear));
+  }, [buildConsoScolaire, studyYear]);
+
+  const addCustomStudyYear = () => {
+    const value = customStudyYear.trim().replace("-", "/");
+
+    if (!/^\d{4}\/\d{4}$/.test(value)) {
+      alert("أدخل السنة الدراسية بهذا الشكل: 2026/2027");
+      return;
+    }
+
+    const [a, b] = value.split("/").map(Number);
+
+    if (b !== a + 1) {
+      alert("السنة الدراسية غير صحيحة");
+      return;
+    }
+
+    setStudyYear(value);
+    setCustomStudyYear("");
+  };
+
   // ===== Consommation (année choisie dans l'export) =====
   useEffect(() => {
     if (!exportOpen) return;
@@ -530,8 +766,41 @@ export default function FamillesTable() {
       .catch(console.error);
   }, [exportOpen, exportType, enfantsEmbedded, enfantsApi.length]);
 
+  const exportConsoScolaire = useMemo(
+    () => buildConsoScolaire(exportStudyYear),
+    [buildConsoScolaire, exportStudyYear]
+  );
+
   const getConso = (f: any) =>
     conso[String(f.id)] || { total: 0, presentCount: 0, absentCount: 0, events: [] };
+
+  const getConsoScolaire = (f: any) =>
+    consoScolaire[String(f.id)] || {
+      totalConsomme: 0,
+      totalPaye: 0,
+      totalNonPaye: 0,
+      details: [],
+    };
+
+  const getCombinedConso = (f: any) => {
+    const ev = getConso(f);
+    const sc = getConsoScolaire(f);
+    const totalEvenements = Number(ev.total || 0);
+    const scolaireConsomme = Number(sc.totalConsomme || 0);
+    const scolairePaye = Number(sc.totalPaye || 0);
+    const scolaireNonPaye = Number(sc.totalNonPaye || 0);
+
+    return {
+      ...ev,
+      totalEvenements,
+      scolaireConsomme,
+      scolairePaye,
+      scolaireNonPaye,
+      total: totalEvenements + scolairePaye,
+      totalConsomme: totalEvenements + scolaireConsomme,
+      soutienDetails: sc.details,
+    };
+  };
 
   // ===== Statistiques =====
   const stats = useMemo(() => {
@@ -555,9 +824,32 @@ export default function FamillesTable() {
         a[0].localeCompare(b[0], undefined, { numeric: true })
       ),
       parType: countBy("typeFamilleNom").filter(([k]) => k !== "—"),
-      totalDepense: Object.values(conso).reduce((s: number, c: any) => s + Number(c.total || 0), 0),
+      totalEvenements: familles.reduce(
+        (s, f) => s + Number(getConso(f).total || 0),
+        0
+      ),
+      totalScolaireConsomme: familles.reduce(
+        (s, f) => s + Number(getConsoScolaire(f).totalConsomme || 0),
+        0
+      ),
+      totalScolairePaye: familles.reduce(
+        (s, f) => s + Number(getConsoScolaire(f).totalPaye || 0),
+        0
+      ),
+      totalScolaireNonPaye: familles.reduce(
+        (s, f) => s + Number(getConsoScolaire(f).totalNonPaye || 0),
+        0
+      ),
+      totalDepense: familles.reduce(
+        (s, f) => s + Number(getCombinedConso(f).total || 0),
+        0
+      ),
+      totalConsomme: familles.reduce(
+        (s, f) => s + Number(getCombinedConso(f).totalConsomme || 0),
+        0
+      ),
     };
-  }, [familles, conso]);
+  }, [familles, conso, consoScolaire]);
 
   const typesFamille = useMemo(() => stats.parType.map(([k]) => ({ label: k, value: k })), [stats]);
   const degresList = useMemo(() => stats.parDegre.map(([k]) => k), [stats]);
@@ -589,7 +881,7 @@ export default function FamillesTable() {
           f.nomFamille?.toLowerCase().includes(s) ||
           f.nomCompletMere?.toLowerCase().includes(s))
     );
-    const val = (f: any) => (sort.key === "total" ? Number(getConso(f).total) : f[sort.key]);
+    const val = (f: any) => (sort.key === "total" ? Number(getCombinedConso(f).total) : f[sort.key]);
     return [...list].sort((a, b) => {
       const x = val(a);
       const y = val(b);
@@ -597,13 +889,13 @@ export default function FamillesTable() {
       return String(x ?? "").localeCompare(String(y ?? ""), "ar", { numeric: true }) * sort.dir;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [familles, search, fType, fDegre, fInscription, year, sort, conso]);
+  }, [familles, search, fType, fDegre, fInscription, year, sort, conso, consoScolaire]);
 
   useEffect(() => setPage(0), [search, fType, fDegre, fInscription, year, rowsPerPage]);
 
   const pageCount = Math.max(1, Math.ceil(sortedFamilles.length / rowsPerPage));
   const pageRows = sortedFamilles.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
-  const maxConso = Math.max(...familles.map((f) => Number(getConso(f).total)), 1);
+  const maxConso = Math.max(...familles.map((f) => Number(getCombinedConso(f).total)), 1);
 
   const toggleSort = (key: string) =>
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: 1 }));
@@ -631,6 +923,34 @@ export default function FamillesTable() {
   const records = useMemo(() => {
     const cf = (f: any) =>
       exportConso[String(f.id)] || { total: 0, presentCount: 0, absentCount: 0, events: [] };
+
+    const cs = (f: any) =>
+      exportConsoScolaire[String(f.id)] || {
+        totalConsomme: 0,
+        totalPaye: 0,
+        totalNonPaye: 0,
+        details: [],
+      };
+
+    const combinedExport = (f: any) => {
+      const ev = cf(f);
+      const sc = cs(f);
+      const totalEvenements = Number(ev.total || 0);
+      const scolaireConsomme = Number(sc.totalConsomme || 0);
+      const scolairePaye = Number(sc.totalPaye || 0);
+      const scolaireNonPaye = Number(sc.totalNonPaye || 0);
+
+      return {
+        ...ev,
+        totalEvenements,
+        scolaireConsomme,
+        scolairePaye,
+        scolaireNonPaye,
+        total: totalEvenements + scolairePaye,
+        totalConsomme: totalEvenements + scolaireConsomme,
+      };
+    };
+
     const base = (f: any) => ({
       familleNom: `عائلة ${f.nomFamille}`,
       degre: f.degreFamille,
@@ -643,7 +963,7 @@ export default function FamillesTable() {
 
     if (exportType === "FAMILLES" || exportType === "CONSO") {
       recs = exportFamilles.map((f) => {
-        const c = cf(f);
+        const c = combinedExport(f);
         return {
           ...base(f),
           nomFamille: `عائلة ${f.nomFamille}`,
@@ -660,7 +980,12 @@ export default function FamillesTable() {
           nbParticipations: c.events.length,
           present: c.presentCount,
           absent: c.absentCount,
+          totalEvenements: Number(c.totalEvenements || 0),
+          scolaireConsomme: Number(c.scolaireConsomme || 0),
+          scolairePaye: Number(c.scolairePaye || 0),
+          scolaireNonPaye: Number(c.scolaireNonPaye || 0),
           total: Number(c.total || 0),
+          totalConsomme: Number(c.totalConsomme || 0),
           _sick: !!f.possedeMalade,
         };
       });
@@ -776,7 +1101,7 @@ export default function FamillesTable() {
       );
     }
     return recs;
-  }, [exportType, exportFamilles, exportConso, crit, enfantsEmbedded, enfantsApi, familles]);
+  }, [exportType, exportFamilles, exportConso, exportConsoScolaire, crit, enfantsEmbedded, enfantsApi, familles]);
 
   const exportSummary = useMemo(() => {
     const isPart = exportType === "PARTICIPATIONS";
@@ -798,7 +1123,10 @@ export default function FamillesTable() {
 
   const criteriaLabels = useMemo(() => {
     const l: string[] = [];
-    l.push(`الفترة: ${crit.year === "all" ? "كل السنوات" : crit.year}`);
+    l.push(`فترة الأنشطة: ${crit.year === "all" ? "كل السنوات" : crit.year}`);
+    if (exportType === "FAMILLES" || exportType === "CONSO") {
+      l.push(`السنة الدراسية: ${exportStudyYear === "all" ? "كل السنوات الدراسية" : exportStudyYear}`);
+    }
     l.push(crit.scope === "current" ? "النطاق: نتائج الجدول الحالية" : "النطاق: كل العائلات");
     if (crit.search.trim()) l.push(`بحث: ${crit.search.trim()}`);
     if (crit.degres.length) l.push(`الدرجات: ${crit.degres.join("، ")}`);
@@ -815,7 +1143,7 @@ export default function FamillesTable() {
     if (exportType === "ENFANTS" && (crit.ageMin || crit.ageMax))
       l.push(`السن: ${crit.ageMin || "0"} - ${crit.ageMax || "∞"}`);
     return l;
-  }, [crit, exportType]);
+  }, [crit, exportType, exportStudyYear]);
 
   const toggleField = (key: string) =>
     setSelectedFields((p) => ({
@@ -827,6 +1155,7 @@ export default function FamillesTable() {
 
   const openExport = () => {
     setCrit({ ...INIT_CRIT, year });
+    setExportStudyYear(studyYear);
     setExportOpen(true);
   };
 
@@ -889,19 +1218,64 @@ export default function FamillesTable() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold"
-            >
-              <option value="all">كل السنوات</option>
-              {YEARS.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </select>
+          <div className="flex flex-wrap items-end gap-2">
+            <label>
+              <span className="mb-1 block text-[10px] font-bold text-gray-400">سنة الأنشطة</span>
+              <select
+                value={year}
+                onChange={(e) => setYear(e.target.value)}
+                className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold"
+              >
+                <option value="all">كل السنوات</option>
+                {YEARS.map((y) => (
+                  <option key={y} value={y}>
+                    {y}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span className="mb-1 block text-[10px] font-bold text-gray-400">السنة الدراسية</span>
+              <select
+                value={studyYear}
+                onChange={(e) => setStudyYear(e.target.value)}
+                className="h-11 min-w-[150px] rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold"
+              >
+                <option value="all">كل السنوات الدراسية</option>
+                {studyYears.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+                {studyYear !== "all" && !studyYears.includes(studyYear) && (
+                  <option value={studyYear}>{studyYear}</option>
+                )}
+              </select>
+            </label>
+
+            <label>
+              <span className="mb-1 block text-[10px] font-bold text-gray-400">سنة مخصصة</span>
+              <div className="flex gap-1">
+                <input
+                  value={customStudyYear}
+                  onChange={(e) => setCustomStudyYear(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCustomStudyYear();
+                    }
+                  }}
+                  placeholder="2026/2027"
+                  className="h-11 w-[125px] rounded-xl border border-gray-200 bg-white px-2 text-center text-sm font-semibold outline-none focus:border-indigo-300"
+                />
+                <button
+                  type="button"
+                  onClick={addCustomStudyYear}
+                  className="h-11 rounded-xl bg-indigo-600 px-3 text-sm font-bold text-white hover:bg-indigo-700"
+                >
+                  تطبيق
+                </button>
+              </div>
+            </label>
 
             {hasFilter && (
               <button
@@ -933,13 +1307,40 @@ export default function FamillesTable() {
           <StatCard label="عدد العائلات" value={stats.totalFamilles} color="bg-blue-50 text-blue-700 border-blue-100" />
           <StatCard label="الأمهات" value={stats.totalMeres} color="bg-purple-50 text-purple-700 border-purple-100" />
           <StatCard label="إجمالي الأطفال" value={stats.totalEnfants} color="bg-indigo-50 text-indigo-700 border-indigo-100" />
-          <StatCard label="معدل الأطفال/عائلة" value={stats.moyenne.toFixed(1)} color="bg-green-50 text-green-700 border-green-100" />
-          <StatCard label="عائلات بدون أطفال" value={stats.sansEnfants} color="bg-amber-50 text-amber-700 border-amber-100" />
+         <StatCard label="عائلات بدون أطفال" value={stats.sansEnfants} color="bg-amber-50 text-amber-700 border-amber-100" />
           <StatCard label="درجة غير محددة" value={stats.sansDegre} color="bg-red-50 text-red-700 border-red-100" />
           <StatCard
-            label={`المبلغ المصروف ${year === "all" ? "" : year}`}
-            value={fmt(stats.totalDepense)}
+            label="إجمالي ما دفعته الجمعية"
+            value={soutiensLoading ? "..." : fmt(stats.totalDepense)}
             color="bg-emerald-50 text-emerald-700 border-emerald-100"
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <StatCard
+            label={`مصاريف الأنشطة ${year === "all" ? "" : year}`}
+            value={fmt(stats.totalEvenements)}
+            color="bg-sky-50 text-sky-700 border-sky-100"
+          />
+          <StatCard
+            label={`الدعم الدراسي المستهلك ${studyYear === "all" ? "" : studyYear}`}
+            value={soutiensLoading ? "..." : fmt(stats.totalScolaireConsomme)}
+            color="bg-violet-50 text-violet-700 border-violet-100"
+          />
+          <StatCard
+            label="الدعم المؤدى من الجمعية"
+            value={soutiensLoading ? "..." : fmt(stats.totalScolairePaye)}
+            color="bg-emerald-50 text-emerald-700 border-emerald-100"
+          />
+          <StatCard
+            label="الدعم غير المؤدى من الجمعية"
+            value={soutiensLoading ? "..." : fmt(stats.totalScolaireNonPaye)}
+            color="bg-amber-50 text-amber-700 border-amber-100"
+          />
+          <StatCard
+            label="القيمة الإجمالية المستهلكة"
+            value={soutiensLoading ? "..." : fmt(stats.totalConsomme)}
+            color="bg-slate-50 text-slate-700 border-slate-200"
           />
         </div>
 
@@ -1049,7 +1450,7 @@ export default function FamillesTable() {
                     ["nombreEnfants", "الأطفال"],
                     ["typeFamilleNom", "النوع"],
                     ["degreFamille", "الدرجة"],
-                    ["total", "المبلغ المصروف"],
+                    ["total", "إجمالي المصروف"],
                   ].map(([key, label]) => (
                     <th key={key} className="px-5 py-4">
                       <button type="button" onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 hover:text-indigo-600">
@@ -1078,7 +1479,7 @@ export default function FamillesTable() {
                 )}
 
                 {pageRows.map((row) => {
-                  const c = getConso(row);
+                  const c = getCombinedConso(row);
                   const grad = AVATARS[Number(row.id) % AVATARS.length];
                   return (
                     <tr key={row.id} className="group transition hover:bg-indigo-50/40">
@@ -1109,9 +1510,25 @@ export default function FamillesTable() {
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <p className="whitespace-nowrap text-sm font-bold text-emerald-700">{fmt(c.total)}</p>
+                        <p className="whitespace-nowrap text-sm font-extrabold text-emerald-700">
+                          {fmt(c.total)}
+                        </p>
+                        <div className="mt-1 space-y-0.5 text-[10px] text-gray-400">
+                          <p>الأنشطة: {fmt(c.totalEvenements)}</p>
+                          <p>الدعم المؤدى: {fmt(c.scolairePaye)}</p>
+                          {Number(c.scolaireNonPaye) > 0 && (
+                            <p className="text-amber-600">
+                              غير مؤدى: {fmt(c.scolaireNonPaye)}
+                            </p>
+                          )}
+                        </div>
                         <div className="mt-1.5 h-1.5 w-28 overflow-hidden rounded-full bg-gray-100">
-                          <div className="h-1.5 rounded-full bg-emerald-500" style={{ width: `${(Number(c.total) / maxConso) * 100}%` }} />
+                          <div
+                            className="h-1.5 rounded-full bg-emerald-500"
+                            style={{
+                              width: `${Math.min((Number(c.total) / maxConso) * 100, 100)}%`,
+                            }}
+                          />
                         </div>
                       </td>
                       <td className="px-5 py-4">
@@ -1282,22 +1699,52 @@ export default function FamillesTable() {
                 </Section>
 
                 {/* 3. PERIODE */}
-                <Section n={3} title="الفترة" sub="سنة محددة أو كل السنوات. تؤثر على المبالغ المصروفة والمشاركات المصدّرة.">
-                  <div className="flex flex-wrap gap-2">
-                    {["all", ...YEARS].map((y) => (
-                      <button
-                        key={y}
-                        type="button"
-                        onClick={() => setC({ year: y })}
-                        className={`rounded-xl border px-4 py-2.5 text-sm font-bold transition ${
-                          crit.year === y ? "border-indigo-300 bg-indigo-50 text-indigo-700" : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                        }`}
+                <Section
+                  n={3}
+                  title="الفترة"
+                  sub="اختر سنة الأنشطة والسنة الدراسية للدعم بشكل مستقل."
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className={labelCls}>سنة الأنشطة</label>
+                      <select
+                        value={crit.year}
+                        onChange={(e) => setC({ year: e.target.value })}
+                        className={selectCls}
                       >
-                        {y === "all" ? "كل السنوات" : y}
-                      </button>
-                    ))}
+                        <option value="all">كل السنوات</option>
+                        {YEARS.map((y) => (
+                          <option key={y} value={y}>{y}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {(exportType === "FAMILLES" || exportType === "CONSO") && (
+                      <div>
+                        <label className={labelCls}>السنة الدراسية للدعم</label>
+                        <select
+                          value={exportStudyYear}
+                          onChange={(e) => setExportStudyYear(e.target.value)}
+                          className={selectCls}
+                        >
+                          <option value="all">كل السنوات الدراسية</option>
+                          {studyYears.map((y) => (
+                            <option key={y} value={y}>{y}</option>
+                          ))}
+                          {exportStudyYear !== "all" &&
+                            !studyYears.includes(exportStudyYear) && (
+                              <option value={exportStudyYear}>{exportStudyYear}</option>
+                            )}
+                        </select>
+                      </div>
+                    )}
                   </div>
-                  {exportConsoLoading && <p className="mt-3 text-xs text-gray-400">جاري تحميل مبالغ هذه الفترة...</p>}
+
+                  {(exportConsoLoading || soutiensLoading) && (
+                    <p className="mt-3 text-xs text-gray-400">
+                      جاري تحميل مبالغ هذه الفترة...
+                    </p>
+                  )}
                 </Section>
 
                 {/* 4. COLONNES */}
@@ -1502,7 +1949,7 @@ export default function FamillesTable() {
                 <button
                   type="button"
                   onClick={runExport}
-                  disabled={records.length === 0 || chosenDefs.length === 0 || exportConsoLoading}
+                  disabled={records.length === 0 || chosenDefs.length === 0 || exportConsoLoading || ((exportType === "FAMILLES" || exportType === "CONSO") && soutiensLoading)}
                   className={`flex h-12 w-full items-center justify-center gap-2 rounded-2xl font-black text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-40 ${
                     exportFormat === "PDF"
                       ? "bg-gradient-to-l from-rose-600 to-red-500 shadow-rose-200 hover:-translate-y-0.5"
@@ -1524,66 +1971,202 @@ export default function FamillesTable() {
       {/* ===== MODAL DETAIL FAMILLE ===== */}
       {detailFamille &&
         (() => {
-          const c = getConso(detailFamille);
+          const c = getCombinedConso(detailFamille);
+          const supports = c.soutienDetails || [];
+
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-              <div dir="rtl" className="max-h-[90vh] w-[760px] max-w-full overflow-y-auto rounded-2xl bg-white shadow-xl">
+              <div
+                dir="rtl"
+                className="max-h-[92vh] w-[980px] max-w-full overflow-y-auto rounded-3xl bg-white shadow-xl"
+              >
                 <div className="border-b p-5">
-                  <h3 className="text-xl font-bold text-gray-800">عائلة {detailFamille.nomFamille}</h3>
-                  <p className="mt-1 text-xs text-gray-400">السنة: {year === "all" ? "كل السنوات" : year}</p>
-                  <div className="mt-3 grid grid-cols-3 gap-3 text-center">
+                  <h3 className="text-xl font-bold text-gray-800">
+                    عائلة {detailFamille.nomFamille}
+                  </h3>
+
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-400">
+                    <span>
+                      سنة الأنشطة: {year === "all" ? "كل السنوات" : year}
+                    </span>
+                    <span>•</span>
+                    <span>
+                      السنة الدراسية: {studyYear === "all" ? "كل السنوات الدراسية" : studyYear}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 text-center">
+                    <div className="rounded-xl bg-sky-50 p-3">
+                      <p className="text-[11px] text-gray-500">الأنشطة</p>
+                      <p className="font-bold text-sky-700">{fmt(c.totalEvenements)}</p>
+                    </div>
+
+                    <div className="rounded-xl bg-violet-50 p-3">
+                      <p className="text-[11px] text-gray-500">الدعم المستهلك</p>
+                      <p className="font-bold text-violet-700">{fmt(c.scolaireConsomme)}</p>
+                    </div>
+
                     <div className="rounded-xl bg-emerald-50 p-3">
-                      <p className="text-xs text-gray-500">المبلغ المصروف</p>
-                      <p className="font-bold text-emerald-700">{fmt(c.total)}</p>
+                      <p className="text-[11px] text-gray-500">الدعم المؤدى</p>
+                      <p className="font-bold text-emerald-700">{fmt(c.scolairePaye)}</p>
                     </div>
-                    <div className="rounded-xl bg-green-50 p-3">
-                      <p className="text-xs text-gray-500">حضور</p>
-                      <p className="font-bold text-green-700">{c.presentCount}</p>
+
+                    <div className="rounded-xl bg-amber-50 p-3">
+                      <p className="text-[11px] text-gray-500">الدعم غير المؤدى</p>
+                      <p className="font-bold text-amber-700">{fmt(c.scolaireNonPaye)}</p>
                     </div>
-                    <div className="rounded-xl bg-red-50 p-3">
-                      <p className="text-xs text-gray-500">غياب</p>
-                      <p className="font-bold text-red-600">{c.absentCount}</p>
+
+                    <div className="rounded-xl bg-cyan-50 p-3">
+                      <p className="text-[11px] text-gray-500">ما دفعته الجمعية</p>
+                      <p className="font-bold text-cyan-700">{fmt(c.total)}</p>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-100 p-3">
+                      <p className="text-[11px] text-gray-500">إجمالي المستهلك</p>
+                      <p className="font-bold text-slate-800">{fmt(c.totalConsomme)}</p>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-5">
-                  {c.events.length === 0 ? (
-                    <p className="text-center text-gray-500">لا توجد مشاركات في هذه السنة</p>
-                  ) : (
-                    <table className="min-w-full border border-gray-300 text-right text-sm">
-                      <thead className="bg-gray-100 font-semibold">
-                        <tr>
-                          <th className="border p-2">النشاط</th>
-                          <th className="border p-2">التاريخ</th>
-                          <th className="border p-2">المشارك</th>
-                          <th className="border p-2">الحالة</th>
-                          <th className="border p-2">المبلغ</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {c.events.map((ev: any, i: number) => (
-                          <tr key={i} className="border-b">
-                            <td className="border p-2 font-semibold">{ev.title}</td>
-                            <td className="border p-2">{ev.startDate}</td>
-                            <td className="border p-2">{ev.participant}</td>
-                            <td className="border p-2">
-                              {ev.present ? (
-                                <span className="font-bold text-green-700">حاضر</span>
-                              ) : (
-                                <span className="font-bold text-red-600">غائب{ev.motif ? ` (${ev.motif})` : ""}</span>
-                              )}
-                            </td>
-                            <td className="border p-2 font-semibold text-emerald-700">{fmt(ev.montant)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
+                <div className="space-y-6 p-5">
+                  <section>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <h4 className="font-extrabold text-gray-800">تفاصيل الأنشطة</h4>
+                        <p className="text-xs text-gray-400">
+                          الحضور والغياب والمبالغ المرتبطة بالأنشطة
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <span className="rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
+                          ✓ {c.presentCount}
+                        </span>
+                        <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold text-red-600">
+                          ✗ {c.absentCount}
+                        </span>
+                      </div>
+                    </div>
+
+                    {c.events.length === 0 ? (
+                      <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                        لا توجد مشاركات في هذه الفترة
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                        <table className="min-w-full text-right text-sm">
+                          <thead className="bg-gray-50 font-semibold text-gray-500">
+                            <tr>
+                              <th className="border-b p-3">النشاط</th>
+                              <th className="border-b p-3">التاريخ</th>
+                              <th className="border-b p-3">المشارك</th>
+                              <th className="border-b p-3">الحالة</th>
+                              <th className="border-b p-3">المبلغ</th>
+                            </tr>
+                          </thead>
+
+                          <tbody className="divide-y divide-gray-100">
+                            {c.events.map((ev: any, i: number) => (
+                              <tr key={i}>
+                                <td className="p-3 font-semibold">{ev.title}</td>
+                                <td className="p-3">{ev.startDate}</td>
+                                <td className="p-3">{ev.participant}</td>
+                                <td className="p-3">
+                                  {ev.present ? (
+                                    <span className="font-bold text-green-700">حاضر</span>
+                                  ) : (
+                                    <span className="font-bold text-red-600">
+                                      غائب{ev.motif ? ` (${ev.motif})` : ""}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-3 font-semibold text-emerald-700">
+                                  {fmt(ev.montant)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </section>
+
+                  <section>
+                    <div className="mb-3">
+                      <h4 className="font-extrabold text-gray-800">تفاصيل الدعم الدراسي</h4>
+                      <p className="text-xs text-gray-400">
+                        يتم احتساب السجلات المنجزة فقط (effectue = true)
+                      </p>
+                    </div>
+
+                    {soutiensLoading ? (
+                      <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                        جاري تحميل بيانات الدعم الدراسي...
+                      </p>
+                    ) : supports.length === 0 ? (
+                      <p className="rounded-2xl bg-gray-50 py-8 text-center text-sm text-gray-400">
+                        لا توجد مصاريف دعم دراسي منجزة في هذه الفترة
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto rounded-2xl border border-gray-200">
+                        <table className="min-w-full text-right text-sm">
+                          <thead className="bg-gray-50 font-semibold text-gray-500">
+                            <tr>
+                              <th className="border-b p-3">الطفل</th>
+                              <th className="border-b p-3">السنة الدراسية</th>
+                              <th className="border-b p-3">الشهر</th>
+                              <th className="border-b p-3">المركز</th>
+                              <th className="border-b p-3">المتدخل</th>
+                              <th className="border-b p-3">المبلغ</th>
+                              <th className="border-b p-3">المؤدى</th>
+                              <th className="border-b p-3">غير المؤدى</th>
+                            </tr>
+                          </thead>
+
+                          <tbody className="divide-y divide-gray-100">
+                            {supports.map((s: SoutienEtude) => {
+                              const consomme = Math.max(Number(s.montant || 0), 0);
+                              const paye = Math.min(
+                                Math.max(Number(s.montantPaye || 0), 0),
+                                consomme
+                              );
+                              const nonPaye = Math.max(consomme - paye, 0);
+
+                              return (
+                                <tr key={`${s.enfantId}-${s.id}`}>
+                                  <td className="p-3 font-bold text-gray-800">
+                                    {s.enfantNom}
+                                  </td>
+                                  <td className="p-3">{s.anneeScolaire || "-"}</td>
+                                  <td className="p-3">{s.mois || "-"}</td>
+                                  <td className="p-3">{s.centre || "-"}</td>
+                                  <td className="p-3">{s.intervenant || "-"}</td>
+                                  <td className="p-3 font-bold text-violet-700">
+                                    {fmt(consomme)}
+                                  </td>
+                                  <td className="p-3 font-bold text-emerald-700">
+                                    {fmt(paye)}
+                                  </td>
+                                  <td className="p-3 font-bold text-amber-700">
+                                    {fmt(nonPaye)}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </section>
                 </div>
 
                 <div className="flex justify-end border-t p-5">
-                  <button className="rounded-lg bg-gray-200 px-4 py-2" onClick={() => setDetailFamille(null)}>إغلاق</button>
+                  <button
+                    className="rounded-xl bg-gray-200 px-5 py-2.5 font-semibold text-gray-700 hover:bg-gray-300"
+                    onClick={() => setDetailFamille(null)}
+                  >
+                    إغلاق
+                  </button>
                 </div>
               </div>
             </div>

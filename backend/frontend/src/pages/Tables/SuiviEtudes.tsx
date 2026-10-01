@@ -282,20 +282,17 @@ const normalizeSchoolYear = (value?: string) => {
 // ============================================================
 // NOTE
 // ============================================================
-
 const getNoteValue = (row: EtudeRow): number | null => {
-  const raw =
-    row.noteGenerale !== null &&
-    row.noteGenerale !== undefined &&
-    row.noteGenerale !== ""
-      ? row.noteGenerale
-      : row.noteSemestre1;
+  const raw = row.noteGenerale;
 
-  if (raw === null || raw === undefined || raw === "") return null;
+  if (raw === null || raw === undefined || raw === "") {
+    return null;
+  }
+
   const value = Number(raw);
+
   return Number.isFinite(value) ? value : null;
 };
-
 // ============================================================
 // PDF (impression navigateur)
 // ============================================================
