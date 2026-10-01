@@ -1,83 +1,376 @@
 package com.example.backend.Controller;
 
 import com.example.backend.Repository.EtudeRepository;
+import com.example.backend.Repository.SpecialiteRepository;
+import com.example.backend.dto.EtudeRequest;
 import com.example.backend.model.*;
+import com.example.backend.service.EnfantService;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import org.springframework.http.MediaType;
 @RestController
 @RequestMapping("/api/etudes")
-@CrossOrigin(origins = "http://localhost:3000", allowCredentials = "true")
+@CrossOrigin(
+        origins = {
+                "http://localhost:5173",
+                "http://localhost:3000"
+        },
+        allowCredentials = "true"
+)
 public class EtudeController {
 
-    @Autowired
-    private EtudeRepository etudeRepository;
+    private final EtudeRepository etudeRepository;
 
-    /* ---------------- GET ---------------- */
+    private final EnfantService enfantService;
+
+    private final SpecialiteRepository specialiteRepository;
+
+    public EtudeController(
+            EtudeRepository etudeRepository,
+            EnfantService enfantService,
+            SpecialiteRepository specialiteRepository
+    ) {
+        this.etudeRepository = etudeRepository;
+        this.enfantService = enfantService;
+        this.specialiteRepository = specialiteRepository;
+    }
+
+    // =========================================================
+    // GET : DERNIERE ETUDE DE CHAQUE ENFANT
+    // =========================================================
+
     @GetMapping("/latest")
     public List<Etude> getLatestEtudes() {
+
         return etudeRepository.findLatestEtudes();
     }
 
+    // =========================================================
+    // GET : HISTORIQUE D'UN ENFANT
+    // =========================================================
+
     @GetMapping("/all/{enfantId}")
-    public List<Etude> getAllEtudes(@PathVariable Long enfantId) {
-        return etudeRepository.findAllEtudesByEnfantId(enfantId);
+    public List<Etude> getAllEtudes(
+            @PathVariable Long enfantId
+    ) {
+
+        return etudeRepository
+                .findAllByEnfantIdOrderByAnneeScolaireDescIdDesc(
+                        enfantId
+                );
     }
 
-    /* ---------------- POST ---------------- */
+    // =========================================================
+    // GET : UNE ETUDE
+    // =========================================================
+
+    @GetMapping("/{id}")
+    public ResponseEntity<Etude> getEtude(
+            @PathVariable Long id
+    ) {
+
+        return etudeRepository
+                .findById(id)
+                .map(ResponseEntity::ok)
+                .orElse(
+                        ResponseEntity
+                                .notFound()
+                                .build()
+                );
+    }
+
+    // =========================================================
+    // POST
+    // =========================================================
+
     @PostMapping
-    public Etude createEtude(@RequestBody Etude etude) {
-        if (etude.getEnfant() != null && etude.getEnfant().getId() != null) {
-            Enfant enfant = new Enfant();
-            enfant.setId(etude.getEnfant().getId());
-            etude.setEnfant(enfant);
+    public Etude createEtude(
+            @RequestBody EtudeRequest request
+    ) {
+
+        Etude etude = new Etude();
+
+        etude.setAnneeScolaire(
+                request.getAnneeScolaire()
+        );
+
+        etude.setNoteSemestre1(
+                request.getNoteSemestre1()
+        );
+
+        etude.setNoteSemestre2(
+                request.getNoteSemestre2()
+        );
+
+        etude.setNoteGenerale(
+                request.getNoteGenerale()
+        );
+
+        etude.setRedoublon(
+                request.getRedoublon()
+        );
+
+        etude.setDetails(
+                request.getDetails()
+        );
+
+        // =====================================================
+        // ENFANT
+        // =====================================================
+
+        if (request.getEnfantId() == null) {
+            throw new RuntimeException(
+                    "L'enfant est obligatoire"
+            );
         }
 
-        if (etude.getEcole() != null && etude.getEcole().getId() != null) {
-            Ecole ecole = new Ecole();
-            ecole.setId(etude.getEcole().getId());
+        Enfant enfant =
+                enfantService.getEnfantByIdOrThrow(
+                        request.getEnfantId()
+                );
+
+        etude.setEnfant(enfant);
+
+        // =====================================================
+        // NIVEAU
+        // =====================================================
+
+        if (request.getNiveauScolaireId() != null) {
+
+            NiveauScolaire niveau =
+                    enfantService.getNiveauById(
+                            request.getNiveauScolaireId()
+                    );
+
+            etude.setNiveauScolaire(niveau);
+        }
+
+        // =====================================================
+        // ECOLE
+        // =====================================================
+
+        if (request.getEcoleId() != null) {
+
+            Ecole ecole =
+                    enfantService.getEcoleById(
+                            request.getEcoleId()
+                    );
+
             etude.setEcole(ecole);
         }
 
-        if (etude.getNiveauScolaire() != null && etude.getNiveauScolaire().getId() != null) {
-            NiveauScolaire niveau = new NiveauScolaire();
-            niveau.setId(etude.getNiveauScolaire().getId());
-            etude.setNiveauScolaire(niveau);
+        // =====================================================
+        // SPECIALITE
+        // =====================================================
+
+        if (request.getSpecialiteId() != null) {
+
+            Specialite specialite =
+                    specialiteRepository
+                            .findById(
+                                    request.getSpecialiteId()
+                            )
+                            .orElseThrow(
+                                    () -> new RuntimeException(
+                                            "Spécialité introuvable"
+                                    )
+                            );
+
+            etude.setSpecialite(
+                    specialite
+            );
         }
-        if (etude.getSpecialite() != null && etude.getSpecialite().getId() != null) {
-            Specialite specialite = new Specialite();
-            specialite.setId(etude.getSpecialite().getId());
-            etude.setSpecialite(specialite);
-        }
+
+        calculerNoteGeneraleSiVide(etude);
+
         return etudeRepository.save(etude);
     }
 
+    // =========================================================
+    // PUT
+    // =========================================================
 
-
-    /* ---------------- PUT ---------------- */
     @PutMapping("/{id}")
-    public Etude updateEtude(@PathVariable Long id, @RequestBody Etude etudeDetails) {
-        Etude etude = etudeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Etude non trouvée avec id : " + id));
+    public Etude updateEtude(
+            @PathVariable Long id,
+            @RequestBody EtudeRequest request
+    ) {
 
-        // Mettre à jour les champs
-        etude.setAnneeScolaire(etudeDetails.getAnneeScolaire());
-        etude.setNiveauScolaire(etudeDetails.getNiveauScolaire());
-        etude.setEcole(etudeDetails.getEcole());
-        etude.setNoteSemestre1(etudeDetails.getNoteSemestre1());
-        etude.setNoteSemestre2(etudeDetails.getNoteSemestre2());
-        etude.setRedoublon(etudeDetails.getRedoublon());
-        etude.setSpecialite(etudeDetails.getSpecialite());
+        Etude etude =
+                etudeRepository
+                        .findById(id)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Etude introuvable avec id : " + id
+                                )
+                        );
+
+        // =====================================================
+        // DONNEES
+        // =====================================================
+
+        etude.setAnneeScolaire(
+                request.getAnneeScolaire()
+        );
+
+        etude.setNoteSemestre1(
+                request.getNoteSemestre1()
+        );
+
+        etude.setNoteSemestre2(
+                request.getNoteSemestre2()
+        );
+
+        etude.setNoteGenerale(
+                request.getNoteGenerale()
+        );
+
+        etude.setRedoublon(
+                request.getRedoublon()
+        );
+
+        etude.setDetails(
+                request.getDetails()
+        );
+
+        // =====================================================
+        // ENFANT
+        // =====================================================
+
+        if (request.getEnfantId() != null) {
+
+            Enfant enfant =
+                    enfantService.getEnfantByIdOrThrow(
+                            request.getEnfantId()
+                    );
+
+            etude.setEnfant(enfant);
+        }
+
+        // =====================================================
+        // NIVEAU
+        // =====================================================
+
+        if (request.getNiveauScolaireId() != null) {
+
+            NiveauScolaire niveau =
+                    enfantService.getNiveauById(
+                            request.getNiveauScolaireId()
+                    );
+
+            etude.setNiveauScolaire(niveau);
+
+        } else {
+
+            etude.setNiveauScolaire(null);
+        }
+
+        // =====================================================
+        // ECOLE
+        // =====================================================
+
+        if (request.getEcoleId() != null) {
+
+            Ecole ecole =
+                    enfantService.getEcoleById(
+                            request.getEcoleId()
+                    );
+
+            etude.setEcole(ecole);
+
+        } else {
+
+            etude.setEcole(null);
+        }
+
+        // =====================================================
+        // SPECIALITE
+        // =====================================================
+
+        if (request.getSpecialiteId() != null) {
+
+            Specialite specialite =
+                    specialiteRepository
+                            .findById(
+                                    request.getSpecialiteId()
+                            )
+                            .orElseThrow(
+                                    () -> new RuntimeException(
+                                            "Spécialité introuvable"
+                                    )
+                            );
+
+            etude.setSpecialite(specialite);
+
+        } else {
+
+            etude.setSpecialite(null);
+        }
+
+        calculerNoteGeneraleSiVide(etude);
+
         return etudeRepository.save(etude);
     }
+    @GetMapping("/annees")
+    public List<String> getAnneesScolaires() {
+        return etudeRepository.findDistinctAnneesScolaires();
+    }
+    // =========================================================
+    // DELETE
+    // =========================================================
 
-    /* ---------------- DELETE ---------------- */
     @DeleteMapping("/{id}")
-    public void deleteEtude(@PathVariable Long id) {
-        Etude etude = etudeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Etude non trouvée avec id : " + id));
-        etudeRepository.delete(etude);
+    public ResponseEntity<Void> deleteEtude(
+            @PathVariable Long id
+    ) {
+
+        if (
+                !etudeRepository
+                        .existsById(id)
+        ) {
+
+            return ResponseEntity
+                    .notFound()
+                    .build();
+        }
+
+        etudeRepository.deleteById(
+                id
+        );
+
+        return ResponseEntity
+                .noContent()
+                .build();
+    }
+
+    // =========================================================
+    // CALCUL NOTE GENERALE
+    // =========================================================
+
+    private void calculerNoteGeneraleSiVide(
+            Etude etude
+    ) {
+
+        if (
+                etude.getNoteGenerale() == null
+                        && etude.getNoteSemestre1() != null
+                        && etude.getNoteSemestre2() != null
+        ) {
+
+            double moyenne =
+                    (
+                            etude.getNoteSemestre1()
+                                    +
+                                    etude.getNoteSemestre2()
+                    )
+                            / 2.0;
+
+            etude.setNoteGenerale(
+                    moyenne
+            );
+        }
     }
 }

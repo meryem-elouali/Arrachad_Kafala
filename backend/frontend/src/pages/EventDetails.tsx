@@ -7,7 +7,7 @@ import Button from "../components/ui/button/Button";
 import * as XLSX from "xlsx";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-
+import ExcelJS from "exceljs";
 import TextAlign from "@tiptap/extension-text-align";
 
 import { Color } from "@tiptap/extension-color";
@@ -71,6 +71,8 @@ interface EventDetail {
   montantEgal?: number;
 
   montantsParDegre?: Record<number, number>;
+    chargeSupplementaire?: number;
+    chargeSupplementaireLabel?: string;
 }
 
 const EventDetails: React.FC = () => {
@@ -132,7 +134,8 @@ const [modeRepartition, setModeRepartition] = useState<
 const [montantGlobal, setMontantGlobal] = useState<number>(0);
 
 const [montantEgal, setMontantEgal] = useState<number>(0);
-
+const [chargeSupp, setChargeSupp] = useState<number>(0);
+const [chargeSuppLabel, setChargeSuppLabel] = useState<string>("");
 const [montantsParDegre, setMontantsParDegre] =
   useState<Record<number, number>>({});
 const firstLoad = useRef(true);
@@ -285,6 +288,8 @@ setMontantEgal(
 setMontantsParDegre(
   data.montantsParDegre || {}
 );
+setChargeSupp(Number(data.chargeSupplementaire || 0));
+setChargeSuppLabel(data.chargeSupplementaireLabel || "");
         // Populate participantsList with unique keys (using entity IDs)
         const eventList: Participant[] = [];
         if (data.meresParticipants) eventList.push(...data.meresParticipants.map(p => ({ ...p, uniqueKey: `MERE-${p.id}`, type: "MERE" })));
@@ -538,6 +543,8 @@ const saveEvent = async () => {
             : {},
 
         montantTotal: montantTotalEvent,
+        chargeSupplementaire: chargeSupp,
+        chargeSupplementaireLabel: chargeSuppLabel,
       description: description,
 
 
@@ -680,12 +687,12 @@ const totalFamilles =
         )
     : 0;
 
-const montantTotalEvent =
+const montantBase =
   typeMontant === "GLOBAL"
     ? Number(montantGlobal || 0)
-    : totalMeres +
-      totalEnfants +
-      totalFamilles;
+    : totalMeres + totalEnfants + totalFamilles;
+
+const montantTotalEvent = montantBase + Number(chargeSupp || 0);
 const deleteFile = async (indexToDelete: number) => {
   if (!event) return;
 
@@ -733,7 +740,12 @@ const importFromExcel = (file: File) => {
     const sheetName = workbook.SheetNames[0];
     const worksheet = workbook.Sheets[sheetName];
 
-    const rows: any[] = XLSX.utils.sheet_to_json(worksheet);
+const aoa = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1 });
+const headerIdx = Math.max(
+  0,
+  aoa.findIndex((r) => Array.isArray(r) && r.includes("REFERENCE"))
+);
+const rows: any[] = XLSX.utils.sheet_to_json(worksheet, { range: headerIdx });
 
     setParticipantsList((prev) =>
       prev.map((p) => {
@@ -778,7 +790,29 @@ const downloadBlob = (blob: Blob, filename: string) => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
+const getDegreValue = (p: Participant): number | null => {
+  // 1. envoyé par le backend
+  if ((p as any).degreFamille != null) return Number((p as any).degreFamille);
 
+  // 2. sinon, retrouvé via les listes chargées
+  let f: any;
+  if (p.type === "FAMILLE") {
+    f = allFamilles.find((x) => x.id === p.id);
+  } else if (p.type === "MERE") {
+    f = allFamilles.find((x: any) => (x.mere?.id ?? x.mereId) === p.id);
+  } else if (p.type === "ENFANT") {
+    const e: any = allEnfants.find((x) => x.id === p.id);
+    const mereId = e?.mere?.id ?? e?.mereId;
+    f =
+      e?.famille ||
+      (mereId != null
+        ? allFamilles.find((x: any) => (x.mere?.id ?? x.mereId) === mereId)
+        : undefined);
+  }
+
+  const d = f?.degreFamille ?? f?.degre ?? f?.degree;
+  return d != null ? Number(d) : null;
+};
 const buildRows = (): ParticipantRow[] =>
   participantsList.map((p) => {
     const fullFamille: any =
@@ -800,8 +834,7 @@ const buildRows = (): ParticipantRow[] =>
         p.type === "FAMILLE"
           ? pereNom
           : `${p.nom || ""} ${p.prenom || ""}`.trim(),
-      degre:
-        p.type === "FAMILLE" && degreValue != null ? String(degreValue) : "-",
+     degre: getDegreValue(p) != null ? String(getDegreValue(p)) : "-",
       montant:
         typeMontant === "GLOBAL"
           ? "-"
@@ -856,24 +889,299 @@ const exportEventPdf = async () => {
     setIsExportingEvent(false);
   }
 };
+const exportToExcel = async () => {
+  if (!participantsList.length || !event) return;
 
-  const exportToExcel = () => {
-    if (!participantsList.length) return;
-  const wsData = participantsList.map((p: any) => ({
-    REFERENCE: p.uniqueKey,   // ex : MERE-15, ENFANT-8, FAMILLE-3
-    TYPE: p.type,
-    ID: p.id,
+  // ===== Quelles cibles sont présentes dans l'événement ? =====
+  const cibles = (event.cibles || []).map((c) => String(c).trim().toUpperCase());
+  const hasFamille = cibles.includes("FAMILLE");
+  const hasEnfant = cibles.includes("ENFANT");
+  const hasMere = cibles.includes("MERE");
+  const showMontant = typeMontant !== "GLOBAL";
 
-    الاسم: p.nom,
-    اللقب: p.prenom,
-    الحضور: p.present ? "نعم" : "لا",
-    "سبب الغياب": p.motif || "",
-  }));
-    const ws = XLSX.utils.json_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "المشاركين");
-    XLSX.writeFile(wb, `${event?.title || "participants"}.xlsx`);
+  // Famille seule => une seule colonne "العائلة" (+ degré)
+  const onlyFamille = hasFamille && !hasEnfant && !hasMere;
+
+  // ===== Définition dynamique des colonnes =====
+  type Col = {
+    key: string;
+    header: string;
+    width: number;
+    hidden?: boolean;
+    align?: "center" | "right";
+    get: (p: Participant, index: number) => string | number | null;
   };
+
+   // Retrouve la famille liée à une mère / un enfant / une famille
+   const getFamille = (p: Participant): any => {
+     const full: any =
+       p.type === "MERE"
+         ? allMeres.find((m) => m.id === p.id) || p
+         : p.type === "ENFANT"
+         ? allEnfants.find((e) => e.id === p.id) || p
+         : allFamilles.find((f) => f.id === p.id);
+
+     if (p.type === "FAMILLE") return full;
+
+     // Famille directement dans l'objet
+     if (full?.famille) return full.famille;
+
+     // Par identifiant de famille
+     const familleId = full?.familleId ?? full?.famille_id ?? full?.idFamille;
+     if (familleId != null) {
+       return allFamilles.find((f) => f.id === familleId);
+     }
+
+     // Famille dont la mère est cette mère
+     if (p.type === "MERE") {
+       return allFamilles.find((f: any) => (f.mere?.id ?? f.mereId) === p.id);
+     }
+
+     return undefined;
+   };
+
+   const getPereNom = (p: Participant): string => {
+     const full: any =
+       p.type === "MERE"
+         ? allMeres.find((m) => m.id === p.id) || p
+         : p.type === "ENFANT"
+         ? allEnfants.find((e) => e.id === p.id) || p
+         : p;
+
+     // 1. Père directement sur l'objet
+     if (p.pere?.nom) return p.pere.nom;
+     if (full?.pere?.nom) return full.pere.nom;
+
+     // 2. Père via la famille
+     const f = getFamille(p);
+     if (f?.pere?.nom) return f.pere.nom;
+
+     // 3. Nom de famille du premier enfant de la mère
+     const enfants: any[] =
+       full?.enfants ||
+       allEnfants.filter(
+         (e: any) => (e.mere?.id ?? e.mereId) === p.id
+       );
+     if (enfants?.length) {
+       return enfants[0]?.nom || enfants[0]?.pere?.nom || "";
+     }
+
+     return "";
+   };
+const getDegre = (p: Participant) => getDegreValue(p);
+
+  const cols: Col[] = [];
+
+  cols.push({ key: "n", header: "#", width: 6, get: (_p, i) => i + 1 });
+  cols.push({ key: "ref", header: "REFERENCE", width: 14, hidden: true, get: (p) => p.uniqueKey || "" });
+
+  // Colonne "النوع" seulement si plusieurs types
+  if (cibles.length > 1) {
+    cols.push({ key: "type", header: "النوع", width: 12, get: (p) => getParticipantTypeLabel(p.type) });
+  }
+
+  if (onlyFamille) {
+    // --- FAMILLE uniquement : une seule colonne ---
+    cols.push({
+      key: "famille",
+      header: "العائلة",
+      width: 30,
+      get: (p) => `عائلة ${getPereNom(p)}`.trim(),
+    });
+  } else {
+    // --- ENFANT / MÈRE (ou mix) ---
+    cols.push({
+      key: "nom",
+      header: "الاسم",
+      width: 24,
+      get: (p) => (p.type === "FAMILLE" ? `عائلة ${getPereNom(p)}`.trim() : p.nom || ""),
+    });
+    cols.push({
+      key: "prenom",
+      header: "اللقب",
+      width: 20,
+      get: (p) => (p.type === "FAMILLE" ? "-" : p.prenom || ""),
+    });
+
+    // Nom de famille des enfants (= nom du père) : seulement si cible MÈRE
+    if (hasMere) {
+      cols.push({
+        key: "pere",
+        header: "اسم عائلة الأطفال",
+        width: 24,
+        get: (p) => (p.type === "MERE" ? getPereNom(p) || "-" : "-"),
+      });
+    }
+  }
+
+  // Degré : seulement si cible FAMILLE
+  cols.push({
+    key: "degre",
+    header: "الدرجة",
+    width: 10,
+    get: (p) => getDegre(p) ?? "-",
+  });
+
+  if (showMontant) {
+    cols.push({
+      key: "montant",
+      header: "المبلغ (DH)",
+      width: 16,
+      get: (p) => getMontantParticipant(p),
+    });
+  }
+
+  cols.push({ key: "present", header: "الحضور", width: 12, get: (p) => ((p.present ?? true) ? "نعم" : "لا") });
+  cols.push({ key: "motif", header: "سبب الغياب", width: 30, align: "right", get: (p) => p.motif || "" });
+
+  const COLS = cols.length;
+  const colLetter = (n: number) => {
+    let s = "";
+    while (n > 0) {
+      const m = (n - 1) % 26;
+      s = String.fromCharCode(65 + m) + s;
+      n = Math.floor((n - 1) / 26);
+    }
+    return s;
+  };
+  const lastCol = colLetter(COLS);
+  const idx = (key: string) => cols.findIndex((c) => c.key === key) + 1; // index 1-based
+
+  // ===== Workbook =====
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet("لائحة المشاركة", {
+    views: [{ rightToLeft: true, state: "frozen", ySplit: 4 }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0 },
+  });
+
+  const thin = { style: "thin" as const, color: { argb: "FFD1D5DB" } };
+  const border = { top: thin, left: thin, bottom: thin, right: thin };
+
+  ws.columns = cols.map((c) => ({ key: c.key, width: c.width, hidden: c.hidden }));
+
+  // ===== Ligne 1 : titre =====
+  ws.mergeCells(`A1:${lastCol}1`);
+  const title = ws.getCell("A1");
+  title.value = `لائحة المشاركة - ${event.title}`;
+  title.font = { name: "Arial", size: 16, bold: true, color: { argb: "FFFFFFFF" } };
+  title.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A8A" } };
+  title.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(1).height = 34;
+
+  // ===== Ligne 2 : infos =====
+  ws.mergeCells(`A2:${lastCol}2`);
+  const info = ws.getCell("A2");
+  info.value =
+    `التاريخ: من ${event.startDate} إلى ${event.endDate}` +
+    `   |   المكان: ${event.place || "غير محدد"}`;
+  info.font = { name: "Arial", size: 11, bold: true, color: { argb: "FF374151" } };
+  info.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFF6FF" } };
+  info.alignment = { horizontal: "center", vertical: "middle" };
+  ws.getRow(2).height = 24;
+
+  ws.getRow(3).height = 8;
+
+  // ===== Ligne 4 : en-têtes =====
+  const headerRow = ws.getRow(4);
+  cols.forEach((c, i) => (headerRow.getCell(i + 1).value = c.header));
+  headerRow.height = 26;
+  headerRow.eachCell((cell) => {
+    cell.font = { name: "Arial", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2563EB" } };
+    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+    cell.border = border;
+  });
+
+  // ===== Données =====
+  const presentCol = idx("present");
+  const montantCol = idx("montant"); // 0 si absent
+  const nameCol = onlyFamille ? idx("famille") : idx("nom");
+
+  participantsList.forEach((p, index) => {
+    const values = cols.map((c) => c.get(p, index));
+    const row = ws.addRow(values);
+    const isPresent = p.present ?? true;
+
+    row.height = 22;
+    const zebra = index % 2 === 0 ? "FFFFFFFF" : "FFF9FAFB";
+
+    row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      if (colNumber > COLS) return;
+      cell.font = { name: "Arial", size: 11 };
+      cell.border = border;
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: zebra } };
+      cell.alignment = {
+        horizontal: cols[colNumber - 1].align || "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+    });
+
+    // Nom de famille en gras
+    if (p.type === "FAMILLE" && nameCol > 0) {
+      row.getCell(nameCol).font = { name: "Arial", size: 11, bold: true };
+    }
+
+    // Montant formaté
+    if (montantCol > 0) {
+      row.getCell(montantCol).numFmt = '#,##0.00 "DH"';
+      row.getCell(montantCol).font = {
+        name: "Arial", size: 11, bold: true, color: { argb: "FF15803D" },
+      };
+    }
+
+    // Présence en couleur + liste déroulante
+    row.getCell(presentCol).font = {
+      name: "Arial", size: 11, bold: true,
+      color: { argb: isPresent ? "FF15803D" : "FFDC2626" },
+    };
+    row.getCell(presentCol).dataValidation = {
+      type: "list",
+      allowBlank: false,
+      formulae: ['"نعم,لا"'],
+    };
+  });
+
+  // ===== Ligne total (seulement si montant affiché) =====
+  // ===== Récapitulatif =====
+  const summary: [string, number][] = [
+    [showMontant ? "مجموع المبالغ الموزعة" : "المبلغ الإجمالي للنشاط", montantBase],
+  ];
+  if (chargeSupp > 0) {
+    summary.push([
+      chargeSuppLabel ? `مصاريف إضافية - ${chargeSuppLabel}` : "مصاريف إضافية",
+      Number(chargeSupp),
+    ]);
+  }
+  summary.push(["المجموع الكلي", montantTotalEvent]);
+
+  summary.forEach(([label, value], i) => {
+    const isTotal = i === summary.length - 1;
+    const r = ws.addRow([]);
+    ws.mergeCells(`A${r.number}:${colLetter(COLS - 1)}${r.number}`);
+    r.getCell(1).value = label;
+    r.getCell(COLS).value = value;
+    r.getCell(COLS).numFmt = '#,##0.00 "DH"';
+    r.height = isTotal ? 26 : 22;
+    for (let c = 1; c <= COLS; c++) {
+      const cell = r.getCell(c);
+      cell.font = { name: "Arial", size: isTotal ? 12 : 11, bold: true,
+        color: { argb: isTotal ? "FF065F46" : "FF92400E" } };
+      cell.fill = { type: "pattern", pattern: "solid",
+        fgColor: { argb: isTotal ? "FFD1FAE5" : "FFFEF3C7" } };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
+      cell.border = border;
+    }
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  downloadBlob(
+    new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }),
+    `لائحة_المشاركة_${event.title || "النشاط"}.xlsx`
+  );
+};
 const filteredParticipants = participants.filter((p: any) => {
   const search = searchParticipant.toLowerCase().trim();
 
@@ -913,6 +1221,8 @@ useEffect(() => {
   montantEgal,
 
   montantsParDegre,
+    chargeSupp,
+    chargeSuppLabel,
 ]);
   if (!event) return <p>جاري التحميل...</p>;
 
@@ -2474,15 +2784,48 @@ useEffect(() => {
                           </>
                         )}
 
-                        <div className="mt-5 rounded-xl bg-white p-4">
-                          <span className="font-bold text-gray-800">
-                            المجموع الكلي :
-                          </span>
+                 <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                   <h5 className="mb-3 font-bold text-gray-800">مصاريف إضافية (اختياري)</h5>
+                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                     <div>
+                       <label className="mb-1 block text-sm font-semibold text-gray-700">المبلغ الإضافي</label>
+                       <input
+                         type="number" min="0"
+                         value={chargeSupp || ""}
+                         onChange={(e) => setChargeSupp(Number(e.target.value))}
+                         className="w-full rounded-lg border px-3 py-2"
+                       />
+                     </div>
+                     <div>
+                       <label className="mb-1 block text-sm font-semibold text-gray-700">
+                         البيان (مثال: النقل، كراء القاعة)
+                       </label>
+                       <input
+                         type="text"
+                         value={chargeSuppLabel}
+                         onChange={(e) => setChargeSuppLabel(e.target.value)}
+                         className="w-full rounded-lg border px-3 py-2"
+                       />
+                     </div>
+                   </div>
+                 </div>
 
-                          <span className="mr-2 text-lg font-bold text-green-600">
-                            {montantTotalEvent.toFixed(2)} DH
-                          </span>
-                        </div>
+                 <div className="mt-5 space-y-2 rounded-xl bg-white p-4">
+                   <div className="flex justify-between text-sm text-gray-600">
+                     <span>{typeMontant === "GLOBAL" ? "المبلغ الإجمالي" : "مجموع المبالغ الموزعة"}</span>
+                     <span>{montantBase.toFixed(2)} DH</span>
+                   </div>
+                   {chargeSupp > 0 && (
+                     <div className="flex justify-between text-sm text-amber-700">
+                       <span>مصاريف إضافية{chargeSuppLabel ? ` (${chargeSuppLabel})` : ""}</span>
+                       <span>+ {Number(chargeSupp).toFixed(2)} DH</span>
+                     </div>
+                   )}
+                   <div className="flex justify-between border-t pt-2">
+                     <span className="font-bold text-gray-800">المجموع الكلي :</span>
+                     <span className="text-lg font-bold text-green-600">{montantTotalEvent.toFixed(2)} DH</span>
+                   </div>
+                 </div>
                       </div>
                        {participantsList.length > 0 ? (
                          <table className="min-w-full text-sm text-gray-700 border border-gray-300 mt-4 text-right">

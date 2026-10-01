@@ -1,64 +1,144 @@
 package com.example.backend.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;  // <-- AJOUTER CET IMPORT
-import com.fasterxml.jackson.annotation.JsonManagedReference;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
+
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "etudes")
-@JsonIgnoreProperties(ignoreUnknown = true)  // <-- AJOUTER CETTE ANNOTATION À LA CLASSE
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Etude {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // =========================================================
+    // ENFANT
+    // =========================================================
+
     @ManyToOne
     @JoinColumn(name = "enfant_id")
-    @JsonIgnoreProperties({"famille","eventParticipants","photoEnfant"})
+    @JsonIgnoreProperties({
+            "famille",
+            "eventParticipants",
+            "photoEnfant",
+            "etudes"
+    })
     private Enfant enfant;
 
+    // =========================================================
+    // ECOLE
+    // =========================================================
 
     @ManyToOne
     @JoinColumn(name = "ecole_id")
-    // @JsonManagedReference supprimé car non nécessaire (pas de relation bidirectionnelle évidente)
+    @JsonIgnoreProperties({
+            "hibernateLazyInitializer",
+            "handler"
+    })
     private Ecole ecole;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    // =========================================================
+    // NIVEAU
+    // =========================================================
+
+    @ManyToOne
     @JoinColumn(name = "niveauscolaire_id")
-    // @JsonManagedReference supprimé car non nécessaire (pas de relation bidirectionnelle évidente)
+    @JsonIgnoreProperties({
+            "hibernateLazyInitializer",
+            "handler"
+    })
     private NiveauScolaire niveauScolaire;
-    @ManyToOne(fetch = FetchType.EAGER)
+
+    // =========================================================
+    // SPECIALITE
+    // =========================================================
+
+    @ManyToOne
     @JoinColumn(name = "specialite_id")
+    @JsonIgnoreProperties({
+            "hibernateLazyInitializer",
+            "handler"
+    })
     private Specialite specialite;
+
+    // =========================================================
+    // ANNEE
+    // =========================================================
+
+    @Column(length = 20)
     private String anneeScolaire;
+
+    // =========================================================
+    // NOTES
+    // =========================================================
+
     private Double noteSemestre1;
+
     private Double noteSemestre2;
+
+    private Double noteGenerale;
+
+    // =========================================================
+    // RESULTAT
+    // =========================================================
+
     private Boolean redoublon;
-    @Transient  // <-- ne sera pas stocké en base
-    private Boolean anneeCourante;
-    public Boolean getAnneeCourante() {
-        // Si redoublon == null -> null
+
+    // =========================================================
+    // DETAILS / OBSERVATIONS
+    // =========================================================
+
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String details;
+
+    // =========================================================
+    // CHAMPS CALCULES
+    // =========================================================
+
+    @Transient
+    public Boolean getPasseAnnee() {
+
         if (redoublon == null) {
             return null;
         }
-        // Si redoublon == false (non redoublé) -> année courante = true
-        // Si redoublon == true (redoublon) -> année courante = false
+
         return !redoublon;
     }
-    public Specialite getSpecialite() {
-        return specialite;
+
+    @Transient
+    public Boolean getAnneeCourante() {
+
+        if (anneeScolaire == null || anneeScolaire.isBlank()) {
+            return false;
+        }
+
+        LocalDate now = LocalDate.now();
+
+        int anneeDepart =
+                now.getMonthValue() >= 9
+                        ? now.getYear()
+                        : now.getYear() - 1;
+
+        String actuelle =
+                anneeDepart + "/" + (anneeDepart + 1);
+
+        String valeur =
+                anneeScolaire
+                        .trim()
+                        .replace("-", "/")
+                        .replace(" ", "");
+
+        return actuelle.equals(valeur);
     }
 
-    public void setSpecialite(Specialite specialite) {
-        this.specialite = specialite;
-    }
-    public Boolean getPasseAnnee() {
-        return redoublon != null ? !redoublon : null;
-    }
+    // =========================================================
+    // GETTERS / SETTERS
+    // =========================================================
 
-    // getters & setters
     public Long getId() {
         return id;
     }
@@ -91,6 +171,14 @@ public class Etude {
         this.niveauScolaire = niveauScolaire;
     }
 
+    public Specialite getSpecialite() {
+        return specialite;
+    }
+
+    public void setSpecialite(Specialite specialite) {
+        this.specialite = specialite;
+    }
+
     public String getAnneeScolaire() {
         return anneeScolaire;
     }
@@ -115,11 +203,27 @@ public class Etude {
         this.noteSemestre2 = noteSemestre2;
     }
 
+    public Double getNoteGenerale() {
+        return noteGenerale;
+    }
+
+    public void setNoteGenerale(Double noteGenerale) {
+        this.noteGenerale = noteGenerale;
+    }
+
     public Boolean getRedoublon() {
         return redoublon;
     }
 
     public void setRedoublon(Boolean redoublon) {
         this.redoublon = redoublon;
+    }
+
+    public String getDetails() {
+        return details;
+    }
+
+    public void setDetails(String details) {
+        this.details = details;
     }
 }

@@ -1,1339 +1,1020 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
-import { FaCheck, FaTimes } from "react-icons/fa";
-import Label from "../../components/form/Label";
-import Input from "../../components/form/input/InputField";
-import ComponentCard from "../../components/common/ComponentCard";
-import DropzoneComponent from "../../components/form/form-elements/DropZone";
-import { useRef } from "react";
 
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+const API = "http://localhost:8080/api";
 
+/* ============================== TYPES ============================== */
 interface Option {
-  value: string | number;
+  value: number;
   label: string;
 }
-interface Enfant {
+
+interface PersonData {
+  nom: string;
+  prenom: string;
+  cin: string;
+  phone: string;
+  villeNaissance: string;
+  dateNaissance: string;
+  dateDeces: string;
+  typeMaladie: string;
+  typeTravail: string;
+  estDecedee: boolean;
+  estMalade: boolean;
+  estTravaille: boolean;
+  photo: File | null;
+}
+
+interface EnfantData {
   nom: string;
   prenom: string;
   dateNaissance: string;
-  niveauscolaire: { id: string | number } | null;
-  ecole: { id: string | number } | null;
-  photoEnfant: File | null;
-  typeMaladie: string;
   estMalade: boolean;
- specialite: { id: string | number } | null;
+  typeMaladie: string;
+  anneeScolaire: string;
+  niveauId: number;
+  ecoleId: number;
+  specialiteId: number;
+  photo: File | null;
 }
 
-export default function FormElements() {
-   const [selectedDateInscription, setSelectedDateInscription] = useState<Date | null>(null);
-   const [selectedDateNaissancePere, setSelectedDateNaissancePere] = useState<Date | null>(null);
-   const [selectedDateNaissanceMere, setSelectedDateNaissanceMere] = useState<Date | null>(null);
-   const [selectedDateDecesMere, setSelectedDateDecesMere] = useState<Date | null>(null);
-    const [selectedDateDecesPere, setSelectedDateDecesPere] = useState<Date | null>(null);
-     const [selectedDateNaissance, setSelectedDateNaissance] = useState<Date | null>(null);
-  const [familleData, setFamilleData] = useState({
-    typeFamille: null as { id: string | number } | null,
-    habitationFamille: null as { id: string | number } | null,
-    adresseFamille: "",
-    nombreEnfants: 0,
-    phone: "",
-    dateInscription: "",
-    personneMalade: "",
-    lienParenteMalade: "",
-    possedeMalade: false,
-    aideFamille: false,
-    revenuMensuel: false,
-    beneficieAutreAssociation: false,
+/* ============================== HELPERS ============================== */
+const todayISO = () => new Date().toLocaleDateString("en-CA");
+
+const schoolYear = () => {
+  const n = new Date();
+  const y = n.getFullYear();
+  return n.getMonth() >= 8 ? `${y}/${y + 1}` : `${y - 1}/${y}`;
+};
+
+const emptyPerson = (): PersonData => ({
+  nom: "",
+  prenom: "",
+  cin: "",
+  phone: "",
+  villeNaissance: "",
+  dateNaissance: "",
+  dateDeces: "",
+  typeMaladie: "",
+  typeTravail: "",
+  estDecedee: false,
+  estMalade: false,
+  estTravaille: false,
+  photo: null,
+});
+
+const emptyEnfant = (): EnfantData => ({
+  nom: "",
+  prenom: "",
+  dateNaissance: "",
+  estMalade: false,
+  typeMaladie: "",
+  anneeScolaire: schoolYear(),
+  niveauId: 0,
+  ecoleId: 0,
+  specialiteId: 0,
+  photo: null,
+});
+
+const emptyFamille = () => ({
+  typeId: 0,
+  habitationId: 0,
+  adresse: "",
+  nombreEnfants: 0,
+  phone: "",
+  dateInscription: todayISO(),
+  possedeMalade: false,
+  personneMalade: "",
+  lienParenteMalade: "",
+  aideFamille: false,
+  revenuMensuel: false,
+  beneficieAutreAssociation: false,
+});
+
+const toOpts = (arr: any): Option[] =>
+  Array.isArray(arr) ? arr.map((x: any) => ({ value: x.id, label: x.nom })) : [];
+
+const safeJson = async (url: string) => {
+  try {
+    const r = await fetch(url);
+    return r.ok ? await r.json() : [];
+  } catch {
+    return [];
+  }
+};
+
+// Compression d'image (réduit fortement le poids envoyé au serveur)
+const compressImage = (file: File, max = 800, quality = 0.7): Promise<File> =>
+  new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const ratio = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * ratio);
+      canvas.height = Math.round(img.height * ratio);
+      canvas.getContext("2d")?.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(url);
+          resolve(
+            blob
+              ? new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" })
+              : file
+          );
+        },
+        "image/jpeg",
+        quality
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
   });
-const [openedSelect, setOpenedSelect] = useState<string | null>(null);
-  const [mereData, setMereData] = useState({
-    nom: "",
-    prenom: "",
-    cin: "",
-    phone: "",
-    villeNaissance: "",
-    dateNaissance: "",
-    dateDeces: "",
-    typeMaladie: "",
-    typeTravail: "",
-    estDecedee: false,
-    estMalade: false,
-    estTravaille: false,
-    photoMere: null as File | null,
-  });
 
-  const [pereData, setPereData] = useState({
-    nom: "",
-    prenom: "",
-    cin: "",
-    phone: "",
-    villeNaissance: "",
-    dateNaissance: "",
-    dateDeces: "",
-    typeMaladie: "",
-    typeTravail: "",
-    estDecedee: false,
-    estMalade: false,
-    estTravaille: false,
-    photoPere: null as File | null,
-  });
+const toFormData = (obj: Record<string, any>) => {
+  const fd = new FormData();
+  Object.entries(obj).forEach(([k, v]) => fd.append(k, String(v ?? "")));
+  return fd;
+};
 
-  const [enfants, setEnfants] = useState<Enfant[]>([]);
-  const [niveauxscolaires, setNiveauxscolaires] = useState<Option[]>([]);
-  const [ecoles, setEcoles] = useState<Option[]>([]);
-const [specialites, setSpecialites] = useState<Option[]>([]);
-  const [typesFamille, setTypesFamille] = useState<Option[]>([]);
-  const [habitations, setHabitations] = useState<Option[]>([]);
-  const [loading, setLoading] = useState(false);
+/* ============================== UI BRIQUES ============================== */
+const inputCls =
+  "h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3.5 text-sm text-gray-800 outline-none transition placeholder:text-gray-400 focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 disabled:cursor-not-allowed disabled:opacity-50";
 
-  const compressImage = (file: File, maxWidth = 800, maxHeight = 800, quality = 0.7): Promise<Blob> => {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const reader = new FileReader();
+const TextField = ({
+  label,
+  required,
+  hint,
+  ...props
+}: {
+  label: string;
+  required?: boolean;
+  hint?: string;
+} & React.InputHTMLAttributes<HTMLInputElement>) => (
+  <label className="block">
+    <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+      {label} {required && <span className="text-red-500">*</span>}
+    </span>
+    <input {...props} className={inputCls} />
+    {hint && <span className="mt-1 block text-[11px] text-indigo-500">{hint}</span>}
+  </label>
+);
 
-      reader.onload = (e) => {
-        if (!e.target) return reject("Erreur lecture fichier");
-        img.src = e.target.result as string;
-      };
-      reader.readAsDataURL(file);
+const Toggle = ({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) => (
+  <div className="flex h-11 items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3.5">
+    <span className="text-sm font-semibold text-gray-700">{label}</span>
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition ${
+        checked ? "bg-indigo-600" : "bg-gray-300"
+      }`}
+    >
+      <span
+        className="absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all"
+        style={{ insetInlineStart: checked ? 22 : 2 }}
+      />
+    </button>
+  </div>
+);
 
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
+const TONES: Record<string, string> = {
+  indigo: "bg-indigo-50 text-indigo-600",
+  blue: "bg-blue-50 text-blue-600",
+  pink: "bg-pink-50 text-pink-600",
+  emerald: "bg-emerald-50 text-emerald-600",
+};
 
-        if (width > maxWidth) {
-          height = (maxWidth / width) * height;
-          width = maxWidth;
-        }
-        if (height > maxHeight) {
-          width = (maxHeight / height) * width;
-          height = maxHeight;
-        }
+const Card = ({
+  step,
+  title,
+  subtitle,
+  tone = "indigo",
+  children,
+}: {
+  step: number;
+  title: string;
+  subtitle?: string;
+  tone?: string;
+  children: React.ReactNode;
+}) => (
+  <section className="rounded-3xl border border-gray-200 bg-white shadow-sm">
+    <div className="flex items-center gap-3 border-b border-gray-100 px-6 py-5">
+      <span
+        className={`flex h-10 w-10 items-center justify-center rounded-xl text-base font-extrabold ${TONES[tone]}`}
+      >
+        {step}
+      </span>
+      <div>
+        <h3 className="text-lg font-extrabold text-gray-800">{title}</h3>
+        {subtitle && <p className="text-xs text-gray-400">{subtitle}</p>}
+      </div>
+    </div>
+    <div className="p-6">{children}</div>
+  </section>
+);
 
-        canvas.width = width;
-        canvas.height = height;
+const Select = ({
+  options,
+  value,
+  onChange,
+  placeholder,
+  apiUrl,
+  onNewItem,
+}: {
+  options: Option[];
+  value: number;
+  onChange: (v: number) => void;
+  placeholder: string;
+  apiUrl?: string;
+  onNewItem?: (o: Option) => void;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newOption, setNewOption] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject("Erreur canvas");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob(
-          (blob) => {
-            if (blob) resolve(blob);
-          },
-          "image/jpeg",
-          quality
-        );
-      };
-
-      img.onerror = (err) => reject(err);
-    });
-  };
-
-  // Fetch listes initiales
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-   const [typesRes, habitationsRes, niveauxRes, ecolesRes, specialitesRes] = await Promise.all([
-          fetch("http://localhost:8080/api/famille/types"),
-          fetch("http://localhost:8080/api/famille/habitations"),
-          fetch("http://localhost:8080/api/enfant/niveauScolaire"),
-          fetch("http://localhost:8080/api/enfant/ecole"),
-          fetch("http://localhost:8080/api/enfant/specialite")
-        ]);
-const specialitesData = await specialitesRes.json();
-setSpecialites(specialitesData.map((s: any) => ({ value: s.id, label: s.nom })));
-        const ecolesData = await ecolesRes.json();
-        setEcoles(ecolesData.map((e: any) => ({ value: e.id, label: e.nom })));
-
-        const typesData = await typesRes.json();
-        setTypesFamille(typesData.map((t: any) => ({ value: t.id, label: t.nom })));
-
-        const habitationsData = await habitationsRes.json();
-        setHabitations(habitationsData.map((h: any) => ({ value: h.id, label: h.nom })));
-
-        const niveauxData = await niveauxRes.json();
-        setNiveauxscolaires(niveauxData.map((n: any) => ({ value: n.id, label: n.nom })));
-      } catch (error) {
-        console.error("Erreur lors du fetch des listes :", error);
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setAdding(false);
       }
     };
-    fetchData();
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  // Mise à jour automatique du tableau enfants
-  useEffect(() => {
-    const n = familleData.nombreEnfants || 0;
-    setEnfants((prev) => {
-      const updated = [...prev];
-      if (n > prev.length) {
-        for (let i = prev.length; i < n; i++) {
-          updated.push({
-            nom: "",
-            prenom: "",
-            dateNaissance: "",
-            niveauscolaire: null,
-            ecole: null,
-            photoEnfant: null,
-            typeMaladie: "",
-            estMalade: false,
-            specialite: null
-          });
-        }
-      } else {
-        updated.length = n;
-      }
-      return updated;
-    });
-  }, [familleData.nombreEnfants]);
-
-  // Gestion date format jj/mm/aaaa
-  const formatDateInput = (val: string) => {
-    val = val.replace(/\D/g, "");
-    if (val.length > 2) val = val.slice(0, 2) + "/" + val.slice(2);
-    if (val.length > 5) val = val.slice(0, 5) + "/" + val.slice(5, 9);
-    return val.slice(0, 10);
+  const addOption = async () => {
+    if (!apiUrl || !newOption.trim() || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch(apiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nom: newOption.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      const saved = await res.json();
+      const opt = { value: saved.id, label: saved.nom };
+      onNewItem?.(opt);
+      onChange(opt.value);
+      setNewOption("");
+      setAdding(false);
+      setOpen(false);
+    } catch {
+      alert("تعذر إضافة العنصر، تحقق من الاتصال");
+    } finally {
+      setBusy(false);
+    }
   };
 
- const convertDate = (dateStr: string): string => {
-   if (!dateStr) return '';
+  const current = options.find((o) => o.value === value)?.label;
 
-   // Si déjà au format yyyy-MM-dd (HTML input), on renvoie tel quel
-   if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
+  return (
+    <div ref={ref} className="relative w-full">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`${inputCls} flex items-center justify-between text-right`}
+      >
+        <span className={current ? "text-gray-800" : "text-gray-400"}>
+          {current || placeholder}
+        </span>
+        <span className="text-xs text-gray-400">▾</span>
+      </button>
 
-   // Supprime tout sauf chiffres (pour dd/MM/yyyy)
-   const clean = dateStr.replace(/\D/g, '');
-   if (clean.length !== 8) return '';
+      {open && (
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg">
+          {options.map((o) => (
+            <div
+              key={o.value}
+              onClick={() => {
+                onChange(o.value);
+                setOpen(false);
+              }}
+              className={`cursor-pointer rounded-lg px-3 py-2 text-sm hover:bg-indigo-50 ${
+                o.value === value ? "bg-indigo-50 font-bold text-indigo-700" : "text-gray-700"
+              }`}
+            >
+              {o.label}
+            </div>
+          ))}
 
-   const dd = clean.slice(0, 2);
-   const mm = clean.slice(2, 4);
-   const yyyy = clean.slice(4, 8);
-
-   const day = parseInt(dd, 10);
-   const month = parseInt(mm, 10);
-   const year = parseInt(yyyy, 10);
-
-   if (
-     isNaN(day) || day < 1 || day > 31 ||
-     isNaN(month) || month < 1 || month > 12 ||
-     isNaN(year) || year < 1900 || year > 2100
-   ) {
-     return '';
-   }
-
-   return `${yyyy}-${mm}-${dd}`;
- };
-// Conversion des dates mère et père
-const mereDataConverted = {
-  ...mereData,
-  dateNaissance: convertDate(mereData.dateNaissance),
-  dateDeces: convertDate(mereData.dateDeces),
-};
-
-const pereDataConverted = {
-  ...pereData,
-  dateNaissance: convertDate(pereData.dateNaissance),
-  dateDeces: convertDate(pereData.dateDeces),
-};
-
-// Conversion des dates des enfants
-const enfantsConverted = enfants.map((enfant) => ({
-  ...enfant,
-  dateNaissance: convertDate(enfant.dateNaissance),
-
-}));
-
- const handleSubmitAll = async () => {
-     setLoading(true);
-     try {
-       // 🔹 Validation famille
-       if (!familleData.typeFamille || !familleData.habitationFamille || !familleData.adresseFamille || !familleData.phone) {
-         throw new Error("Certains champs de la famille sont manquants.");
-       }
-
-       // 🔹 Validation mère
-       if (!mereData.nom || !mereData.prenom || (!mereData.estDecedee && (!mereData.cin || !mereData.phone))) {
-         throw new Error("Certains champs de la mère sont manquants.");
-       }
-
-       // 🔹 Validation père
-       if (!pereData.nom || !pereData.prenom || (!pereData.estDecedee && (!pereData.cin || !pereData.phone))) {
-         throw new Error("Certains champs du père sont manquants.");
-       }
-
-       // 🔹 Conversion date inscription
-       const convertedDateInscription = convertDate(familleData.dateInscription);
-       if (!convertedDateInscription) throw new Error("La date d'inscription est invalide.");
-
-       // 🔹 Création mère
-       const formDataMere = new FormData();  // <-- Définition de formDataMere
-     // FormData mère
-     Object.entries(mereDataConverted).forEach(([key, value]) => {
-       if (value !== null && key !== "photoMere") formDataMere.append(key, value.toString());
-     });
-     if (mereDataConverted.photoMere) formDataMere.append('photoMere', mereDataConverted.photoMere);
-
-       // 🔹 Création père
-       const formDataPere = new FormData();  // <-- Définition de formDataPere
-      Object.entries(pereDataConverted).forEach(([key, value]) => {
-        if (value !== null && key !== "photoPere") formDataPere.append(key, value.toString());
-      });
-      if (pereDataConverted.photoPere) formDataPere.append('photoPere', pereDataConverted.photoPere);
-
- console.log("Données mère à envoyer :");
-           for (let pair of formDataMere.entries()) {
-             console.log(pair[0], pair[1]);
-           }
-       // Avant le fetch père
-       console.log("Données père à envoyer :");
-       for (let pair of formDataPere.entries()) {
-         console.log(pair[0], pair[1]);
-       }
-       const [responseMere, responsePere] = await Promise.all([
-
-         fetch("http://localhost:8080/api/mere", { method: "POST", body: formDataMere }),
-         fetch("http://localhost:8080/api/pere", { method: "POST", body: formDataPere })
-       ]);
-       if (!responseMere.ok) throw new Error("Erreur enregistrement mère");
-       if (!responsePere.ok) throw new Error("Erreur enregistrement père");
-
-       const savedMere = await responseMere.json();
-       const savedPere = await responsePere.json();
-
-       // 🔹 Préparer les études pour chaque enfant
-     // 🔹 Préparer les études pour chaque enfant
-     const etudesArray = enfantsConverted.map((enfant) => ({
-       enfantId: enfant.id,
-       ecoleId: enfant.ecole?.id,
-       niveauScolaireId: enfant.niveauscolaire?.id,
-       anneeScolaire: enfant.anneeScolaire, // maintenant au format yyyy-MM-dd
-       specialiteId: enfant.specialite?.id,
-     }));
-
-
-       // 🔹 Création famille
-       const formDataFamille = new FormData();
-       formDataFamille.append('adresseFamille', familleData.adresseFamille);
-       formDataFamille.append('phone', familleData.phone);
-       formDataFamille.append('dateInscription', convertedDateInscription);
-       formDataFamille.append('nombreEnfants', familleData.nombreEnfants);
-formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
-
-formDataFamille.append(
-  "aideFamille",
-  familleData.aideFamille ? "true" : "false"
-);
-formDataFamille.append(
-  "revenuMensuel",
-  familleData.revenuMensuel ? "true" : "false"
-);
-formDataFamille.append(
-  "beneficieAutreAssociation",
-  familleData.beneficieAutreAssociation ? "true" : "false"
-);
-      // formDataFamille.append('possedeMalade', familleData.possedeMalade ? 'true' : 'false');
-       formDataFamille.append('personneMalade', familleData.personneMalade || '');
-      formDataFamille.append('lienParenteMalade', familleData.lienParenteMalade || '');
-       formDataFamille.append('typeFamilleId', familleData.typeFamille?.id.toString() || '');
-       formDataFamille.append('habitationFamilleId', familleData.habitationFamille?.id.toString() || '');
-       formDataFamille.append('mereId', savedMere.id.toString());
-       formDataFamille.append('pereId', savedPere.id.toString());
-      formDataFamille.append('enfantsJson', JSON.stringify(enfantsConverted));
-       formDataFamille.append('etudesJson', JSON.stringify(etudesArray));
-
-       // 🔹 Photos enfants
-       enfants.forEach((enfant) => {
-         if (enfant.photoEnfant) {
-           formDataFamille.append('photoEnfant', enfant.photoEnfant);
-         }
-       });
-console.log("Données famille à envoyer :");
-for (let pair of formDataFamille.entries()) {
-  console.log(pair[0], pair[1]);
-}
-
-       const responseFamille = await fetch("http://localhost:8080/api/famille", { method: "POST", body: formDataFamille });
-       if (!responseFamille.ok) throw new Error("Erreur enregistrement famille");
-       const savedFamille = await responseFamille.json();
-
-
-// Pour voir aussi les enfants et études JSON
-console.log("Enfants JSON : ", JSON.stringify(enfants, null, 2));
-console.log("Études JSON : ", JSON.stringify(etudesArray, null, 2));
-       // 🔹 Enregistrement des études en une seule requête
-
-
-       alert("Toutes les données ont été enregistrées avec succès !");
-       console.log("Famille enregistrée :", savedFamille);
-
-     } catch (error: any) {
-       console.error(error);
-       alert("Erreur lors de l'enregistrement : " + error.message);
-     } finally {
-       setLoading(false);
-     }
-   };
-
-
-
-
-
-
- const Select = ({
-   options = [],
-   value,
-   onChange,
-   placeholder,
-   apiUrl,
-   onNewItem,
-   allowAdd = true,
-   selectId,
-   openedSelect,
-   setOpenedSelect,
- }: any) => {
-
-   const open = openedSelect === selectId;
-    const [adding, setAdding] = useState(false);
-    const [newOption, setNewOption] = useState("");
-    const [opts, setOpts] = useState(options);
-    useEffect(() => setOpts(options), [options]);
-
-    const handleSelect = (opt: Option) => {
-      onChange(opt.value);
-    setOpenedSelect(null);
-    };
-
-    const handleAddOption = async () => {
-      if (!newOption.trim()) return;
-      try {
-        const res = await fetch(apiUrl, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nom: newOption }) });
-        const savedItem = await res.json();
-        const newOpt = { value: savedItem.id, label: savedItem.nom };
-        setOpts((prev) => [...prev, newOpt]);
-        if (onNewItem) onNewItem(newOpt);
-        onChange(newOpt.value);
-        setNewOption("");
-        setAdding(false);
-       setOpenedSelect(null);
-      } catch (error) {
-        console.error(error);
-      }
-    };
-
-    return (
-      <div className="relative w-full">
-        <div
-          className="border border-gray-300 rounded-lg px-4 py-2 cursor-pointer bg-white hover:bg-gray-50 transition duration-200 ease-in-out"
-        onClick={() =>
-          setOpenedSelect(open ? null : selectId)
-        }
-        >
-          {opts.find((o) => o.value === value)?.label || placeholder}
-        </div>
-
-        {open && (
-          <div className="absolute z-50 mt-1 w-full border border-gray-300 rounded-lg bg-white shadow-lg max-h-60 overflow-auto transition-all duration-300 ease-out">
-            {opts.map((opt) => (
+          {apiUrl &&
+            (!adding ? (
               <div
-                key={opt.value}
-                className="px-4 py-2 hover:bg-gray-100 cursor-pointer transition duration-150 ease-in-out"
-                onClick={() => handleSelect(opt)}
+                onClick={() => setAdding(true)}
+                className="cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50"
               >
-                {opt.label}
+                + إضافة عنصر جديد
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 p-2">
+                <input
+                  autoFocus
+                  value={newOption}
+                  onChange={(e) => setNewOption(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addOption();
+                    }
+                    if (e.key === "Escape") setAdding(false);
+                  }}
+                  placeholder="عنصر جديد"
+                  className="h-9 w-full rounded-lg border border-gray-200 px-2 text-sm outline-none focus:border-indigo-300"
+                />
+                <button
+                  type="button"
+                  onClick={addOption}
+                  disabled={busy}
+                  className="h-9 rounded-lg bg-indigo-600 px-3 text-white disabled:opacity-50"
+                >
+                  ✓
+                </button>
               </div>
             ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
-   {allowAdd && !adding && (
-     <div
-       className="px-4 py-2 text-blue-600 cursor-pointer hover:bg-gray-100 transition duration-150 ease-in-out"
-       onClick={() => setAdding(true)}
-     >
-       + Ajouter un élément
-     </div>
-   )}
+const PhotoPicker = ({
+  label,
+  file,
+  onPick,
+}: {
+  label: string;
+  file: File | null;
+  onPick: (f: File | null) => void;
+}) => {
+  const ref = useRef<HTMLInputElement>(null);
+  const preview = useMemo(() => (file ? URL.createObjectURL(file) : ""), [file]);
+  useEffect(() => () => (preview ? URL.revokeObjectURL(preview) : undefined), [preview]);
 
-   {allowAdd && adding && (
-     <div
-       className="px-3 py-2"
-       onClick={(e) => e.stopPropagation()}
-     >
-       <input
-         type="text"
-         placeholder="Nouvel élément"
-         value={newOption}
-         autoFocus
-         onChange={(e) => setNewOption(e.target.value)}
-         onKeyDown={(e) => {
-           if (e.key === "Enter") {
-             e.preventDefault();
-             e.stopPropagation();
-
-             if (!newOption.trim()) {
-               setAdding(false);
-               return;
-             }
-
-             handleAddOption();
-           }
-
-           if (e.key === "Escape") {
-             e.preventDefault();
-             e.stopPropagation();
-             setAdding(false);
-           }
-         }}
-         className="h-9 px-3 text-sm border rounded-md w-full focus:ring-2 focus:ring-blue-500"
-       />
-     </div>
-   )}
-
-
-          </div>
-        )}
-      </div>
-    );
+  const handle = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (f) onPick(await compressImage(f));
   };
 
   return (
+    <div className="flex flex-col items-center gap-2">
+      <span className="text-xs font-semibold text-gray-500">{label}</span>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => ref.current?.click()}
+          className="group relative flex h-24 w-24 items-center justify-center overflow-hidden rounded-3xl border-2 border-dashed border-gray-300 bg-gray-50 transition hover:border-indigo-300"
+        >
+          {preview ? (
+            <img src={preview} alt={label} className="h-full w-full object-cover" />
+          ) : (
+            <span className="px-2 text-center text-[11px] text-gray-400">اضغط لإضافة صورة</span>
+          )}
+          {preview && (
+            <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-xs font-semibold text-white opacity-0 transition group-hover:opacity-100">
+              تغيير
+            </span>
+          )}
+        </button>
+        {preview && (
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="absolute -left-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-xs text-white shadow"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      <input ref={ref} type="file" accept="image/*" onChange={handle} className="hidden" />
+    </div>
+  );
+};
+
+/* ============================== FORMULAIRE PARENT ============================== */
+const ParentForm = ({
+  role,
+  data,
+  onChange,
+  onToggleDead,
+  phoneHint,
+}: {
+  role: "pere" | "mere";
+  data: PersonData;
+  onChange: (patch: Partial<PersonData>) => void;
+  onToggleDead: (v: boolean) => void;
+  phoneHint?: string;
+}) => {
+  const t =
+    role === "pere"
+      ? { dead: "هل الأب متوفى؟", sick: "هل الأب مريض؟", work: "هل الأب يعمل؟", photo: "صورة الأب" }
+      : { dead: "هل الأم متوفاة؟", sick: "هل الأم مريضة؟", work: "هل الأم تعمل؟", photo: "صورة الأم" };
+
+  return (
+    <div className="space-y-5">
+      <div className="flex justify-center">
+        <PhotoPicker label={t.photo} file={data.photo} onPick={(f) => onChange({ photo: f })} />
+      </div>
+
+      <Toggle label={t.dead} checked={data.estDecedee} onChange={onToggleDead} />
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <TextField label="الاسم" required value={data.prenom} onChange={(e) => onChange({ prenom: e.target.value })} />
+        <TextField label="النسب" required value={data.nom} onChange={(e) => onChange({ nom: e.target.value })} />
+
+        {data.estDecedee ? (
+          <TextField
+            label="تاريخ الوفاة"
+            type="date"
+            max={todayISO()}
+            value={data.dateDeces}
+            onChange={(e) => onChange({ dateDeces: e.target.value })}
+          />
+        ) : (
+          <>
+            <TextField
+              label="رقم البطاقة الوطنية"
+              required
+              value={data.cin}
+              onChange={(e) => onChange({ cin: e.target.value })}
+            />
+            <TextField
+              label="رقم الهاتف"
+              required
+              inputMode="tel"
+              value={data.phone}
+              hint={phoneHint}
+              onChange={(e) => onChange({ phone: e.target.value })}
+            />
+            <TextField
+              label="تاريخ الازدياد"
+              type="date"
+              max={todayISO()}
+              value={data.dateNaissance}
+              onChange={(e) => onChange({ dateNaissance: e.target.value })}
+            />
+            <TextField
+              label="مكان الازدياد"
+              value={data.villeNaissance}
+              onChange={(e) => onChange({ villeNaissance: e.target.value })}
+            />
+
+            <Toggle
+              label={t.sick}
+              checked={data.estMalade}
+              onChange={(v) => onChange({ estMalade: v, typeMaladie: v ? data.typeMaladie : "" })}
+            />
+            <TextField
+              label="نوع المرض"
+              disabled={!data.estMalade}
+              value={data.typeMaladie}
+              onChange={(e) => onChange({ typeMaladie: e.target.value })}
+            />
+
+            <Toggle
+              label={t.work}
+              checked={data.estTravaille}
+              onChange={(v) => onChange({ estTravaille: v, typeTravail: v ? data.typeTravail : "" })}
+            />
+            <TextField
+              label="نوع العمل"
+              disabled={!data.estTravaille}
+              value={data.typeTravail}
+              onChange={(e) => onChange({ typeTravail: e.target.value })}
+            />
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ============================== PAGE ============================== */
+export default function AjoutFamille() {
+  const [famille, setFamille] = useState(emptyFamille);
+  const [pere, setPere] = useState<PersonData>(emptyPerson);
+  const [mere, setMere] = useState<PersonData>(emptyPerson);
+  const [merePhoneTouched, setMerePhoneTouched] = useState(false);
+  const [enfants, setEnfants] = useState<EnfantData[]>([]);
+
+  const [types, setTypes] = useState<Option[]>([]);
+  const [habitations, setHabitations] = useState<Option[]>([]);
+  const [niveaux, setNiveaux] = useState<Option[]>([]);
+  const [ecoles, setEcoles] = useState<Option[]>([]);
+  const [specialites, setSpecialites] = useState<Option[]>([]);
+
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "ok" | "error"; msgs: string[] } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const [t, h, n, e, s] = await Promise.all([
+        safeJson(`${API}/famille/types`),
+        safeJson(`${API}/famille/habitations`),
+        safeJson(`${API}/enfant/niveauScolaire`),
+        safeJson(`${API}/enfant/ecole`),
+        safeJson(`${API}/enfant/specialite`),
+      ]);
+      setTypes(toOpts(t));
+      setHabitations(toOpts(h));
+      setNiveaux(toOpts(n));
+      setEcoles(toOpts(e));
+      setSpecialites(toOpts(s));
+    })();
+  }, []);
+
+  /* ---------- Famille ---------- */
+  const setF = (patch: Partial<typeof famille>) => setFamille((p) => ({ ...p, ...patch }));
+
+  // Le téléphone de la famille se copie chez la mère tant qu'elle n'a pas été modifiée à la main
+  const onFamillePhone = (value: string) => {
+    setF({ phone: value });
+    if (!merePhoneTouched && !mere.estDecedee) setMere((m) => ({ ...m, phone: value }));
+  };
+
+  const onMerePatch = (patch: Partial<PersonData>) => {
+    if ("phone" in patch) {
+      setMerePhoneTouched(!!patch.phone && patch.phone !== famille.phone);
+    }
+    setMere((m) => ({ ...m, ...patch }));
+  };
+
+  const onMereDead = (v: boolean) =>
+    setMere((m) =>
+      v
+        ? {
+            ...m,
+            estDecedee: true,
+            cin: "",
+            phone: "",
+            dateNaissance: "",
+            villeNaissance: "",
+            estMalade: false,
+            typeMaladie: "",
+            estTravaille: false,
+            typeTravail: "",
+          }
+        : {
+            ...m,
+            estDecedee: false,
+            dateDeces: "",
+            phone: merePhoneTouched ? m.phone : famille.phone,
+          }
+    );
+
+  const onPereDead = (v: boolean) =>
+    setPere((p) =>
+      v
+        ? {
+            ...p,
+            estDecedee: true,
+            cin: "",
+            phone: "",
+            dateNaissance: "",
+            villeNaissance: "",
+            estMalade: false,
+            typeMaladie: "",
+            estTravaille: false,
+            typeTravail: "",
+          }
+        : { ...p, estDecedee: false, dateDeces: "" }
+    );
+
+  /* ---------- Enfants ---------- */
+  const setCount = (n: number) => {
+    const count = Math.max(0, Math.min(15, Number.isFinite(n) ? n : 0));
+    setF({ nombreEnfants: count });
+    setEnfants((prev) =>
+      count > prev.length
+        ? [...prev, ...Array.from({ length: count - prev.length }, emptyEnfant)]
+        : prev.slice(0, count)
+    );
+  };
+
+  const setE = (i: number, patch: Partial<EnfantData>) =>
+    setEnfants((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+
+  /* ---------- Progression ---------- */
+  const progress = useMemo(() => {
+    const checks = [
+      famille.typeId,
+      famille.habitationId,
+      famille.adresse.trim(),
+      famille.phone.trim(),
+      pere.nom.trim() && pere.prenom.trim() && (pere.estDecedee || (pere.cin.trim() && pere.phone.trim())),
+      mere.nom.trim() && mere.prenom.trim() && (mere.estDecedee || (mere.cin.trim() && mere.phone.trim())),
+      ...enfants.map((e) => e.nom.trim() && e.prenom.trim() && e.niveauId && e.ecoleId),
+    ];
+    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  }, [famille, pere, mere, enfants]);
+
+  /* ---------- Validation ---------- */
+  const validate = () => {
+    const errs: string[] = [];
+    if (!famille.typeId) errs.push("اختر نوع الحالة");
+    if (!famille.habitationId) errs.push("اختر نوع السكن");
+    if (!famille.adresse.trim()) errs.push("أدخل عنوان العائلة");
+    if (!famille.phone.trim()) errs.push("أدخل رقم هاتف العائلة");
+
+    (["pere", "mere"] as const).forEach((r) => {
+      const p = r === "pere" ? pere : mere;
+      const n = r === "pere" ? "الأب" : "الأم";
+      if (!p.nom.trim() || !p.prenom.trim()) errs.push(`أدخل اسم ونسب ${n}`);
+      if (!p.estDecedee && (!p.cin.trim() || !p.phone.trim()))
+        errs.push(`أدخل رقم البطاقة الوطنية والهاتف لـ${n}`);
+    });
+
+    enfants.forEach((e, i) => {
+      if (!e.nom.trim() || !e.prenom.trim()) errs.push(`الطفل ${i + 1}: أدخل الاسم والنسب`);
+      if (!e.niveauId || !e.ecoleId) errs.push(`الطفل ${i + 1}: اختر المستوى الدراسي والمؤسسة`);
+    });
+    return errs;
+  };
+
+  /* ---------- Envoi ---------- */
+  const personFormData = (p: PersonData, photoKey: string) => {
+    const fd = toFormData({
+      nom: p.nom.trim(),
+      prenom: p.prenom.trim(),
+      cin: p.cin,
+      phone: p.phone,
+      villeNaissance: p.villeNaissance,
+      dateNaissance: p.dateNaissance,
+      dateDeces: p.dateDeces,
+      typeMaladie: p.typeMaladie,
+      typeTravail: p.typeTravail,
+      estDecedee: p.estDecedee,
+      estMalade: p.estMalade,
+      estTravaille: p.estTravaille,
+    });
+    if (p.photo) fd.append(photoKey, p.photo);
+    return fd;
+  };
+
+  const resetAll = () => {
+    setFamille(emptyFamille());
+    setPere(emptyPerson());
+    setMere(emptyPerson());
+    setMerePhoneTouched(false);
+    setEnfants([]);
+  };
+
+  const handleSubmit = async () => {
+    const errs = validate();
+    if (errs.length) {
+      setStatus({ type: "error", msgs: errs });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    setLoading(true);
+    setStatus(null);
+    try {
+      const [resMere, resPere] = await Promise.all([
+        fetch(`${API}/mere`, { method: "POST", body: personFormData(mere, "photoMere") }),
+        fetch(`${API}/pere`, { method: "POST", body: personFormData(pere, "photoPere") }),
+      ]);
+      if (!resMere.ok) throw new Error("فشل تسجيل الأم");
+      if (!resPere.ok) throw new Error("فشل تسجيل الأب");
+      const [savedMere, savedPere] = await Promise.all([resMere.json(), resPere.json()]);
+
+      const fd = toFormData({
+        adresseFamille: famille.adresse.trim(),
+        phone: famille.phone.trim(),
+        dateInscription: famille.dateInscription || todayISO(),
+        nombreEnfants: famille.nombreEnfants,
+        possedeMalade: famille.possedeMalade,
+        personneMalade: famille.personneMalade,
+        lienParenteMalade: famille.lienParenteMalade,
+        aideFamille: famille.aideFamille,
+        revenuMensuel: famille.revenuMensuel,
+        beneficieAutreAssociation: famille.beneficieAutreAssociation,
+        typeFamilleId: famille.typeId,
+        habitationFamilleId: famille.habitationId,
+        mereId: savedMere.id,
+        pereId: savedPere.id,
+        enfantsJson: JSON.stringify(
+          enfants.map((e) => ({
+            nom: e.nom.trim(),
+            prenom: e.prenom.trim(),
+            dateNaissance: e.dateNaissance,
+            estMalade: e.estMalade,
+            typeMaladie: e.estMalade ? e.typeMaladie : "",
+          }))
+        ),
+        etudesJson: JSON.stringify(
+          enfants.map((e) => ({
+            ecoleId: e.ecoleId,
+            niveauScolaireId: e.niveauId,
+            specialiteId: e.specialiteId || null,
+            anneeScolaire: e.anneeScolaire,
+          }))
+        ),
+      });
+
+      // Une part "photoEnfant" par enfant (vide si pas de photo) pour garder l'ordre des index
+      enfants.forEach((e, i) =>
+        fd.append("photoEnfant", e.photo ?? new Blob([]), e.photo ? e.photo.name : `vide-${i}.jpg`)
+      );
+
+      const resFamille = await fetch(`${API}/famille`, { method: "POST", body: fd });
+      if (!resFamille.ok) throw new Error("فشل تسجيل العائلة");
+
+      setStatus({ type: "ok", msgs: ["تم تسجيل العائلة بنجاح"] });
+      resetAll();
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e: any) {
+      setStatus({ type: "error", msgs: [e.message || "حدث خطأ أثناء التسجيل"] });
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* ---------- Rendu ---------- */
+  return (
     <div dir="rtl">
-      <PageMeta
-        title="React.js Form Elements Dashboard"
-        description="Formulaire famille et mère"
-      />
+      <PageMeta title="تسجيل عائلة جديدة" description="نموذج تسجيل عائلة" />
       <PageBreadcrumb pageTitle="معلومات العائلة" />
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        {/* Formulaire Famille */}
-        <div className="space-y-6">
-          <ComponentCard title={<span className="font-bold">معلومات عامة</span>}>
-            <div className="flex gap-4">
-              <div className="w-1/2">
-       <Select
-         selectId="typeFamille"
-         openedSelect={openedSelect}
-         setOpenedSelect={setOpenedSelect}
-         options={typesFamille}
-         value={familleData.typeFamille?.id || ""}
-         onChange={(val) =>
-           setFamilleData({
-             ...familleData,
-             typeFamille: { id: val },
-           })
-         }
-         placeholder="نوع الحالة"
-         allowAdd={false}
-       />
-              </div>
-              <div className="w-1/2">
-              <Select
-                selectId="habitationFamille"
-                openedSelect={openedSelect}
-                setOpenedSelect={setOpenedSelect}
-                options={habitations}
-                value={familleData.habitationFamille?.id || ""}
-                onChange={(val) =>
-                  setFamilleData({
-                    ...familleData,
-                    habitationFamille: { id: val },
-                  })
-                }
-                placeholder="نوع السكن"
-                allowAdd={false}
-              />
-              </div>
+      <div className="mx-auto max-w-5xl space-y-6 pb-28">
+        {/* HEADER */}
+        <div className="rounded-3xl bg-gradient-to-l from-indigo-600 via-indigo-600 to-blue-500 p-6 text-white shadow-lg">
+          <p className="text-xs font-semibold text-white/70">إدارة العائلات</p>
+          <h1 className="mt-1 text-2xl font-extrabold">تسجيل عائلة جديدة</h1>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/20">
+              <div className="h-2 rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
+            </div>
+            <span className="text-sm font-bold">{progress}%</span>
+          </div>
+        </div>
+
+        {/* STATUS */}
+        {status && (
+          <div
+            className={`rounded-2xl border px-5 py-4 text-sm ${
+              status.type === "ok"
+                ? "border-green-200 bg-green-50 text-green-700"
+                : "border-red-200 bg-red-50 text-red-700"
+            }`}
+          >
+            {status.msgs.length === 1 ? (
+              <p className="font-bold">{status.msgs[0]}</p>
+            ) : (
+              <>
+                <p className="mb-2 font-bold">يرجى تصحيح ما يلي:</p>
+                <ul className="list-inside list-disc space-y-1">
+                  {status.msgs.map((m, i) => (
+                    <li key={i}>{m}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* 1. FAMILLE */}
+        <Card step={1} title="معلومات عامة" subtitle="المعطيات الاجتماعية والسكنية للعائلة" tone="indigo">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <div>
+              <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                نوع الحالة <span className="text-red-500">*</span>
+              </span>
+              <Select options={types} value={famille.typeId} onChange={(v) => setF({ typeId: v })} placeholder="اختر نوع الحالة" />
+            </div>
+            <div>
+              <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                نوع السكن <span className="text-red-500">*</span>
+              </span>
+              <Select options={habitations} value={famille.habitationId} onChange={(v) => setF({ habitationId: v })} placeholder="اختر نوع السكن" />
             </div>
 
-            <div className="md:col-span-2 mt-4">
-              <Label htmlFor="adresseFamille">عنوان العائلة</Label>
-              <Input
-                type="text"
-                placeholder="عنوان العائلة"
-                value={familleData.adresseFamille}
-                onChange={(e) => setFamilleData({ ...familleData, adresseFamille: e.target.value })}
-                className="border p-2 rounded w-full"
-              />
+            <div className="md:col-span-2">
+              <TextField label="عنوان العائلة" required value={famille.adresse} onChange={(e) => setF({ adresse: e.target.value })} />
             </div>
-            <div className="flex gap-4">
-              <div className="w-1/2">
-                <div className="md:col-span-2 mt-4">
-                  <Label htmlFor="nombreEnfants">عدد الأبناء</Label>
-                  <Input
-                    type="number"
-                    placeholder="عدد الأبناء"
-                    min={0}
-                    value={familleData.nombreEnfants}
-                    onChange={(e) => setFamilleData({ ...familleData, nombreEnfants: parseInt(e.target.value) })}
-                    className="border p-2 rounded w-full"
-                  />
+
+            <TextField
+              label="رقم الهاتف"
+              required
+              inputMode="tel"
+              value={famille.phone}
+              onChange={(e) => onFamillePhone(e.target.value)}
+              hint="سيُنسخ تلقائياً إلى هاتف الأم"
+            />
+            <TextField
+              label="تاريخ التسجيل"
+              type="date"
+              max={todayISO()}
+              value={famille.dateInscription}
+              onChange={(e) => setF({ dateInscription: e.target.value })}
+            />
+
+            <div>
+              <span className="mb-1.5 block text-xs font-semibold text-gray-500">عدد الأبناء</span>
+              <div className="flex h-11 items-center overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+                <button type="button" onClick={() => setCount(famille.nombreEnfants - 1)} className="h-full w-12 text-xl text-gray-500 hover:bg-gray-100">
+                  −
+                </button>
+                <input
+                  type="number"
+                  min={0}
+                  max={15}
+                  value={famille.nombreEnfants}
+                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
+                  className="h-full w-full bg-transparent text-center text-sm font-bold outline-none"
+                />
+                <button type="button" onClick={() => setCount(famille.nombreEnfants + 1)} className="h-full w-12 text-xl text-gray-500 hover:bg-gray-100">
+                  +
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Toggle
+              label="هل تعتني بشخص مريض في المنزل؟"
+              checked={famille.possedeMalade}
+              onChange={(v) =>
+                setF({
+                  possedeMalade: v,
+                  personneMalade: v ? famille.personneMalade : "",
+                  lienParenteMalade: v ? famille.lienParenteMalade : "",
+                })
+              }
+            />
+            <div />
+            {famille.possedeMalade && (
+              <>
+                <TextField label="اسم المريض" value={famille.personneMalade} onChange={(e) => setF({ personneMalade: e.target.value })} />
+                <TextField label="صلة القرابة" value={famille.lienParenteMalade} onChange={(e) => setF({ lienParenteMalade: e.target.value })} />
+              </>
+            )}
+            <Toggle label="تستفيد العائلة من مساعدة" checked={famille.aideFamille} onChange={(v) => setF({ aideFamille: v })} />
+            <Toggle label="يوجد دخل مالي شهري" checked={famille.revenuMensuel} onChange={(v) => setF({ revenuMensuel: v })} />
+            <Toggle label="تستفيد من جمعية أخرى" checked={famille.beneficieAutreAssociation} onChange={(v) => setF({ beneficieAutreAssociation: v })} />
+          </div>
+        </Card>
+
+        {/* 2. PERE */}
+        <Card step={2} title="معلومات الأب" tone="blue">
+          <ParentForm role="pere" data={pere} onChange={(p) => setPere((x) => ({ ...x, ...p }))} onToggleDead={onPereDead} />
+        </Card>
+
+        {/* 3. MERE */}
+        <Card step={3} title="معلومات الأم" tone="pink">
+          <ParentForm
+            role="mere"
+            data={mere}
+            onChange={onMerePatch}
+            onToggleDead={onMereDead}
+            phoneHint={!merePhoneTouched && mere.phone ? "تم ملؤه تلقائياً من هاتف العائلة، يمكنك تغييره" : undefined}
+          />
+        </Card>
+
+        {/* 4. ENFANTS */}
+        <Card step={4} title="معلومات الأبناء" subtitle={`${enfants.length} طفل`} tone="emerald">
+          {enfants.length === 0 ? (
+            <p className="rounded-2xl bg-gray-50 py-10 text-center text-sm text-gray-400">
+              أدخل عدد الأبناء في القسم الأول لإظهار النماذج
+            </p>
+          ) : (
+            <div className="space-y-5">
+              {enfants.map((e, i) => (
+                <div key={i} className="rounded-2xl border border-gray-200 bg-gray-50/50 p-5">
+                  <div className="mb-4 flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-sm font-bold text-emerald-700">
+                      {i + 1}
+                    </span>
+                    <h4 className="font-extrabold text-gray-800">الابن {i + 1}</h4>
+                  </div>
+
+                  <div className="mb-4 flex justify-center">
+                    <PhotoPicker label="صورة الطفل" file={e.photo} onPick={(f) => setE(i, { photo: f })} />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <TextField label="الاسم" required value={e.prenom} onChange={(ev) => setE(i, { prenom: ev.target.value })} />
+                    <TextField label="النسب" required value={e.nom} onChange={(ev) => setE(i, { nom: ev.target.value })} />
+                    <TextField
+                      label="تاريخ الازدياد"
+                      type="date"
+                      max={todayISO()}
+                      value={e.dateNaissance}
+                      onChange={(ev) => setE(i, { dateNaissance: ev.target.value })}
+                    />
+                    <TextField
+                      label="السنة الدراسية"
+                      placeholder="YYYY/YYYY"
+                      value={e.anneeScolaire}
+                      onChange={(ev) => {
+                        let v = ev.target.value.replace(/\D/g, "").slice(0, 8);
+                        if (v.length > 4) v = `${v.slice(0, 4)}/${v.slice(4)}`;
+                        setE(i, { anneeScolaire: v });
+                      }}
+                    />
+
+                    <Toggle
+                      label="هل الابن مريض؟"
+                      checked={e.estMalade}
+                      onChange={(v) => setE(i, { estMalade: v, typeMaladie: v ? e.typeMaladie : "" })}
+                    />
+                    <TextField
+                      label="نوع المرض"
+                      disabled={!e.estMalade}
+                      value={e.typeMaladie}
+                      onChange={(ev) => setE(i, { typeMaladie: ev.target.value })}
+                    />
+
+                    <div>
+                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                        المستوى الدراسي <span className="text-red-500">*</span>
+                      </span>
+                      <Select
+                        options={niveaux}
+                        value={e.niveauId}
+                        onChange={(v) => setE(i, { niveauId: v })}
+                        placeholder="اختر المستوى الدراسي"
+                        apiUrl={`${API}/enfant/niveauScolaire`}
+                        onNewItem={(o) => setNiveaux((p) => [...p, o])}
+                      />
+                    </div>
+                    <div>
+                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                        المؤسسة <span className="text-red-500">*</span>
+                      </span>
+                      <Select
+                        options={ecoles}
+                        value={e.ecoleId}
+                        onChange={(v) => setE(i, { ecoleId: v })}
+                        placeholder="اختر المؤسسة"
+                        apiUrl={`${API}/enfant/ecole`}
+                        onNewItem={(o) => setEcoles((p) => [...p, o])}
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">التخصص</span>
+                      <Select
+                        options={specialites}
+                        value={e.specialiteId}
+                        onChange={(v) => setE(i, { specialiteId: v })}
+                        placeholder="اختر التخصص"
+                        apiUrl={`${API}/enfant/specialite`}
+                        onNewItem={(o) => setSpecialites((p) => [...p, o])}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
-              <div className="w-1/2">
-                <div className="md:col-span-2 mt-4">
-                  <Label htmlFor="numphone">رقم الهاتف</Label>
-                  <Input
-                    type="text"
-                    placeholder="رقم الهاتف"
-
-            value={familleData.phone}
-            onChange={(e) => setFamilleData({ ...familleData, phone: e.target.value })}
-            className="border p-2 rounded w-full"
-          /></div></div></div>
-             <div className="flex gap-4">
-                <div className="w-1/2">
-      <div className="relative md:col-span-2">
-        <Label htmlFor="dateInscription">تاريخ التسجيل</Label>
-
-     <DatePicker
-       selected={selectedDateInscription}  // Use the stable Date state
-       onChange={(date: Date | null) => {
-         setSelectedDateInscription(date);  // Update the Date state
-         if (!date) {
-           setFamilleData((p) => ({ ...p, dateInscription: "" }));
-           return;
-         }
-         const d = String(date.getDate()).padStart(2, "0");
-         const m = String(date.getMonth() + 1).padStart(2, "0");
-         const y = date.getFullYear();
-         setFamilleData((p) => ({
-           ...p,
-           dateInscription: `${d}/${m}/${y}`,
-         }));
-       }}
-       dateFormat="dd/MM/yyyy"
-       placeholderText="__/__/____"
-       className="h-9 px-3 border rounded-md w-full"
-     />
-
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
-</div></div>
-  <div className="flex gap-4">
-             <div className="w-1/2">
-              <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={familleData.possedeMalade}
-            onChange={(e) => setFamilleData({ ...familleData, possedeMalade: e.target.checked })}
-            className="mr-2"
-          />
-          <label>هل تعتني بشخص مريض في المنزل؟</label>
-          </div></div>
 
-             <div className="w-1/2">
-      {familleData.possedeMalade && (
-        <div className="flex gap-4 mt-2">
-          <div className="w-1/2">
-            <Input
-              type="text"
-              placeholder="نوع المرض"
-              value={familleData.personneMalade}
-              onChange={(e) =>
-                setFamilleData({ ...familleData, personneMalade: e.target.value })
-              }
-              className="border p-2 rounded w-full"
-            />
-          </div>
-
-          <div className="w-1/2">
-            <Input
-              type="text"
-              placeholder="صلة القرابة"
-              value={familleData.lienParenteMalade}
-              onChange={(e) =>
-                setFamilleData({ ...familleData, lienParenteMalade: e.target.value })
-              }
-              className="border p-2 rounded w-full"
-            />
+      {/* BARRE D'ENREGISTREMENT */}
+      <div className="sticky bottom-4 z-30 mx-auto max-w-5xl">
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white/95 p-3 shadow-xl backdrop-blur">
+          <span className="px-2 text-sm text-gray-500">
+            اكتمال النموذج: <b className="text-indigo-600">{progress}%</b>
+          </span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={resetAll}
+              disabled={loading}
+              className="h-11 rounded-xl border border-gray-200 px-5 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+            >
+              مسح
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={loading}
+              className="h-11 rounded-xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {loading ? "جاري التسجيل..." : "💾 تسجيل العائلة"}
+            </button>
           </div>
         </div>
-      )}
-
-        </div>
-     </div>
-     <div className="flex items-center mt-4">
-         <input
-           type="checkbox"
-           checked={familleData.aideFamille}
-           onChange={(e) =>
-             setFamilleData({
-               ...familleData,
-               aideFamille: e.target.checked,
-             })
-           }
-           className="mr-2"
-         />
-         <label>هل تستفيد العائلة من مساعدة؟</label>
-       </div>
-   <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={familleData.revenuMensuel}
-            onChange={(e) =>
-              setFamilleData({
-                ...familleData,
-                revenuMensuel: e.target.checked,
-              })
-            }
-            className="mr-2"
-          />
-          <label>هل يوجد دخل مالي شهري ؟</label>
-        </div>
-<div className="flex items-center mt-4">
-  <input
-    type="checkbox"
-    checked={familleData.beneficieAutreAssociation}
-    onChange={(e) =>
-      setFamilleData({
-        ...familleData,
-        beneficieAutreAssociation: e.target.checked,
-      })
-    }
-    className="mr-2"
-  />
-  <label>هل تستفيد العائلة من جمعية أخرى ؟</label>
-</div>
-</ComponentCard>
-
- <ComponentCard title={<span className="font-bold">معلومات الأب</span>}>
-
-
-    {/* Nom et Prénom toujours visibles */}
- {/* Checkbox Décédée */}
-       <div className="flex gap-4">
-          <div className="w-1/2">
-    <div className="flex items-center mt-4">
-      <input
-        type="checkbox"
-        checked={pereData.estDecedee}
-        onChange={(e) => setPereData({ ...pereData, estDecedee: e.target.checked })}
-        className="mr-2"
-      />
-      <label>هل الاب متوفي؟</label>
-    </div>
-   </div>
-
-      <div className="w-1/2">
-    {/* Si décédée, afficher seulement les champs essentiels */}
-    {pereData.estDecedee && (
-      <div className="mt-2 space-y-2">
-
-  <Label htmlFor="nom">تاريخ الوفاة</Label>
-    <DatePicker
-                       selected={selectedDateDecesPere}  // Utilise l'état Date stable
-                       onChange={(date: Date | null) => {
-                         setSelectedDateDecesPere(date);  // Met à jour l'état Date
-                         if (!date) {
-                           setPereData((prev) => ({ ...prev, dateDeces: "" }));
-                           return;
-                         }
-                         const d = String(date.getDate()).padStart(2, "0");
-                         const m = String(date.getMonth() + 1).padStart(2, "0");
-                         const y = date.getFullYear();
-                         setPereData((prev) => ({
-                           ...prev,
-                           dateDeces: `${d}/${m}/${y}`,
-                         }));
-                       }}
-                       dateFormat="dd/MM/yyyy"
-                       placeholderText="__/__/____"
-                       className="h-9 px-3 border rounded-md w-full"
-                     />
-
-
-      </div>
-    )}</div></div>
-    <div className="flex gap-4">
-     <div className="w-1/2">
-            <Label htmlFor="prenom">الاسم</Label>
-            <Input
-              id="prenom"
-              type="text"
-              placeholder="الاسم"
-              value={pereData.prenom}
-              onChange={(e) => setPereData({ ...pereData, prenom: e.target.value })}
-              className="border p-2 rounded w-full"
-            />
-          </div>
-      <div className="w-1/2">
-        <Label htmlFor="nom">النسب</Label>
-        <Input
-          id="nom"
-          type="text"
-          placeholder="النسب"
-          value={pereData.nom}
-          onChange={(e) => setPereData({ ...pereData, nom: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
-      </div>
-
-
-    </div>
-
-
-    {/* Si non décédée, afficher les autres champs */}
-    {!pereData.estDecedee && (
-      <>
-         <div className="flex gap-4">
-            <div className="w-1/2">
-
-             <Label htmlFor="nom">رقم البطاقة الوطنية</Label>
-        <Input
-          type="text"
-          placeholder="CIN"
-          value={pereData.cin}
-          onChange={(e) => setPereData({ ...pereData, cin: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
-           </div>
-
-              <div className="w-1/2">
-                <Label htmlFor="nom">رقم الهاتف</Label>
-         <Input
-                  type="text"
-                  placeholder="Téléphone"
-                  value={pereData.phone}
-                  onChange={(e) => setPereData({ ...pereData, phone: e.target.value })}
-                  className="border p-2 rounded w-full"
-                /></div></div>
-   <div className="flex gap-4">
-      <div className="w-1/2">
-                    <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
-                   <DatePicker
-                     selected={selectedDateNaissancePere}  // Utilise l'état Date stable
-                     onChange={(date: Date | null) => {
-                       setSelectedDateNaissancePere(date);  // Met à jour l'état Date
-                       if (!date) {
-                         setPereData((prev) => ({ ...prev, dateNaissance: "" }));
-                         return;
-                       }
-                       const d = String(date.getDate()).padStart(2, "0");
-                       const m = String(date.getMonth() + 1).padStart(2, "0");
-                       const y = date.getFullYear();
-                       setPereData((prev) => ({
-                         ...prev,
-                         dateNaissance: `${d}/${m}/${y}`,
-                       }));
-                     }}
-                     dateFormat="dd/MM/yyyy"
-                     placeholderText="__/__/____"
-                     className="h-9 px-3 border rounded-md w-full"
-                   />
-
-   </div>
-
-      <div className="w-1/2">
-              <Label htmlFor="villeNaissance">مكان الازدياد</Label>
-              <Input type="text" id="villeNaissance" value={pereData.villeNaissance}   onChange={(e) => setPereData({ ...pereData, villeNaissance: e.target.value })} />
-            </div></div>
-
-
-        {/* Checkbox Malade */}
-          <div className="flex gap-4">
-             <div className="w-1/2">
-              <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={pereData.estMalade}
-            onChange={(e) => setPereData({ ...pereData, estMalade: e.target.checked })}
-            className="mr-2"
-          />
-          <label>هل الاب مريض؟</label>
-          </div></div>
-
-             <div className="w-1/2">
-        {pereData.estMalade && (
-          <Input
-            type="text"
-            placeholder="نوع المرض"
-            value={pereData.typeMaladie}
-            onChange={(e) => setPereData({ ...pereData, typeMaladie: e.target.value })}
-            className="border p-2 rounded w-full mt-2"
-          />
-        )}
-        </div></div>
-
-        {/* Checkbox Travaille */}
-           <div className="flex gap-4">
-              <div className="w-1/2">
-        <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={pereData.estTravaille}
-            onChange={(e) => setPereData({ ...pereData, estTravaille: e.target.checked })}
-            className="mr-2"
-          />
-          <label>هل الاب يعمل؟</label>
-        </div>   </div>
-
-                    <div className="w-1/2">
-        {pereData.estTravaille && (
-          <Input
-            type="text"
-            placeholder="نوع العمل"
-            value={pereData.typeTravail}
-            onChange={(e) => setPereData({ ...pereData, typeTravail: e.target.value })}
-            className="border p-2 rounded w-full mt-2"
-          />
-        )}</div></div>
-      </>
-    )}
-
-{!pereData.estDecedee && (
-  <div className="mt-4">
-    <DropzoneComponent
-      label="صورة الأب"
-      id="photoPere"
-      onFileSelect={(file) => {
-        setPereData((prev) => ({ ...prev, photoPere: file }));
-      }}
-    />
-
-  </div>
-)}
-
-  </ComponentCard>
-</div>
- <div className="space-y-6">
-
- <ComponentCard title={<span className="font-bold">معلومات الأم</span>}>
-
-
-    {/* Nom et Prénom toujours visibles */}
- {/* Checkbox Décédée */}
-       <div className="flex gap-4">
-          <div className="w-1/2">
-    <div className="flex items-center mt-4">
-      <input
-        type="checkbox"
-        checked={mereData.estDecedee}
-        onChange={(e) => setMereData({ ...mereData, estDecedee: e.target.checked })}
-        className="mr-2"
-      />
-      <label>هل الام متوفاة؟</label>
-    </div>
-   </div>
-
-      <div className="w-1/2">
-    {/* Si décédée, afficher seulement les champs essentiels */}
-    {mereData.estDecedee && (
-      <div className="mt-2 space-y-2">
-
-  <Label htmlFor="nom">تاريخ الوفاة</Label>
-   <DatePicker
-                       selected={selectedDateDecesMere}  // Utilise l'état Date stable
-                       onChange={(date: Date | null) => {
-                         setSelectedDateDecesMere(date);  // Met à jour l'état Date
-                         if (!date) {
-                           setMereData((prev) => ({ ...prev, dateDeces: "" }));
-                           return;
-                         }
-                         const d = String(date.getDate()).padStart(2, "0");
-                         const m = String(date.getMonth() + 1).padStart(2, "0");
-                         const y = date.getFullYear();
-                         setMereData((prev) => ({
-                           ...prev,
-                           dateDeces: `${d}/${m}/${y}`,
-                         }));
-                       }}
-                       dateFormat="dd/MM/yyyy"
-                       placeholderText="__/__/____"
-                       className="h-9 px-3 border rounded-md w-full"
-                     />
-
-
-
-      </div>
-    )}</div></div>
-    <div className="flex gap-4">
-     <div className="w-1/2">
-            <Label htmlFor="prenom">الاسم</Label>
-            <Input
-              id="prenom"
-              type="text"
-              placeholder="الاسم"
-              value={mereData.prenom}
-              onChange={(e) => setMereData({ ...mereData, prenom: e.target.value })}
-              className="border p-2 rounded w-full"
-            />
-          </div>
-      <div className="w-1/2">
-        <Label htmlFor="nom">النسب</Label>
-        <Input
-          id="nom"
-          type="text"
-          placeholder="النسب"
-          value={mereData.nom}
-          onChange={(e) => setMereData({ ...mereData, nom: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
-      </div>
-
-
-    </div>
-
-
-    {/* Si non décédée, afficher les autres champs */}
-    {!mereData.estDecedee && (
-      <>
-         <div className="flex gap-4">
-            <div className="w-1/2">
-
-             <Label htmlFor="nom">رقم البطاقة الوطنية</Label>
-        <Input
-          type="text"
-          placeholder="CIN"
-          value={mereData.cin}
-          onChange={(e) => setMereData({ ...mereData, cin: e.target.value })}
-          className="border p-2 rounded w-full"
-        />
-           </div>
-
-              <div className="w-1/2">
-                <Label htmlFor="nom">رقم الهاتف</Label>
-         <Input
-                  type="text"
-                  placeholder="Téléphone"
-                  value={mereData.phone}
-                  onChange={(e) => setMereData({ ...mereData, phone: e.target.value })}
-                  className="border p-2 rounded w-full"
-                /></div></div>
-   <div className="flex gap-4">
-      <div className="w-1/2">
-                    <Label htmlFor="dateInscription">تاريخ الازدياد</Label>
-                   <DatePicker
-                     selected={selectedDateNaissanceMere}  // Utilise l'état Date stable
-                     onChange={(date: Date | null) => {
-                       setSelectedDateNaissanceMere(date);  // Met à jour l'état Date
-                       if (!date) {
-                         setMereData((prev) => ({ ...prev, dateNaissance: "" }));
-                         return;
-                       }
-                       const d = String(date.getDate()).padStart(2, "0");
-                       const m = String(date.getMonth() + 1).padStart(2, "0");
-                       const y = date.getFullYear();
-                       setMereData((prev) => ({
-                         ...prev,
-                         dateNaissance: `${d}/${m}/${y}`,
-                       }));
-                     }}
-                     dateFormat="dd/MM/yyyy"
-                     placeholderText="__/__/____"
-                     className="h-9 px-3 border rounded-md w-full"
-                   />
-
-   </div>
-
-      <div className="w-1/2">
-              <Label htmlFor="villeNaissance">مكان الازدياد</Label>
-              <Input type="text" id="villeNaissance" value={mereData.villeNaissance}   onChange={(e) => setMereData({ ...mereData, villeNaissance: e.target.value })} />
-            </div></div>
-
-
-        {/* Checkbox Malade */}
-          <div className="flex gap-4">
-             <div className="w-1/2">
-              <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={mereData.estMalade}
-            onChange={(e) => setMereData({ ...mereData, estMalade: e.target.checked })}
-            className="mr-2"
-          />
-          <label>هل الام مريضة؟</label>
-          </div></div>
-
-             <div className="w-1/2">
-        {mereData.estMalade && (
-          <Input
-            type="text"
-            placeholder="نوع المرض"
-            value={mereData.typeMaladie}
-            onChange={(e) => setMereData({ ...mereData, typeMaladie: e.target.value })}
-            className="border p-2 rounded w-full mt-2"
-          />
-        )}
-        </div></div>
-
-        {/* Checkbox Travaille */}
-           <div className="flex gap-4">
-              <div className="w-1/2">
-        <div className="flex items-center mt-4">
-          <input
-            type="checkbox"
-            checked={mereData.estTravaille}
-            onChange={(e) => setMereData({ ...mereData, estTravaille: e.target.checked })}
-            className="mr-2"
-          />
-          <label>هل الام تعمل؟</label>
-        </div>   </div>
-
-                    <div className="w-1/2">
-        {mereData.estTravaille && (
-          <Input
-            type="text"
-            placeholder="نوع العمل"
-            value={mereData.typeTravail}
-            onChange={(e) => setMereData({ ...mereData, typeTravail: e.target.value })}
-            className="border p-2 rounded w-full mt-2"
-          />
-        )}</div></div>
-         <div className="md:col-span-2 mt-4">
-             <DropzoneComponent
-               label="صورة الأم"
-               id="photoMere"
-               onFileSelect={(file) => {
-                 // stocke le File réel
-                 setMereData(prev => ({ ...prev, photoMere: file }));
-                 console.log("✅ Fichier mère sélectionné :", file.name);
-               }}
-             />
-
-
-
-
-
-
-
-    </div>
-      </>
-    )}
-
-
-  </ComponentCard><ComponentCard title={<span className="font-bold">معلومات الأبناء</span>}>
-                    {/* Si aucun enfant, ne rien afficher */}
-                    {familleData.nombreEnfants > 0 ? (
-                      <>
-                        {Array.from({ length: familleData.nombreEnfants }, (_, index) => (
-                          <div key={index} className="border rounded-xl p-4 mb-6 bg-gray-50">
-                            <h2 className="text-xl font-semibold mb-4 text-center">
-                              الابن {index + 1}
-                            </h2>
-
-                            {/* Nom et prénom */}
-                            <div className="flex gap-4">
-                              <div className="w-1/2">
-                                <Label htmlFor={`prenom-${index}`}>الاسم</Label>
-                                <Input
-                                  id={`prenom-${index}`}
-                                  type="text"
-                                  placeholder="الاسم"
-                                  value={enfants[index]?.prenom || ""}
-                                  onChange={(e) => {
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = { ...newEnfants[index], prenom: e.target.value };
-                                    setEnfants(newEnfants);
-                                  }}
-                                  className="border p-2 rounded w-full"
-                                />
-                              </div>
-
-                              <div className="w-1/2">
-                                <Label htmlFor={`nom-${index}`}>النسب</Label>
-                                <Input
-                                  id={`nom-${index}`}
-                                  type="text"
-                                  placeholder="النسب"
-                                  value={enfants[index]?.nom || ""}
-                                  onChange={(e) => {
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = { ...newEnfants[index], nom: e.target.value };
-                                    setEnfants(newEnfants);
-                                  }}
-                                  className="border p-2 rounded w-full"
-                                />
-                              </div>
-                            </div>
-
-                            {/* Date de naissance et niveau scolaire */}
-                            <div className="flex gap-4 mt-4">
-                              <div className="w-1/2">
-                                <Label htmlFor={`date-${index}`}>تاريخ الازدياد</Label>
-                                 <DatePicker
-                                      selected={enfants[index]?.selectedDateNaissance}
-                                      onChange={(date: Date | null) => {
-                                        const newEnfants = [...enfants];
-                                        newEnfants[index].selectedDateNaissance = date;
-                                        if (!date) {
-                                          newEnfants[index].dateNaissance = "";
-                                        } else {
-                                          const d = String(date.getDate()).padStart(2, "0");
-                                          const m = String(date.getMonth() + 1).padStart(2, "0");
-                                          const y = date.getFullYear();
-                                          newEnfants[index].dateNaissance = `${d}/${m}/${y}`;
-                                        }
-                                        setEnfants(newEnfants);
-                                      }}
-                                      dateFormat="dd/MM/yyyy"
-                                      placeholderText="__/__/____"
-                                      className="h-9 px-3 border rounded-md w-full"
-                                    />
-                              </div>
-                               <div className="w-1/2 flex items-center">
-                                                              <input
-                                                                type="checkbox"
-                                                                checked={enfants[index]?.estMalade || false}
-                                                                onChange={(e) => {
-                                                                  const newEnfants = [...enfants];
-                                                                  newEnfants[index] = {
-                                                                    ...newEnfants[index],
-                                                                    estMalade: e.target.checked,
-                                                                  };
-                                                                  setEnfants(newEnfants);
-                                                                }}
-                                                                className="mr-2"
-                                                              />
-                                                              <label>هل الابن مريض؟</label>
-                                                            </div>
-
-                                                            <div className="w-1/2">
-                                                              {enfants[index]?.estMalade && (
-                                                                <Input
-                                                                  type="text"
-                                                                  placeholder="نوع المرض"
-                                                                  value={enfants[index]?.typeMaladie || ""}
-                                                                  onChange={(e) => {
-                                                                    const newEnfants = [...enfants];
-                                                                    newEnfants[index] = {
-                                                                      ...newEnfants[index],
-                                                                      typeMaladie: e.target.value,
-                                                                    };
-                                                                    setEnfants(newEnfants);
-                                                                  }}
-                                                                  className="border p-2 rounded w-full mt-2"
-                                                                />
-                                                              )}
-                                                            </div>
-
-                            </div>
-
-                            {/* Checkbox Malade */}
-                            <div className="flex gap-4 mt-4">
-<div className="w-1/2">
-                                <Label htmlFor={`date-${index}`}>السنة الدراسية</Label>
-
-                              <Input
-                                id={`date-${index}`}
-                                type="text"
-                                placeholder="YYYY/YYYY"
-                                value={enfants[index]?.anneeScolaire || ""}
-                                onChange={(e) => {
-                                  // Supprime tout sauf les chiffres
-                                  let val = e.target.value.replace(/\D/g, "");
-
-                                  // Limite à 8 chiffres max (4 pour chaque année)
-                                  if (val.length > 8) val = val.slice(0, 8);
-
-                                  // Insère le slash après les 4 premiers chiffres
-                                  if (val.length > 4) val = val.slice(0, 4) + "/" + val.slice(4);
-
-                                  // Met à jour l'état
-                                  const newEnfants = [...enfants];
-                                  newEnfants[index] = { ...newEnfants[index], anneeScolaire: val };
-                                  setEnfants(newEnfants);
-                                }}
-                              />
-
-                              </div>
-                              <div className="w-1/2">
-                                <Label htmlFor={`niveauscolaire-${index}`}>المستوى الدراسي</Label>
-                                <Select
-                                  selectId={`niveau-${index}`}
-                                  openedSelect={openedSelect}
-                                  setOpenedSelect={setOpenedSelect}
-                                  options={niveauxscolaires}
-                                  value={enfants[index]?.niveauscolaire?.id || ""}
-                                  onChange={(val) => {
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = { ...newEnfants[index], niveauscolaire: val ? { id: val } : null };
-                                    setEnfants(newEnfants);
-                                  }}
-                                  placeholder="اختر المستوى الدراسي"
-                                  apiUrl="http://localhost:8080/api/enfant/niveauScolaire"
-                                  onNewItem={(newOpt) => setNiveauxscolaires((prev) => [...prev, newOpt])}
-                                />
-                              </div></div>
-                               <div className="flex gap-4 mt-4">
-                               <div className="w-1/2">
-                                                              <Label htmlFor={`ecole-${index}`}>المؤسسة</Label>
-                                                             <Select
-                                                             selectId={`ecole-${index}`}
-                                                               openedSelect={openedSelect}
-                                                               setOpenedSelect={setOpenedSelect}
-                                                               options={ecoles}
-                                                               value={enfants[index]?.ecole?.id || ""}
-                                                               onChange={(val) => {
-                                                                 const newEnfants = [...enfants];
-                                                                 newEnfants[index] = { ...newEnfants[index], ecole: { id: val } };
-                                                                 setEnfants(newEnfants);
-                                                               }}
-                                                               placeholder="اختر المؤسسة"
-                                                               apiUrl="http://localhost:8080/api/enfant/ecole"
-                                                               onNewItem={(newOpt) => setEcoles((prev) => [...prev, newOpt])}
-                                                             />
-
-                                                            </div>
-                              <div className="w-1/2">
-                                <Label htmlFor={`specialite-${index}`}>التخصص</Label>
-
-                                <Select
-                                selectId={`specialite-${index}`}
-                                  openedSelect={openedSelect}
-                                  setOpenedSelect={setOpenedSelect}
-                                  options={specialites}
-                                  value={enfants[index]?.specialite?.id || ""}
-                                  onChange={(val) => {
-                                    const newEnfants = [...enfants];
-                                    newEnfants[index] = {
-                                      ...newEnfants[index],
-                                      specialite: val ? { id: val } : null,
-                                    };
-                                    setEnfants(newEnfants);
-                                  }}
-                                  placeholder="اختر التخصص"
-                                  apiUrl="http://localhost:8080/api/enfant/specialite"
-                                  onNewItem={(newOpt) => setSpecialites((prev) => [...prev, newOpt])}
-                                />
-                              </div>
-                            </div>
-
-                            {/* Dropzone + aperçu */}
-                            <div className="mt-6">
-                             <DropzoneComponent
-                                  label="Photo de l'enfant"
-                                  id={`photoEnfant-${index}`}
-                                  onFileSelect={(file) => {
-                                    const updated = [...enfants];
-                                    updated[index].photoEnfant = file; // <- c’est ici qu’on stocke le fichier
-                                    setEnfants(updated);
-                                    console.log(`✅ Fichier enfant ${index + 1} sélectionné :`, file.name);
-                                  }}
-                                />
-
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      <p className="text-gray-500 text-center">لم يتم إدخال عدد الأبناء</p>
-                    )}
-                  </ComponentCard>
-
-
-
-        </div>
-      </div>
-
-      <div className="mt-6 flex justify-center">
-        <button
-          className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl shadow-md transition"
-          onClick={handleSubmitAll}
-          disabled={loading}
-        >
-          {loading ? "Enregistrement..." : "💾 Enregistrer Tout"}
-        </button>
       </div>
     </div>
   );

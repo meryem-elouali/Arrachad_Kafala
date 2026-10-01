@@ -24,6 +24,10 @@ public class Event {
     )
     @Column(name = "degre")
     private List<Integer> degresFamille = new ArrayList<>();
+    @Column(precision = 19, scale = 2)
+    private BigDecimal chargeSupplementaire = BigDecimal.ZERO;
+
+    private String chargeSupplementaireLabel;
     // ------------------------------------
     // Base infos
     // ------------------------------------
@@ -69,6 +73,21 @@ public class Event {
     @Column(name = "cible")
     private List<Cible> cibles = new ArrayList<>();
 
+    public BigDecimal getChargeSupplementaire() {
+        return chargeSupplementaire;
+    }
+
+    public void setChargeSupplementaire(BigDecimal chargeSupplementaire) {
+        this.chargeSupplementaire = chargeSupplementaire;
+    }
+
+    public void setChargeSupplementaireLabel(String chargeSupplementaireLabel) {
+        this.chargeSupplementaireLabel = chargeSupplementaireLabel;
+    }
+
+    public String getChargeSupplementaireLabel() {
+        return chargeSupplementaireLabel;
+    }
 
     @Column(name = "calendar_level", nullable = false)
     private String calendarLevel;

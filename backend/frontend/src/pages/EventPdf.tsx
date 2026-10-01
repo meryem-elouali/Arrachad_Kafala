@@ -13,11 +13,31 @@ import type { ParticipantRow } from "./ParticipantsPdf";
 Font.register({
   family: "Amiri",
   fonts: [
-    { src: "/fonts/Amiri-Regular.ttf", fontWeight: 400 },
-    { src: "/fonts/Amiri-Bold.ttf", fontWeight: 700 },
+    {
+      src: "/fonts/Amiri-Regular.ttf",
+      fontWeight: 400,
+      fontStyle: "normal",
+    },
+
+    {
+      src: "/fonts/Amiri-Bold.ttf",
+      fontWeight: 700,
+      fontStyle: "normal",
+    },
+
+    {
+      src: "/fonts/Amiri-Italic.ttf",
+      fontWeight: 400,
+      fontStyle: "italic",
+    },
+
+    {
+      src: "/fonts/Amiri-BoldItalic.ttf",
+      fontWeight: 700,
+      fontStyle: "italic",
+    },
   ],
 });
-Font.registerHyphenationCallback((word) => [word]);
 
 interface EventFile {
   base64: string;
@@ -372,7 +392,15 @@ const walk = (parent: Element, out: Block[], depth = 0, inQuote = false) => {
             depth,
           });
         }
-        walk(li, out, depth + 1); // sous-listes
+             // on ne parcourt que les sous-listes
+             Array.from(li.children).forEach((sub) => {
+               const t = sub.tagName.toLowerCase();
+               if (t === "ul" || t === "ol") {
+                 const wrapper = document.createElement("div");
+                 wrapper.appendChild(sub.cloneNode(true));
+                 walk(wrapper, out, depth + 1);
+               }
+             });
       });
       return;
     }
@@ -423,7 +451,7 @@ const renderRuns = (runs: Run[]) =>
       key={i}
       style={{
         fontWeight: r.bold ? 700 : 400,
-        fontStyle: r.italic ? "italic" : "normal",
+
         textDecoration:
           r.underline && r.strike
             ? "underline line-through"
@@ -459,7 +487,7 @@ const isRenderableImage = (f: EventFile) =>
   f.type === "image/jpeg" || f.type === "image/png";
 
 /* ============ Document ============ */
-
+const fmt = (d: any) => (d ? new Date(d).toLocaleDateString("fr-FR") : "-");
 const EventPdf: React.FC<EventPdfProps> = ({
   event,
   description,
@@ -512,8 +540,8 @@ const EventPdf: React.FC<EventPdfProps> = ({
               label="الفئة المستهدفة"
               value={cibles.map(cibleLabel).join(" - ")}
             />
-            <Card label="تاريخ البداية" value={event.startDate} />
-            <Card label="تاريخ النهاية" value={event.endDate} />
+         <Card label="تاريخ البداية" value={fmt(event.startDate)} />
+         <Card label="تاريخ النهاية" value={fmt(event.endDate)} />
 
             {event.degresFamille?.length > 0 && (
               <Card label="درجة العائلة المستهدفة" full>

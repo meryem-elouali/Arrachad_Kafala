@@ -6,7 +6,9 @@ import "flatpickr/dist/flatpickr.css";
 import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import { ThemeProvider } from "./context/ThemeContext.tsx";
+import { Buffer } from "buffer";
 
+(globalThis as any).Buffer = Buffer;
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <ThemeProvider>

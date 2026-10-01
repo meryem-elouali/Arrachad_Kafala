@@ -50,7 +50,45 @@ public class FamilleController {
         this.etudeRepo = etudeRepo;
         this.degreRepo = degreRepo;
     }
+    private int calculerDegre(Famille f) {
+        DegreFamille d = degreRepo.findAll().stream().findFirst()
+                .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
 
+        int degre = 0;
+
+        Integer nb = f.getNombreEnfants();
+        degre += (nb != null ? nb : 0) * d.getPointParEnfant();
+
+        if (f.getHabitationFamille() != null) {
+            String h = f.getHabitationFamille().getNom();
+            if ("ملك".equals(h)) degre += d.getPointHabitationPropriete();
+            if ("رهن".equals(h)) degre += d.getPointHabitationRahn();
+            if ("كراء".equals(h)) degre += d.getPointHabitationLoyer();
+        }
+
+        Mere m = f.getMere();
+        degre += (m != null && Boolean.TRUE.equals(m.getEstTravaille()))
+                ? d.getPointMereTravailleOui() : d.getPointMereTravailleNon();
+        degre += (m != null && Boolean.TRUE.equals(m.getEstMalade()))
+                ? d.getPointMereMaladeOui() : d.getPointMereMaladeNon();
+
+        degre += Boolean.TRUE.equals(f.getAideFamille())
+                ? d.getPointAideFamilleOui() : d.getPointAideFamilleNon();
+        degre += Boolean.TRUE.equals(f.getRevenuMensuel())
+                ? d.getPointRevenuMensuelOui() : d.getPointRevenuMensuelNon();
+        degre += Boolean.TRUE.equals(f.getBeneficieAutreAssociation())
+                ? d.getPointAutreAssociationOui() : d.getPointAutreAssociationNon();
+        degre += Boolean.TRUE.equals(f.getPossedeMalade())
+                ? d.getPointPossedeMaladeOui() : d.getPointPossedeMaladeNon();
+
+        long nbMalades = f.getEnfants() == null ? 0 : f.getEnfants().stream()
+                .filter(e -> Boolean.TRUE.equals(e.getEstMalade())).count();
+        degre += nbMalades * d.getPointEnfantMalade();
+
+        if (degre >= 7) return 1;
+        if (degre >= 4) return 2;
+        return 3;
+    }
     // 🔹 Obtenir tous les types de familles
     @GetMapping("/types")
     public List<TypeFamille> getTypes() {
@@ -117,7 +155,7 @@ public class FamilleController {
     public Famille addFamille(
             @RequestParam String adresseFamille,
             @RequestParam String phone,
-            @RequestParam String dateInscription,
+            @RequestParam(required = false) String dateInscription,
             @RequestParam Integer nombreEnfants,
             @RequestParam Boolean possedeMalade,
             @RequestParam String personneMalade,
@@ -162,7 +200,10 @@ public class FamilleController {
             Famille famille = new Famille();
             famille.setAdresseFamille(adresseFamille);
             famille.setPhone(phone);
-            famille.setDateInscription(dateInscription);
+            famille.setDateInscription(
+                    (dateInscription == null || dateInscription.isBlank())
+                            ? LocalDate.now().toString()
+                            : dateInscription);
             famille.setNombreEnfants(nombreEnfants);
             famille.setPossedeMalade(possedeMalade);
             famille.setAideFamille(aideFamille);
@@ -171,6 +212,12 @@ public class FamilleController {
             famille.setTypeFamille(typeFamille);
             famille.setHabitationFamille(habitationFamille);
             famille.setMere(mereRepo.findById(mereId).orElseThrow(() -> new RuntimeException("Mère non trouvée")));
+
+            Mere mereTel = famille.getMere();
+            if (mereTel != null && (mereTel.getPhone() == null || mereTel.getPhone().isBlank())
+                    && phone != null && !phone.isBlank()) {
+                mereTel.setPhone(phone);
+            }
             famille.setPere(pereRepo.findById(pereId).orElseThrow(() -> new RuntimeException("Père non trouvé")));
             famille.setRevenuMensuel(revenuMensuel);
             famille.setBeneficieAutreAssociation(beneficieAutreAssociation);
@@ -187,67 +234,7 @@ public class FamilleController {
                 }
             }
             famille.setEnfants(enfants);
-            DegreFamille d = degreRepo.findAll().stream()
-                    .findFirst()
-                    .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
-
-            int degre = 0;
-
-// nombre enfants = nombre * point
-            degre += nombreEnfants * d.getPointParEnfant();
-
-// habitation
-            String habitationNom = habitationFamille.getNom();
-            if ("ملك".equals(habitationNom)) degre += d.getPointHabitationPropriete();
-            if ("رهن".equals(habitationNom)) degre += d.getPointHabitationRahn();
-            if ("كراء".equals(habitationNom)) degre += d.getPointHabitationLoyer();
-
-// mère travaille
-            if (famille.getMere().getEstTravaille()) {
-                degre += d.getPointMereTravailleOui();
-            } else {
-                degre += d.getPointMereTravailleNon();
-            }
-
-// mère malade
-            if (famille.getMere().getEstMalade()) {
-                degre += d.getPointMereMaladeOui();
-            } else {
-                degre += d.getPointMereMaladeNon();
-            }
-
-// aide famille
-            degre += aideFamille ? d.getPointAideFamilleOui() : d.getPointAideFamilleNon();
-
-// revenu mensuel
-            degre += revenuMensuel ? d.getPointRevenuMensuelOui() : d.getPointRevenuMensuelNon();
-
-// autre association
-            degre += beneficieAutreAssociation ? d.getPointAutreAssociationOui() : d.getPointAutreAssociationNon();
-
-// possède malade
-            degre += possedeMalade ? d.getPointPossedeMaladeOui() : d.getPointPossedeMaladeNon();
-
-// enfants malades = nombre enfants malades * point
-            long nbEnfantsMalades = enfants.stream()
-                    .filter(e -> Boolean.TRUE.equals(e.getEstMalade()))
-                    .count();
-
-            degre += nbEnfantsMalades * d.getPointEnfantMalade();
-
-            int degreFinal;
-
-            if (degre >= 7 && degre <= 10) {
-                degreFinal = 1;
-            } else if (degre >= 4 && degre < 7) {
-                degreFinal = 2;
-            } else if (degre >= 0 && degre < 4) {
-                degreFinal = 3;
-            } else {
-                throw new RuntimeException("Note de degré invalide : " + degre);
-            }
-
-            famille.setDegreFamille(degreFinal);
+            famille.setDegreFamille(calculerDegre(famille));
             // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
 
@@ -325,9 +312,19 @@ public class FamilleController {
         }
 
         if (payload.containsKey("phone")) {
-            existingFamille.setPhone((String) payload.get("phone"));
-        }
+            String oldPhone = existingFamille.getPhone();
+            String newPhone = (String) payload.get("phone");
+            existingFamille.setPhone(newPhone);
 
+            Mere m = existingFamille.getMere();
+            if (m != null && newPhone != null && !newPhone.isBlank()) {
+                String mp = m.getPhone();
+                // copie seulement si le téléphone de la mère est vide ou identique à l'ancien
+                if (mp == null || mp.isBlank() || mp.equals(oldPhone)) {
+                    m.setPhone(newPhone);
+                }
+            }
+        }
         if (payload.containsKey("dateInscription")) {
             existingFamille.setDateInscription((String) payload.get("dateInscription"));
         }
@@ -377,64 +374,7 @@ public class FamilleController {
         if (payload.containsKey("beneficieAutreAssociation")) {
             existingFamille.setBeneficieAutreAssociation((Boolean) payload.get("beneficieAutreAssociation"));
         }
-
-// recalcul degré famille
-        DegreFamille d = degreRepo.findAll().stream()
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
-
-        int degre = 0;
-
-        degre += existingFamille.getNombreEnfants() * d.getPointParEnfant();
-
-        String habitationNom = existingFamille.getHabitationFamille().getNom();
-        if ("ملك".equals(habitationNom)) degre += d.getPointHabitationPropriete();
-        if ("رهن".equals(habitationNom)) degre += d.getPointHabitationRahn();
-        if ("كراء".equals(habitationNom)) degre += d.getPointHabitationLoyer();
-
-        degre += existingFamille.getMere().getEstTravaille()
-                ? d.getPointMereTravailleOui()
-                : d.getPointMereTravailleNon();
-
-        degre += existingFamille.getMere().getEstMalade()
-                ? d.getPointMereMaladeOui()
-                : d.getPointMereMaladeNon();
-
-        degre += Boolean.TRUE.equals(existingFamille.getAideFamille())
-                ? d.getPointAideFamilleOui()
-                : d.getPointAideFamilleNon();
-
-        degre += Boolean.TRUE.equals(existingFamille.getRevenuMensuel())
-                ? d.getPointRevenuMensuelOui()
-                : d.getPointRevenuMensuelNon();
-
-        degre += Boolean.TRUE.equals(existingFamille.getBeneficieAutreAssociation())
-                ? d.getPointAutreAssociationOui()
-                : d.getPointAutreAssociationNon();
-
-        degre += Boolean.TRUE.equals(existingFamille.getPossedeMalade())
-                ? d.getPointPossedeMaladeOui()
-                : d.getPointPossedeMaladeNon();
-
-        long nbEnfantsMalades = existingFamille.getEnfants().stream()
-                .filter(e -> Boolean.TRUE.equals(e.getEstMalade()))
-                .count();
-
-        degre += nbEnfantsMalades * d.getPointEnfantMalade();
-
-        int degreFinal;
-
-        if (degre >= 7 && degre <= 10) {
-            degreFinal = 1;
-        } else if (degre >= 4 && degre < 7) {
-            degreFinal = 2;
-        } else if (degre >= 0 && degre < 4) {
-            degreFinal = 3;
-        } else {
-            throw new RuntimeException("Note de degré invalide : " + degre);
-        }
-
-        existingFamille.setDegreFamille(degreFinal);
+        existingFamille.setDegreFamille(calculerDegre(existingFamille));
 
 
         return familleService.saveFamille(existingFamille);
@@ -489,6 +429,7 @@ public class FamilleController {
             mere.setTypeTravail(null);
         }
 
+        famille.setDegreFamille(calculerDegre(famille));
         familleService.saveFamille(famille);
         return mere;
     }

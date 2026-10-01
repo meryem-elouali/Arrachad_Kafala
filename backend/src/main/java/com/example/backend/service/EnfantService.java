@@ -5,7 +5,9 @@ import com.example.backend.Repository.NiveauScolaireRepository;
 import com.example.backend.Repository.FamilleRepository;
 import com.example.backend.Repository.EtudeRepository;
 import com.example.backend.Repository.EcoleRepository;
+
 import com.example.backend.model.*;
+
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -34,13 +36,29 @@ public class EnfantService {
         this.ecoleRepository = ecoleRepository;
     }
 
-    // 🔹 Enregistrer un enfant
-    public Enfant saveEnfant(Enfant enfant, Long familleId) {
-        Famille famille = familleRepository.findById(familleId)
-                .orElseThrow(() -> new RuntimeException("Famille non trouvée"));
+    // =========================================================
+    // ENFANT
+    // =========================================================
+
+    public Enfant saveEnfant(
+            Enfant enfant,
+            Long familleId
+    ) {
+
+        Famille famille =
+                familleRepository
+                        .findById(familleId)
+                        .orElseThrow(
+                                () -> new RuntimeException(
+                                        "Famille non trouvée"
+                                )
+                        );
 
         enfant.setFamille(famille);
-        famille.getEnfants().add(enfant);
+
+        if (famille.getEnfants() != null) {
+            famille.getEnfants().add(enfant);
+        }
 
         return enfantRepository.save(enfant);
     }
@@ -49,8 +67,33 @@ public class EnfantService {
         return enfantRepository.findAll();
     }
 
-    // 🔹 Niveau scolaire
-    public NiveauScolaire saveNiveauScolaire(NiveauScolaire niveauScolaire) {
+    public Optional<Enfant> getEnfantById(Long id) {
+        return enfantRepository.findById(id);
+    }
+
+    // ✅ pratique pour les Controllers
+    public Enfant getEnfantByIdOrThrow(Long id) {
+
+        return enfantRepository
+                .findById(id)
+                .orElseThrow(
+                        () -> new RuntimeException(
+                                "Enfant introuvable avec id : " + id
+                        )
+                );
+    }
+
+    public Enfant updateEnfant(Enfant enfant) {
+        return enfantRepository.save(enfant);
+    }
+
+    // =========================================================
+    // NIVEAUX SCOLAIRES
+    // =========================================================
+
+    public NiveauScolaire saveNiveauScolaire(
+            NiveauScolaire niveauScolaire
+    ) {
         return niveauScolaireRepo.save(niveauScolaire);
     }
 
@@ -59,41 +102,63 @@ public class EnfantService {
     }
 
     public NiveauScolaire getNiveauScolaireById(Long id) {
-        return niveauScolaireRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Niveau scolaire non trouvé"));
-    }
 
-    // 🔹 Dernier niveau d'étude
-    public NiveauScolaire getDernierNiveauScolaire(Long enfantId) {
-        Etude derniereEtude = etudeRepository.findLatestEtudeByEnfantId(enfantId);
-        return (derniereEtude != null) ? derniereEtude.getNiveauScolaire() : null;
+        return niveauScolaireRepo
+                .findById(id)
+                .orElseThrow(
+                        () -> new RuntimeException(
+                                "Niveau scolaire non trouvé"
+                        )
+                );
     }
 
     public NiveauScolaire getNiveauById(Long id) {
-        return niveauScolaireRepo.findById(id)
-                .orElseThrow(() -> new RuntimeException("Niveau scolaire introuvable"));
+
+        return niveauScolaireRepo
+                .findById(id)
+                .orElseThrow(
+                        () -> new RuntimeException(
+                                "Niveau scolaire introuvable"
+                        )
+                );
     }
 
-    public Ecole getEcoleById(Long id) {
-        return ecoleRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("École introuvable"));
+    // =========================================================
+    // DERNIER NIVEAU SCOLAIRE
+    // =========================================================
+
+    public NiveauScolaire getDernierNiveauScolaire(
+            Long enfantId
+    ) {
+
+        return etudeRepository
+                .findTopByEnfantIdOrderByAnneeScolaireDescIdDesc(
+                        enfantId
+                )
+                .map(Etude::getNiveauScolaire)
+                .orElse(null);
     }
-    // 🔹 Enregistrer une école
+
+    // =========================================================
+    // ECOLES
+    // =========================================================
+
+    public Ecole getEcoleById(Long id) {
+
+        return ecoleRepository
+                .findById(id)
+                .orElseThrow(
+                        () -> new RuntimeException(
+                                "École introuvable"
+                        )
+                );
+    }
+
     public Ecole saveEcole(Ecole ecole) {
         return ecoleRepository.save(ecole);
     }
 
-    // 🔹 Récupérer toutes les écoles
     public List<Ecole> getAllEcoles() {
         return ecoleRepository.findAll();
     }
-    public Enfant updateEnfant(Enfant enfant) {
-        return enfantRepository.save(enfant);
-    }
-
-    public Optional<Enfant> getEnfantById(Long id) {
-        return enfantRepository.findById(id);
-    }
-
-
 }
