@@ -46,6 +46,14 @@ public class Event {
 
 
     // =========================================================
+    // CAISSE CHOISIE (optionnelle)
+    // null = répartition automatique (degré / معوز / سواعد الخير)
+    // =========================================================
+    @ManyToOne
+    @JoinColumn(name = "caisse_id")
+    private EconomicCategory caisse;
+
+    // =========================================================
     // CHARGE SUPPLÉMENTAIRE
     // =========================================================
     @Column(
@@ -341,6 +349,16 @@ public class Event {
     // =========================================================
     // سواعد الخير
     // =========================================================
+
+    public EconomicCategory getCaisse() {
+        return caisse;
+    }
+
+    public void setCaisse(
+            EconomicCategory caisse
+    ) {
+        this.caisse = caisse;
+    }
 
     public Boolean getSawaedAlKhayr() {
         return sawaedAlKhayr;

@@ -3,7 +3,7 @@ import axios from "axios";
 
 const API = "http://localhost:8080/api";
 
-type Category = {
+type Fund = {
   id: number;
   code: string;
   nom: string;
@@ -12,13 +12,13 @@ type Category = {
   ordre: number;
 };
 
-type Receipt = {
+type Income = {
   id: number;
   anneeScolaire: string;
-  categorieId: number;
-  categorieCode: string;
-  categorieNom: string;
-  categorieSysteme: boolean;
+  fundId: number;
+  fundCode: string;
+  fundNom: string;
+  fundSysteme: boolean;
   montant: number;
   dateReception: string;
   source?: string | null;
@@ -28,29 +28,50 @@ type Receipt = {
   createdAt?: string | null;
 };
 
-type SpecialSummary = {
-  categorieId: number;
+type FundSummary = {
+  fundId: number;
   code: string;
   nom: string;
+  systeme: boolean;
   active: boolean;
-  montant: number;
+  entrees: number;
+  sortiesEvents: number;
+  sortiesSoutien: number;
+  sortiesFamilles: number;
+  totalSorties: number;
+  solde: number;
 };
 
-type Summary = {
+type DashboardSummary = {
   anneeScolaire: string;
-  degreDefini: number;
-  degreNonDefini: number;
-  sawaedAlKhayr: number;
-  casSpeciaux: number;
-  totalRecettes: number;
-  nombreOperations: number;
-  categoriesSpeciales: SpecialSummary[];
+  totalEntrees: number;
+  totalSorties: number;
+  solde: number;
+  nonVentile?: number;
+  fonds: FundSummary[];
 };
 
-type ReceiptForm = {
+type FundOperation = {
+  id?: string | number | null;
+  type: "ENTREE" | "SORTIE";
+  sourceType: "ENTREE" | "EVENT" | "SOUTIEN" | "FAMILLE";
+  date?: string | null;
+  libelle: string;
+  montant: number;
+  source?: string | null;
+  beneficiaire?: string | null;
+  reference?: string | null;
+};
+
+type FundDetails = FundSummary & {
+  anneeScolaire: string;
+  operations: FundOperation[];
+};
+
+type IncomeForm = {
   id?: number;
   anneeScolaire: string;
-  categorieId: string;
+  fundId: string;
   montant: string;
   dateReception: string;
   source: string;
@@ -73,44 +94,63 @@ const getSchoolYears = () => {
   const current = getCurrentSchoolYear();
   const first = Number(current.split("/")[0]);
 
-  return Array.from(
-    { length: 8 },
-    (_, index) => {
-      const start = first - index;
-      return `${start}/${start + 1}`;
-    }
-  );
+  return Array.from({ length: 8 }, (_, index) => {
+    const start = first - index;
+    return `${start}/${start + 1}`;
+  });
 };
 
-const fmtMoney = (value: unknown) =>
+const todayIso = () =>
+  new Date().toISOString().slice(0, 10);
+
+const money = (value: unknown) =>
   `${Number(value || 0).toLocaleString("fr-FR", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })} DH`;
 
-const todayIso = () =>
-  new Date().toISOString().slice(0, 10);
+const formatDate = (value?: string | null) => {
+  if (!value) return "-";
 
-const EMPTY_SUMMARY: Summary = {
-  anneeScolaire: getCurrentSchoolYear(),
-  degreDefini: 0,
-  degreNonDefini: 0,
-  sawaedAlKhayr: 0,
-  casSpeciaux: 0,
-  totalRecettes: 0,
-  nombreOperations: 0,
-  categoriesSpeciales: [],
+  const date = new Date(`${value}T00:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("ar-MA", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
 };
 
-const ModalShell: React.FC<{
+const EMPTY_DASHBOARD: DashboardSummary = {
+  anneeScolaire: getCurrentSchoolYear(),
+  totalEntrees: 0,
+  totalSorties: 0,
+  solde: 0,
+  fonds: [],
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  ENTREE: "مدخول",
+  EVENT: "نشاط",
+  SOUTIEN: "دعم دراسي",
+  FAMILLE: "مصروف أسرة",
+};
+
+const Modal: React.FC<{
   open: boolean;
   title: string;
+  subtitle?: string;
   onClose: () => void;
   children: React.ReactNode;
   width?: string;
 }> = ({
   open,
   title,
+  subtitle,
   onClose,
   children,
   width = "max-w-2xl",
@@ -119,8 +159,8 @@ const ModalShell: React.FC<{
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm"
       dir="rtl"
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
@@ -132,25 +172,31 @@ const ModalShell: React.FC<{
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-5 dark:border-slate-800">
           <div>
-            <p className="text-xs font-bold text-indigo-500">
+            <p className="text-xs font-black text-indigo-500">
               الإدارة المالية
             </p>
 
-            <h3 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
+            <h3 className="mt-1 text-xl font-black text-slate-900 dark:text-white">
               {title}
             </h3>
+
+            {subtitle && (
+              <p className="mt-1 text-xs font-semibold text-slate-400">
+                {subtitle}
+              </p>
+            )}
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-lg font-black text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-100 text-xl font-black text-slate-500 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300"
           >
             ×
           </button>
         </div>
 
-        <div className="max-h-[calc(92vh-82px)] overflow-y-auto p-6">
+        <div className="max-h-[calc(92vh-88px)] overflow-y-auto p-6">
           {children}
         </div>
       </div>
@@ -158,24 +204,19 @@ const ModalShell: React.FC<{
   );
 };
 
-const SummaryCard: React.FC<{
+const BigStat: React.FC<{
   label: string;
   value: number;
   subtitle: string;
   className: string;
-}> = ({
-  label,
-  value,
-  subtitle,
-  className,
-}) => (
-  <div className={`rounded-2xl border p-5 shadow-sm ${className}`}>
+}> = ({ label, value, subtitle, className }) => (
+  <div className={`rounded-3xl border p-5 shadow-sm ${className}`}>
     <p className="text-xs font-black opacity-70">
       {label}
     </p>
 
     <p className="mt-2 text-2xl font-black">
-      {fmtMoney(value)}
+      {money(value)}
     </p>
 
     <p className="mt-1 text-[11px] font-bold opacity-60">
@@ -184,1574 +225,1133 @@ const SummaryCard: React.FC<{
   </div>
 );
 
+const FundCard: React.FC<{
+  fund: FundSummary;
+  onOpen: () => void;
+  onAddIncome: () => void;
+}> = ({ fund, onOpen, onAddIncome }) => {
+  const tone =
+    fund.code === "DEGRE_DEFINI"
+      ? {
+          border: "border-blue-200",
+          soft: "bg-blue-50",
+          text: "text-blue-700",
+          dot: "bg-blue-500",
+        }
+      : fund.code === "DEGRE_NON_DEFINI"
+      ? {
+          border: "border-orange-200",
+          soft: "bg-orange-50",
+          text: "text-orange-700",
+          dot: "bg-orange-500",
+        }
+      : fund.code === "SAAWED_AL_KHAYR"
+      ? {
+          border: "border-violet-200",
+          soft: "bg-violet-50",
+          text: "text-violet-700",
+          dot: "bg-violet-500",
+        }
+      : fund.code === "SARATAN"
+      ? {
+          border: "border-rose-200",
+          soft: "bg-rose-50",
+          text: "text-rose-700",
+          dot: "bg-rose-500",
+        }
+      : {
+          border: "border-emerald-200",
+          soft: "bg-emerald-50",
+          text: "text-emerald-700",
+          dot: "bg-emerald-500",
+        };
+
+  return (
+    <article
+      className={`overflow-hidden rounded-3xl border bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg dark:bg-slate-900 ${tone.border}`}
+    >
+      <div className={`border-b px-5 py-4 ${tone.soft} ${tone.border}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className={`h-2.5 w-2.5 rounded-full ${tone.dot}`} />
+
+              <h3 className={`text-lg font-black ${tone.text}`}>
+                {fund.nom}
+              </h3>
+            </div>
+
+            <p className="mt-1 text-[11px] font-bold text-slate-400">
+              {fund.systeme ? "صندوق أساسي" : "صندوق مخصص"}
+            </p>
+          </div>
+
+          <span
+            className={`rounded-full px-2.5 py-1 text-[10px] font-black ${
+              fund.solde >= 0
+                ? "bg-emerald-100 text-emerald-700"
+                : "bg-red-100 text-red-700"
+            }`}
+          >
+            {fund.solde >= 0 ? "رصيد موجب" : "رصيد سالب"}
+          </span>
+        </div>
+      </div>
+
+      <div className="p-5">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-2xl bg-emerald-50 p-3">
+            <p className="text-[11px] font-black text-emerald-600">
+              المداخيل
+            </p>
+
+            <p className="mt-1 font-black text-emerald-800">
+              {money(fund.entrees)}
+            </p>
+          </div>
+
+          <div className="rounded-2xl bg-red-50 p-3">
+            <p className="text-[11px] font-black text-red-600">
+              المصاريف
+            </p>
+
+            <p className="mt-1 font-black text-red-800">
+              {money(fund.totalSorties)}
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-500">
+              الأنشطة
+            </span>
+
+            <strong className="text-slate-800 dark:text-slate-200">
+              {money(fund.sortiesEvents)}
+            </strong>
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-500">
+              الدعم الدراسي
+            </span>
+
+            <strong className="text-slate-800 dark:text-slate-200">
+              {money(fund.sortiesSoutien)}
+            </strong>
+          </div>
+
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-500">
+              مساعدات الأسر
+            </span>
+
+            <strong className="text-slate-800 dark:text-slate-200">
+              {money(fund.sortiesFamilles)}
+            </strong>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl bg-slate-950 p-4 text-white">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-slate-300">
+              الرصيد
+            </span>
+
+            <strong
+              className={`text-xl font-black ${
+                fund.solde >= 0 ? "text-emerald-300" : "text-red-300"
+              }`}
+            >
+              {money(fund.solde)}
+            </strong>
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="h-11 rounded-xl bg-indigo-600 text-sm font-black text-white transition hover:bg-indigo-700"
+          >
+            فتح الصندوق
+          </button>
+
+          <button
+            type="button"
+            onClick={onAddIncome}
+            className="h-11 rounded-xl bg-emerald-600 text-sm font-black text-white transition hover:bg-emerald-700"
+          >
+            + مدخول
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+};
+
 export default function GestionEconomique() {
-  const schoolYears = useMemo(
-    () => getSchoolYears(),
-    []
-  );
+  const schoolYears = useMemo(() => getSchoolYears(), []);
 
-  const [
-    selectedYear,
-    setSelectedYear,
-  ] = useState(
-    getCurrentSchoolYear()
-  );
+  const [selectedYear, setSelectedYear] =
+    useState(getCurrentSchoolYear());
 
-  const [
-    categories,
-    setCategories,
-  ] = useState<Category[]>([]);
+  const [funds, setFunds] =
+    useState<Fund[]>([]);
 
-  const [
-    receipts,
-    setReceipts,
-  ] = useState<Receipt[]>([]);
+  const [incomes, setIncomes] =
+    useState<Income[]>([]);
 
-  const [
-    summary,
-    setSummary,
-  ] = useState<Summary>(
-    EMPTY_SUMMARY
-  );
+  const [dashboard, setDashboard] =
+    useState<DashboardSummary>(EMPTY_DASHBOARD);
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(true);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [
-    error,
-    setError,
-  ] = useState("");
+  const [error, setError] =
+    useState("");
 
-  const [
-    receiptModalOpen,
-    setReceiptModalOpen,
-  ] = useState(false);
+  const [incomeModalOpen, setIncomeModalOpen] =
+    useState(false);
 
-  const [
-    categoryModalOpen,
-    setCategoryModalOpen,
-  ] = useState(false);
+  const [savingIncome, setSavingIncome] =
+    useState(false);
 
-  const [
-    savingReceipt,
-    setSavingReceipt,
-  ] = useState(false);
+  const [incomeForm, setIncomeForm] =
+    useState<IncomeForm>({
+      anneeScolaire: getCurrentSchoolYear(),
+      fundId: "",
+      montant: "",
+      dateReception: todayIso(),
+      source: "",
+      referencePaiement: "",
+      modePaiement: "",
+      note: "",
+    });
 
-  const [
-    savingCategory,
-    setSavingCategory,
-  ] = useState(false);
+  const [fundModalOpen, setFundModalOpen] =
+    useState(false);
 
-  const [
-    editingCategory,
-    setEditingCategory,
-  ] = useState<Category | null>(
-    null
-  );
+  const [editingFund, setEditingFund] =
+    useState<Fund | null>(null);
 
-  const [
-    categoryName,
-    setCategoryName,
-  ] = useState("");
+  const [fundName, setFundName] =
+    useState("");
 
-  const [
-    categoryOrder,
-    setCategoryOrder,
-  ] = useState("100");
+  const [fundOrder, setFundOrder] =
+    useState("100");
 
-  const [
-    form,
-    setForm,
-  ] = useState<ReceiptForm>({
-    anneeScolaire:
-      getCurrentSchoolYear(),
-    categorieId: "",
-    montant: "",
-    dateReception:
-      todayIso(),
-    source: "",
-    referencePaiement: "",
-    modePaiement: "",
-    note: "",
-  });
+  const [savingFund, setSavingFund] =
+    useState(false);
 
+  const [detailModalOpen, setDetailModalOpen] =
+    useState(false);
 
-  // ==========================================================
-  // CHARGEMENT
-  // ==========================================================
+  const [selectedFund, setSelectedFund] =
+    useState<FundSummary | null>(null);
 
-  const loadCategories =
+  const [fundDetails, setFundDetails] =
+    useState<FundDetails | null>(null);
+
+  const [detailLoading, setDetailLoading] =
+    useState(false);
+
+  const [operationFilter, setOperationFilter] =
+    useState<"ALL" | "ENTREE" | "EVENT" | "SOUTIEN" | "FAMILLE">("ALL");
+
+  const loadFunds =
     useCallback(async () => {
-
-      const res =
-        await axios.get(
-          `${API}/economie/categories`,
-          {
-            params: {
-              includeInactive: true,
-            },
-          }
-        );
-
-      const data =
-        Array.isArray(res.data)
-          ? res.data
-          : [];
-
-      setCategories(
-        data
+      const res = await axios.get(
+        `${API}/economie/fonds`,
+        {
+          params: {
+            includeInactive: true,
+          },
+        }
       );
 
+      setFunds(
+        Array.isArray(res.data)
+          ? res.data
+          : []
+      );
     }, []);
-
 
   const loadYearData =
     useCallback(async () => {
-
       setLoading(true);
       setError("");
 
       try {
+        const [incomeRes, dashboardRes] =
+          await Promise.all([
+            axios.get(
+              `${API}/economie/entrees`,
+              {
+                params: {
+                  anneeScolaire: selectedYear,
+                },
+              }
+            ),
 
-        const [
-          receiptsRes,
-          summaryRes,
-        ] = await Promise.all([
-          axios.get(
-            `${API}/economie/recettes`,
-            {
-              params: {
-                anneeScolaire:
-                  selectedYear,
-              },
-            }
-          ),
+            axios.get(
+              `${API}/economie/resume`,
+              {
+                params: {
+                  anneeScolaire: selectedYear,
+                },
+              }
+            ),
+          ]);
 
-          axios.get(
-            `${API}/economie/resume`,
-            {
-              params: {
-                anneeScolaire:
-                  selectedYear,
-              },
-            }
-          ),
-        ]);
-
-
-        setReceipts(
-          Array.isArray(
-            receiptsRes.data
-          )
-            ? receiptsRes.data
+        setIncomes(
+          Array.isArray(incomeRes.data)
+            ? incomeRes.data
             : []
         );
 
-
-        setSummary({
-          ...EMPTY_SUMMARY,
-          ...(summaryRes.data || {}),
+        setDashboard({
+          ...EMPTY_DASHBOARD,
+          ...(dashboardRes.data || {}),
+          fonds: Array.isArray(dashboardRes.data?.fonds)
+            ? dashboardRes.data.fonds
+            : [],
         });
-
       } catch (e: any) {
-
         console.error(e);
 
         setError(
-          e?.response?.data
-            ?.message ||
-          "تعذر تحميل البيانات المالية"
+          e?.response?.data?.message ||
+            "تعذر تحميل البيانات المالية"
         );
-
       } finally {
-
         setLoading(false);
       }
-
     }, [selectedYear]);
 
+  useEffect(() => {
+    void loadFunds();
+  }, [loadFunds]);
 
   useEffect(() => {
-
-    loadCategories()
-      .catch((e) => {
-        console.error(e);
-      });
-
-  }, [loadCategories]);
-
-
-  useEffect(() => {
-
     void loadYearData();
-
   }, [loadYearData]);
 
+  const activeFunds =
+    useMemo(
+      () => funds.filter((fund) => fund.active),
+      [funds]
+    );
 
-  // ==========================================================
-  // RECETTE
-  // ==========================================================
+  const resetIncome = (preferredFundId?: number) => {
+    const first =
+      preferredFundId
+        ? activeFunds.find(
+            (f) => f.id === preferredFundId
+          )
+        : activeFunds[0];
 
-  const resetReceiptForm =
-    () => {
+    setIncomeForm({
+      anneeScolaire: selectedYear,
+      fundId: first ? String(first.id) : "",
+      montant: "",
+      dateReception: todayIso(),
+      source: "",
+      referencePaiement: "",
+      modePaiement: "",
+      note: "",
+    });
+  };
 
-      const firstActive =
-        categories.find(
-          (c) => c.active
-        );
+  const openNewIncome = (preferredFundId?: number) => {
+    resetIncome(preferredFundId);
+    setIncomeModalOpen(true);
+  };
 
-      setForm({
-        anneeScolaire:
-          selectedYear,
+  const editIncome = (income: Income) => {
+    setIncomeForm({
+      id: income.id,
+      anneeScolaire: income.anneeScolaire,
+      fundId: String(income.fundId),
+      montant: String(income.montant),
+      dateReception: income.dateReception,
+      source: income.source || "",
+      referencePaiement: income.referencePaiement || "",
+      modePaiement: income.modePaiement || "",
+      note: income.note || "",
+    });
 
-        categorieId:
-          firstActive
-            ? String(
-                firstActive.id
-              )
-            : "",
+    setIncomeModalOpen(true);
+  };
 
-        montant: "",
+  const saveIncome = async () => {
+    if (!incomeForm.fundId) {
+      alert("اختر الصندوق");
+      return;
+    }
 
-        dateReception:
-          todayIso(),
+    if (
+      !incomeForm.montant ||
+      Number(incomeForm.montant) <= 0
+    ) {
+      alert("أدخل مبلغا صحيحا");
+      return;
+    }
 
-        source: "",
+    if (!incomeForm.dateReception) {
+      alert("أدخل تاريخ الاستلام");
+      return;
+    }
 
+    setSavingIncome(true);
+
+    try {
+      const payload = {
+        anneeScolaire: incomeForm.anneeScolaire,
+        fundId: Number(incomeForm.fundId),
+        montant: Number(incomeForm.montant),
+        dateReception: incomeForm.dateReception,
+        source: incomeForm.source.trim(),
         referencePaiement:
-          "",
-
+          incomeForm.referencePaiement.trim(),
         modePaiement:
-          "",
-
-        note: "",
-      });
-    };
-
-
-  const openCreateReceipt =
-    () => {
-
-      resetReceiptForm();
-
-      setReceiptModalOpen(
-        true
-      );
-    };
-
-
-  const openEditReceipt =
-    (receipt: Receipt) => {
-
-      setForm({
-        id: receipt.id,
-
-        anneeScolaire:
-          receipt.anneeScolaire,
-
-        categorieId:
-          String(
-            receipt.categorieId
-          ),
-
-        montant:
-          String(
-            receipt.montant
-          ),
-
-        dateReception:
-          receipt.dateReception,
-
-        source:
-          receipt.source || "",
-
-        referencePaiement:
-          receipt.referencePaiement ||
-          "",
-
-        modePaiement:
-          receipt.modePaiement ||
-          "",
-
-        note:
-          receipt.note || "",
-      });
-
-      setReceiptModalOpen(
-        true
-      );
-    };
-
-
-  const saveReceipt =
-    async () => {
-
-      if (
-        !form.categorieId
-      ) {
-
-        alert(
-          "اختر الفئة"
-        );
-
-        return;
-      }
-
-
-      if (
-        !form.montant ||
-        Number(form.montant) <= 0
-      ) {
-
-        alert(
-          "أدخل مبلغا صحيحا"
-        );
-
-        return;
-      }
-
-
-      if (
-        !form.dateReception
-      ) {
-
-        alert(
-          "أدخل تاريخ الاستلام"
-        );
-
-        return;
-      }
-
-
-      setSavingReceipt(true);
-
-
-      try {
-
-        const payload = {
-
-          anneeScolaire:
-            form.anneeScolaire,
-
-          categorieId:
-            Number(
-              form.categorieId
-            ),
-
-          montant:
-            Number(
-              form.montant
-            ),
-
-          dateReception:
-            form.dateReception,
-
-          source:
-            form.source.trim(),
-
-          referencePaiement:
-            form
-              .referencePaiement
-              .trim(),
-
-          modePaiement:
-            form
-              .modePaiement
-              .trim(),
-
-          note:
-            form.note.trim(),
-        };
-
-
-        if (
-          form.id
-        ) {
-
-          await axios.put(
-            `${API}/economie/recettes/${form.id}`,
-            payload
-          );
-
-        } else {
-
-          await axios.post(
-            `${API}/economie/recettes`,
-            payload
-          );
-        }
-
-
-        setReceiptModalOpen(
-          false
-        );
-
-        await loadYearData();
-
-      } catch (e: any) {
-
-        alert(
-          e?.response?.data
-            ?.message ||
-          "تعذر حفظ المدخول"
-        );
-
-      } finally {
-
-        setSavingReceipt(false);
-      }
-    };
-
-
-  const deleteReceipt =
-    async (
-      receipt: Receipt
-    ) => {
-
-      if (
-        !window.confirm(
-          `حذف المدخول ${fmtMoney(
-            receipt.montant
-          )} من ${receipt.categorieNom}؟`
-        )
-      ) {
-
-        return;
-      }
-
-
-      try {
-
-        await axios.delete(
-          `${API}/economie/recettes/${receipt.id}`
-        );
-
-        await loadYearData();
-
-      } catch (e: any) {
-
-        alert(
-          e?.response?.data
-            ?.message ||
-          "تعذر حذف المدخول"
-        );
-      }
-    };
-
-
-  // ==========================================================
-  // CATEGORIES SPECIALES
-  // ==========================================================
-
-  const openCreateCategory =
-    () => {
-
-      setEditingCategory(
-        null
-      );
-
-      setCategoryName(
-        ""
-      );
-
-      setCategoryOrder(
-        "100"
-      );
-
-      setCategoryModalOpen(
-        true
-      );
-    };
-
-
-  const openEditCategory =
-    (
-      category: Category
-    ) => {
-
-      setEditingCategory(
-        category
-      );
-
-      setCategoryName(
-        category.nom
-      );
-
-      setCategoryOrder(
-        String(
-          category.ordre ?? 100
-        )
-      );
-
-      setCategoryModalOpen(
-        true
-      );
-    };
-
-
-  const saveCategory =
-    async () => {
-
-      if (
-        !categoryName.trim()
-      ) {
-
-        alert(
-          "أدخل اسم الفئة"
-        );
-
-        return;
-      }
-
-
-      setSavingCategory(true);
-
-
-      try {
-
-        const payload = {
-
-          nom:
-            categoryName.trim(),
-
-          ordre:
-            Number(
-              categoryOrder || 100
-            ),
-
-          active:
-            editingCategory
-              ? editingCategory.active
-              : true,
-        };
-
-
-        if (
-          editingCategory
-        ) {
-
-          await axios.put(
-            `${API}/economie/categories/${editingCategory.id}`,
-            payload
-          );
-
-        } else {
-
-          await axios.post(
-            `${API}/economie/categories`,
-            payload
-          );
-        }
-
-
-        setCategoryModalOpen(
-          false
-        );
-
-        await loadCategories();
-        await loadYearData();
-
-      } catch (e: any) {
-
-        alert(
-          e?.response?.data
-            ?.message ||
-          "تعذر حفظ الفئة"
-        );
-
-      } finally {
-
-        setSavingCategory(false);
-      }
-    };
-
-
-  const disableCategory =
-    async (
-      category: Category
-    ) => {
-
-      if (
-        category.systeme
-      ) {
-
-        return;
-      }
-
-
-      if (
-        !window.confirm(
-          `تعطيل الفئة "${category.nom}"؟`
-        )
-      ) {
-
-        return;
-      }
-
-
-      try {
-
-        await axios.delete(
-          `${API}/economie/categories/${category.id}`
-        );
-
-        await loadCategories();
-        await loadYearData();
-
-      } catch (e: any) {
-
-        alert(
-          e?.response?.data
-            ?.message ||
-          "تعذر تعطيل الفئة"
-        );
-      }
-    };
-
-
-  const reactivateCategory =
-    async (
-      category: Category
-    ) => {
-
-      try {
-
+          incomeForm.modePaiement.trim(),
+        note: incomeForm.note.trim(),
+      };
+
+      if (incomeForm.id) {
         await axios.put(
-          `${API}/economie/categories/${category.id}`,
-          {
-            nom:
-              category.nom,
-
-            ordre:
-              category.ordre,
-
-            active:
-              true,
-          }
+          `${API}/economie/entrees/${incomeForm.id}`,
+          payload
         );
-
-        await loadCategories();
-        await loadYearData();
-
-      } catch (e: any) {
-
-        alert(
-          e?.response?.data
-            ?.message ||
-          "تعذر تفعيل الفئة"
+      } else {
+        await axios.post(
+          `${API}/economie/entrees`,
+          payload
         );
       }
-    };
 
+      setIncomeModalOpen(false);
 
-  // ==========================================================
-  // DONNEES CALCULEES
-  // ==========================================================
+      await loadYearData();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message ||
+          "تعذر حفظ المدخول"
+      );
+    } finally {
+      setSavingIncome(false);
+    }
+  };
 
-  const activeCategories =
-    useMemo(
-      () =>
-        categories.filter(
-          (c) => c.active
-        ),
-      [categories]
-    );
+  const deleteIncome = async (income: Income) => {
+    if (
+      !window.confirm(
+        `هل تريد حذف مدخول بقيمة ${money(
+          income.montant
+        )}؟`
+      )
+    ) {
+      return;
+    }
 
+    try {
+      await axios.delete(
+        `${API}/economie/entrees/${income.id}`
+      );
 
-  const systemCategories =
-    useMemo(
-      () =>
-        categories.filter(
-          (c) => c.systeme
-        ),
-      [categories]
-    );
+      await loadYearData();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message ||
+          "تعذر حذف المدخول"
+      );
+    }
+  };
 
+  const openNewFund = () => {
+    setEditingFund(null);
+    setFundName("");
+    setFundOrder("100");
+    setFundModalOpen(true);
+  };
 
-  const specialCategories =
-    useMemo(
-      () =>
-        categories.filter(
-          (c) => !c.systeme
-        ),
-      [categories]
-    );
+  const openEditFund = (fund: Fund) => {
+    setEditingFund(fund);
+    setFundName(fund.nom);
+    setFundOrder(String(fund.ordre ?? 100));
+    setFundModalOpen(true);
+  };
 
+  const saveFund = async () => {
+    if (!fundName.trim()) {
+      alert("أدخل اسم الصندوق");
+      return;
+    }
 
-  const getCategoryBadge =
-    (
-      code: string
-    ) => {
+    setSavingFund(true);
 
-      if (
-        code ===
-        "DEGRE_DEFINI"
-      ) {
+    try {
+      const payload = {
+        nom: fundName.trim(),
+        ordre: Number(fundOrder || 100),
+        active: editingFund
+          ? editingFund.active
+          : true,
+      };
 
-        return "bg-blue-50 text-blue-700 border-blue-100";
+      if (editingFund) {
+        await axios.put(
+          `${API}/economie/fonds/${editingFund.id}`,
+          payload
+        );
+      } else {
+        await axios.post(
+          `${API}/economie/fonds`,
+          payload
+        );
       }
 
+      setFundModalOpen(false);
 
-      if (
-        code ===
-        "DEGRE_NON_DEFINI"
-      ) {
+      await loadFunds();
+      await loadYearData();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message ||
+          "تعذر حفظ الصندوق"
+      );
+    } finally {
+      setSavingFund(false);
+    }
+  };
 
-        return "bg-orange-50 text-orange-700 border-orange-100";
+  const disableFund = async (fund: Fund) => {
+    if (fund.systeme) return;
+
+    if (
+      !window.confirm(
+        `تعطيل "${fund.nom}"؟`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await axios.delete(
+        `${API}/economie/fonds/${fund.id}`
+      );
+
+      await loadFunds();
+      await loadYearData();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message ||
+          "تعذر تعطيل الصندوق"
+      );
+    }
+  };
+
+  const reactivateFund = async (fund: Fund) => {
+    try {
+      await axios.put(
+        `${API}/economie/fonds/${fund.id}`,
+        {
+          nom: fund.nom,
+          ordre: fund.ordre,
+          active: true,
+        }
+      );
+
+      await loadFunds();
+      await loadYearData();
+    } catch (e: any) {
+      alert(
+        e?.response?.data?.message ||
+          "تعذر تفعيل الصندوق"
+      );
+    }
+  };
+
+  const openFundDetails = async (fund: FundSummary) => {
+    setSelectedFund(fund);
+    setDetailModalOpen(true);
+    setDetailLoading(true);
+    setOperationFilter("ALL");
+
+    try {
+      const res = await axios.get(
+        `${API}/economie/fonds/${fund.fundId}/details`,
+        {
+          params: {
+            anneeScolaire: selectedYear,
+          },
+        }
+      );
+
+      setFundDetails(res.data);
+    } catch (e: any) {
+      console.error(e);
+
+      alert(
+        e?.response?.data?.message ||
+          "تعذر تحميل حركات الصندوق"
+      );
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  const visibleOperations =
+    useMemo(() => {
+      const list =
+        fundDetails?.operations || [];
+
+      if (operationFilter === "ALL") {
+        return list;
       }
 
-
-      if (
-        code ===
-        "SAAWED_AL_KHAYR"
-      ) {
-
-        return "bg-violet-50 text-violet-700 border-violet-100";
-      }
-
-
-      return "bg-emerald-50 text-emerald-700 border-emerald-100";
-    };
-
-
-  // ==========================================================
-  // UI
-  // ==========================================================
+      return list.filter(
+        (operation) =>
+          operation.sourceType ===
+          operationFilter
+      );
+    }, [fundDetails, operationFilter]);
 
   return (
-    <div
-      dir="rtl"
-      className="space-y-6"
-    >
+    <div dir="rtl" className="space-y-6">
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-l from-slate-950 via-indigo-950 to-indigo-700 p-7 text-white shadow-xl">
+        <div className="absolute -left-20 -top-20 h-52 w-52 rounded-full bg-white/10 blur-3xl" />
 
-      {/* =======================================================
-          HEADER
-      ======================================================= */}
-
-      <section className="relative overflow-hidden rounded-3xl border border-indigo-100 bg-gradient-to-l from-slate-950 via-indigo-950 to-indigo-700 p-7 text-white shadow-xl shadow-indigo-950/10">
-
-        <div className="absolute -left-12 -top-16 h-44 w-44 rounded-full bg-white/10 blur-3xl" />
-
-        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
-
+        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
           <div>
-
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-bold text-indigo-100">
-              <span className="h-2 w-2 rounded-full bg-emerald-300" />
+            <div className="inline-flex rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-black text-indigo-100">
               الإدارة المالية
             </div>
 
-            <h1 className="mt-3 text-2xl font-black md:text-3xl">
-              تدبير المداخيل
+            <h1 className="mt-3 text-3xl font-black">
+              إدارة الصناديق
             </h1>
 
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">
-              تسجيل كل مبلغ مستلم حسب السنة الدراسية مع الفصل بين الدرجات المحددة، معوز، سواعد الخير والحالات الخاصة.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-indigo-100">
+              المداخيل تُسجل من طرف المسؤول المالي، أما المصاريف فتصل تلقائيا من الأنشطة والدعم الدراسي ومساعدات الأسر.
             </p>
-
           </div>
-
 
           <div className="flex flex-wrap gap-2">
-
             <button
               type="button"
-              onClick={
-                openCreateReceipt
-              }
+              onClick={() => openNewIncome()}
               className="rounded-xl bg-white px-5 py-3 text-sm font-black text-indigo-800 shadow-lg transition hover:-translate-y-0.5"
             >
-              + إضافة مدخول
+              + تسجيل مدخول
             </button>
 
             <button
               type="button"
-              onClick={
-                openCreateCategory
-              }
+              onClick={openNewFund}
               className="rounded-xl border border-white/20 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur transition hover:bg-white/15"
             >
-              + إضافة حالة خاصة
+              + إنشاء صندوق
             </button>
-
           </div>
-
         </div>
-
       </section>
 
-
-      {/* =======================================================
-          FILTER YEAR
-      ======================================================= */}
-
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-
-        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-
             <p className="text-xs font-bold text-slate-400">
-              السنة الدراسية
+              الفترة المالية
             </p>
 
             <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
-              اختر الفترة المالية
+              السنة الدراسية
             </h2>
-
           </div>
 
-
-          <div className="min-w-[220px]">
-
-            <select
-              value={
-                selectedYear
-              }
-              onChange={(e) =>
-                setSelectedYear(
-                  e.target.value
-                )
-              }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black text-slate-700 outline-none focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
-            >
-
-              {schoolYears.map(
-                (year) => (
-                  <option
-                    key={year}
-                    value={year}
-                  >
-                    {year}
-                  </option>
-                )
-              )}
-
-            </select>
-
-          </div>
-
+          <select
+            value={selectedYear}
+            onChange={(e) =>
+              setSelectedYear(e.target.value)
+            }
+            className="h-11 min-w-[210px] rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-black outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+          >
+            {schoolYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
         </div>
-
       </section>
 
-
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-black text-red-700">
           {error}
         </div>
       )}
 
-
-      {/* =======================================================
-          SUMMARY
-      ======================================================= */}
-
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
-
-        <SummaryCard
-          label="الدرجات المحددة"
-          value={
-            summary.degreDefini
-          }
-          subtitle="المبالغ المستلمة لهذه الفئة"
-          className="border-blue-100 bg-blue-50 text-blue-800"
-        />
-
-        <SummaryCard
-          label="معوز / درجة غير محددة"
-          value={
-            summary.degreNonDefini
-          }
-          subtitle="المبالغ المستلمة للعائلات بدون درجة"
-          className="border-orange-100 bg-orange-50 text-orange-800"
-        />
-
-        <SummaryCard
-          label="سواعد الخير"
-          value={
-            summary.sawaedAlKhayr
-          }
-          subtitle="ميزانية مستقلة"
-          className="border-violet-100 bg-violet-50 text-violet-800"
-        />
-
-        <SummaryCard
-          label="الحالات الخاصة"
-          value={
-            summary.casSpeciaux
-          }
-          subtitle="مجموع الفئات الخاصة القابلة للإضافة"
-          className="border-emerald-100 bg-emerald-50 text-emerald-800"
-        />
-
-        <div className="rounded-2xl border border-slate-900 bg-slate-950 p-5 text-white shadow-lg">
-
-          <p className="text-xs font-black text-slate-300">
-            إجمالي المداخيل
-          </p>
-
-          <p className="mt-2 text-3xl font-black">
-            {loading
-              ? "..."
-              : fmtMoney(
-                  summary.totalRecettes
-                )}
-          </p>
-
-          <p className="mt-1 text-[11px] font-bold text-slate-400">
-            {summary.nombreOperations} عملية • {selectedYear}
-          </p>
-
+      {Number(dashboard.nonVentile || 0) > 0 && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-bold leading-6 text-amber-800">
+          {money(dashboard.nonVentile)} من مصاريف الأنشطة لم تُخصم من أي صندوق
+          (نشاط بدون صندوق محدد ولا يمكن توزيعه تلقائيا). اختر صندوقا لهذه
+          الأنشطة من صفحة النشاط.
         </div>
+      )}
 
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <BigStat
+          label="إجمالي المداخيل"
+          value={dashboard.totalEntrees}
+          subtitle="جميع المبالغ المستلمة"
+          className="border-emerald-200 bg-emerald-50 text-emerald-800"
+        />
+
+        <BigStat
+          label="إجمالي المصاريف"
+          value={dashboard.totalSorties}
+          subtitle="الأنشطة + الدراسة + مساعدات الأسر"
+          className="border-red-200 bg-red-50 text-red-800"
+        />
+
+        <BigStat
+          label="الرصيد الإجمالي"
+          value={dashboard.solde}
+          subtitle="المداخيل ناقص المصاريف"
+          className={
+            dashboard.solde >= 0
+              ? "border-slate-900 bg-slate-950 text-white"
+              : "border-red-900 bg-red-950 text-white"
+          }
+        />
       </section>
 
-
-      {/* =======================================================
-          SPECIAL CATEGORIES
-      ======================================================= */}
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-
+      <section className="rounded-3xl border border-slate-200 bg-slate-50/60 p-5 dark:border-slate-800 dark:bg-slate-950/30">
         <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-
           <div>
-
-            <p className="text-xs font-bold text-emerald-600">
-              مرنة وقابلة للتعديل
-            </p>
-
-            <h2 className="mt-1 text-lg font-black text-slate-900 dark:text-white">
-              الحالات الخاصة
+            <h2 className="text-xl font-black text-slate-900 dark:text-white">
+              الصناديق
             </h2>
 
-            <p className="mt-1 text-xs text-slate-400">
-              يمكنك إنشاء أي فئة إضافية دون تعديل الكود.
+            <p className="mt-1 text-xs font-semibold text-slate-400">
+              افتح أي صندوق لمعرفة كل المداخيل والمصاريف ومصدر كل عملية.
             </p>
-
           </div>
 
-
-          <button
-            type="button"
-            onClick={
-              openCreateCategory
-            }
-            className="w-fit rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white shadow-sm transition hover:bg-emerald-700"
-          >
-            + فئة خاصة جديدة
-          </button>
-
+          <span className="w-fit rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-500 shadow-sm dark:bg-slate-900">
+            {dashboard.fonds.length} صندوق
+          </span>
         </div>
 
-
-        {specialCategories.length === 0 ? (
-
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-8 text-center text-sm font-bold text-slate-400">
-            لم تتم إضافة أي حالة خاصة بعد.
+        {loading ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
+            {[1, 2, 3, 4].map((x) => (
+              <div
+                key={x}
+                className="h-[360px] animate-pulse rounded-3xl bg-slate-200/70 dark:bg-slate-800"
+              />
+            ))}
           </div>
-
+        ) : dashboard.fonds.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm font-black text-slate-400">
+            لا توجد صناديق.
+          </div>
         ) : (
-
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-
-            {specialCategories.map(
-              (category) => {
-
-                const special =
-                  summary
-                    .categoriesSpeciales
-                    .find(
-                      (x) =>
-                        x.categorieId ===
-                        category.id
-                    );
-
-                return (
-                  <div
-                    key={
-                      category.id
-                    }
-                    className={`rounded-2xl border p-4 ${
-                      category.active
-                        ? "border-emerald-100 bg-emerald-50"
-                        : "border-slate-200 bg-slate-50 opacity-70"
-                    }`}
-                  >
-
-                    <div className="flex items-start justify-between gap-3">
-
-                      <div>
-
-                        <p className="font-black text-slate-800">
-                          {category.nom}
-                        </p>
-
-                        <p className="mt-1 text-xl font-black text-emerald-700">
-                          {fmtMoney(
-                            special?.montant ||
-                            0
-                          )}
-                        </p>
-
-                        {!category.active && (
-                          <span className="mt-2 inline-flex rounded-full bg-slate-200 px-2 py-1 text-[10px] font-black text-slate-600">
-                            غير مفعلة
-                          </span>
-                        )}
-
-                      </div>
-
-
-                      <div className="flex gap-1">
-
-                        <button
-                          type="button"
-                          onClick={() =>
-                            openEditCategory(
-                              category
-                            )
-                          }
-                          className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-black text-indigo-600 shadow-sm"
-                        >
-                          تعديل
-                        </button>
-
-
-                        {category.active ? (
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              disableCategory(
-                                category
-                              )
-                            }
-                            className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-black text-red-500 shadow-sm"
-                          >
-                            تعطيل
-                          </button>
-
-                        ) : (
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              reactivateCategory(
-                                category
-                              )
-                            }
-                            className="rounded-lg bg-white px-2.5 py-1.5 text-[11px] font-black text-emerald-600 shadow-sm"
-                          >
-                            تفعيل
-                          </button>
-                        )}
-
-                      </div>
-
-                    </div>
-
-                  </div>
-                );
-              }
-            )}
-
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-4">
+            {dashboard.fonds.map((fund) => (
+              <FundCard
+                key={fund.fundId}
+                fund={fund}
+                onOpen={() =>
+                  openFundDetails(fund)
+                }
+                onAddIncome={() =>
+                  openNewIncome(fund.fundId)
+                }
+              />
+            ))}
           </div>
         )}
-
       </section>
 
-
-      {/* =======================================================
-          HISTORY
-      ======================================================= */}
-
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-
         <div className="flex flex-col gap-3 border-b border-slate-100 p-6 md:flex-row md:items-center md:justify-between dark:border-slate-800">
-
           <div>
-
             <h2 className="text-lg font-black text-slate-900 dark:text-white">
               سجل المداخيل
             </h2>
 
             <p className="mt-1 text-xs text-slate-400">
-              كل المبالغ المسجلة خلال السنة الدراسية {selectedYear}
+              المداخيل فقط تُسجل يدويا. المصاريف تُجلب تلقائيا من باقي الوحدات.
             </p>
-
           </div>
 
-
-          <div className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            {receipts.length} عملية
-          </div>
-
+          <button
+            type="button"
+            onClick={() => openNewIncome()}
+            className="w-fit rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white"
+          >
+            + مدخول جديد
+          </button>
         </div>
-
 
         <div className="overflow-x-auto">
-
-          <table className="min-w-[1100px] w-full text-right text-sm">
-
+          <table className="min-w-[1050px] w-full text-right text-sm">
             <thead className="bg-slate-50 text-xs font-black text-slate-500 dark:bg-slate-800/70 dark:text-slate-300">
-
               <tr>
-                <th className="px-5 py-4">
-                  التاريخ
-                </th>
-
-                <th className="px-5 py-4">
-                  السنة
-                </th>
-
-                <th className="px-5 py-4">
-                  الفئة
-                </th>
-
-                <th className="px-5 py-4">
-                  المصدر
-                </th>
-
-                <th className="px-5 py-4">
-                  طريقة الأداء
-                </th>
-
-                <th className="px-5 py-4">
-                  المرجع
-                </th>
-
-                <th className="px-5 py-4">
-                  المبلغ
-                </th>
-
-                <th className="px-5 py-4">
-                  إجراءات
-                </th>
+                <th className="px-5 py-4">التاريخ</th>
+                <th className="px-5 py-4">الصندوق</th>
+                <th className="px-5 py-4">المصدر</th>
+                <th className="px-5 py-4">طريقة الأداء</th>
+                <th className="px-5 py-4">المرجع</th>
+                <th className="px-5 py-4">المبلغ</th>
+                <th className="px-5 py-4">إجراءات</th>
               </tr>
-
             </thead>
 
-
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-
-              {loading ? (
-
+              {incomes.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={7}
                     className="p-10 text-center font-bold text-slate-400"
                   >
-                    جارٍ التحميل...
+                    لا توجد مداخيل مسجلة لهذه السنة.
                   </td>
                 </tr>
-
-              ) : receipts.length === 0 ? (
-
-                <tr>
-                  <td
-                    colSpan={8}
-                    className="p-10 text-center font-bold text-slate-400"
-                  >
-                    لا توجد مداخيل مسجلة لهذه السنة الدراسية.
-                  </td>
-                </tr>
-
               ) : (
+                incomes.map((income) => (
+                  <tr
+                    key={income.id}
+                    className="transition hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                  >
+                    <td className="px-5 py-4 font-bold">
+                      {formatDate(income.dateReception)}
+                    </td>
 
-                receipts.map(
-                  (receipt) => (
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700">
+                        {income.fundNom}
+                      </span>
+                    </td>
 
-                    <tr
-                      key={
-                        receipt.id
-                      }
-                      className="transition hover:bg-slate-50/70 dark:hover:bg-slate-800/40"
-                    >
+                    <td className="px-5 py-4">
+                      {income.source || "-"}
+                    </td>
 
-                      <td className="px-5 py-4 font-bold text-slate-700 dark:text-slate-200">
-                        {receipt.dateReception}
-                      </td>
+                    <td className="px-5 py-4">
+                      {income.modePaiement || "-"}
+                    </td>
 
-                      <td className="px-5 py-4">
-                        {receipt.anneeScolaire}
-                      </td>
+                    <td className="px-5 py-4">
+                      {income.referencePaiement || "-"}
+                    </td>
 
-                      <td className="px-5 py-4">
+                    <td className="px-5 py-4 text-base font-black text-emerald-700">
+                      + {money(income.montant)}
+                    </td>
 
-                        <span
-                          className={`inline-flex rounded-full border px-3 py-1 text-xs font-black ${getCategoryBadge(
-                            receipt.categorieCode
-                          )}`}
+                    <td className="px-5 py-4">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            editIncome(income)
+                          }
+                          className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700"
                         >
-                          {receipt.categorieNom}
-                        </span>
+                          تعديل
+                        </button>
 
-                      </td>
-
-                      <td className="px-5 py-4">
-                        {receipt.source || "-"}
-                      </td>
-
-                      <td className="px-5 py-4">
-                        {receipt.modePaiement || "-"}
-                      </td>
-
-                      <td className="px-5 py-4">
-                        {receipt.referencePaiement || "-"}
-                      </td>
-
-                      <td className="px-5 py-4 text-base font-black text-emerald-700">
-                        {fmtMoney(
-                          receipt.montant
-                        )}
-                      </td>
-
-                      <td className="px-5 py-4">
-
-                        <div className="flex gap-2">
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEditReceipt(
-                                receipt
-                              )
-                            }
-                            className="rounded-lg bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-700 transition hover:bg-indigo-100"
-                          >
-                            تعديل
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() =>
-                              deleteReceipt(
-                                receipt
-                              )
-                            }
-                            className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-600 transition hover:bg-red-100"
-                          >
-                            حذف
-                          </button>
-
-                        </div>
-
-                      </td>
-
-                    </tr>
-                  )
-                )
+                        <button
+                          type="button"
+                          onClick={() =>
+                            deleteIncome(income)
+                          }
+                          className="rounded-lg bg-red-50 px-3 py-2 text-xs font-black text-red-600"
+                        >
+                          حذف
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
-
             </tbody>
-
           </table>
-
         </div>
-
       </section>
 
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-black text-slate-900 dark:text-white">
+              إدارة الصناديق
+            </h2>
 
-      {/* =======================================================
-          MODAL RECEIPT
-      ======================================================= */}
+            <p className="mt-1 text-xs text-slate-400">
+              الصناديق الأربعة الأساسية تُنشأ تلقائيا، ويمكن إضافة صناديق أخرى.
+            </p>
+          </div>
 
-      <ModalShell
-        open={
-          receiptModalOpen
-        }
+          <button
+            type="button"
+            onClick={openNewFund}
+            className="rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-black text-white"
+          >
+            + صندوق جديد
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {funds.map((fund) => (
+            <div
+              key={fund.id}
+              className={`rounded-2xl border p-4 ${
+                fund.active
+                  ? "border-slate-200 bg-slate-50"
+                  : "border-slate-200 bg-slate-100 opacity-60"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-black text-slate-800">
+                    {fund.nom}
+                  </p>
+
+                  <p className="mt-1 text-[10px] font-bold text-slate-400">
+                    {fund.systeme ? "أساسي" : "مخصص"}
+                  </p>
+                </div>
+
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openEditFund(fund)
+                    }
+                    className="rounded-lg bg-white px-2 py-1 text-[10px] font-black text-indigo-600 shadow-sm"
+                  >
+                    تعديل
+                  </button>
+
+                  {!fund.systeme &&
+                    (fund.active ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          disableFund(fund)
+                        }
+                        className="rounded-lg bg-white px-2 py-1 text-[10px] font-black text-red-500 shadow-sm"
+                      >
+                        تعطيل
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          reactivateFund(fund)
+                        }
+                        className="rounded-lg bg-white px-2 py-1 text-[10px] font-black text-emerald-600 shadow-sm"
+                      >
+                        تفعيل
+                      </button>
+                    ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <Modal
+        open={incomeModalOpen}
         title={
-          form.id
+          incomeForm.id
             ? "تعديل المدخول"
-            : "إضافة مدخول"
+            : "تسجيل مدخول"
         }
+        subtitle="المداخيل هي الجزء الوحيد الذي يتم إدخاله يدويا هنا."
         onClose={() =>
-          setReceiptModalOpen(
-            false
-          )
+          setIncomeModalOpen(false)
         }
       >
-
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               السنة الدراسية *
             </span>
 
             <select
-              value={
-                form.anneeScolaire
-              }
+              value={incomeForm.anneeScolaire}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    anneeScolaire:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  anneeScolaire: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-bold outline-none"
             >
-
-              {schoolYears.map(
-                (year) => (
-                  <option
-                    key={year}
-                    value={year}
-                  >
-                    {year}
-                  </option>
-                )
-              )}
-
+              {schoolYears.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
             </select>
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
-              الفئة *
+              الصندوق *
             </span>
 
             <select
-              value={
-                form.categorieId
-              }
+              value={incomeForm.fundId}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    categorieId:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  fundId: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-bold outline-none"
             >
-
               <option value="">
-                اختر الفئة
+                اختر الصندوق
               </option>
 
-              {activeCategories.map(
-                (category) => (
-                  <option
-                    key={
-                      category.id
-                    }
-                    value={
-                      category.id
-                    }
-                  >
-                    {category.nom}
-                  </option>
-                )
-              )}
-
+              {activeFunds.map((fund) => (
+                <option key={fund.id} value={fund.id}>
+                  {fund.nom}
+                </option>
+              ))}
             </select>
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
-              المبلغ (DH) *
+              المبلغ *
             </span>
 
             <input
               type="number"
               min="0"
               step="0.01"
-              value={
-                form.montant
-              }
+              value={incomeForm.montant}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    montant:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  montant: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-bold outline-none"
               placeholder="5000"
             />
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               تاريخ الاستلام *
             </span>
 
             <input
               type="date"
-              value={
-                form.dateReception
-              }
+              value={incomeForm.dateReception}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    dateReception:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  dateReception: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-bold outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 font-bold outline-none"
             />
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
-              المصدر
+              مصدر المبلغ
             </span>
 
             <input
-              value={
-                form.source
-              }
+              value={incomeForm.source}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    source:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  source: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none"
               placeholder="محسن / شركة / جهة مانحة..."
             />
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               طريقة الأداء
             </span>
 
             <select
-              value={
-                form.modePaiement
-              }
+              value={incomeForm.modePaiement}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    modePaiement:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  modePaiement: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none"
             >
-
               <option value="">
                 غير محددة
               </option>
-
-              <option value="نقدا">
-                نقدا
-              </option>
-
-              <option value="تحويل بنكي">
-                تحويل بنكي
-              </option>
-
-              <option value="شيك">
-                شيك
-              </option>
-
-              <option value="أخرى">
-                أخرى
-              </option>
-
+              <option value="نقدا">نقدا</option>
+              <option value="تحويل بنكي">تحويل بنكي</option>
+              <option value="شيك">شيك</option>
+              <option value="أخرى">أخرى</option>
             </select>
-
           </label>
 
-
           <label className="md:col-span-2">
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               المرجع
             </span>
 
             <input
-              value={
-                form.referencePaiement
-              }
+              value={incomeForm.referencePaiement}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    referencePaiement:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  referencePaiement: e.target.value,
+                }))
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400"
-              placeholder="TR-2026-001"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none"
             />
-
           </label>
 
-
           <label className="md:col-span-2">
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               ملاحظات
             </span>
 
             <textarea
               rows={4}
-              value={
-                form.note
-              }
+              value={incomeForm.note}
               onChange={(e) =>
-                setForm(
-                  (p) => ({
-                    ...p,
-                    note:
-                      e.target.value,
-                  })
-                )
+                setIncomeForm((p) => ({
+                  ...p,
+                  note: e.target.value,
+                }))
               }
-              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm outline-none focus:border-indigo-400"
+              className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 outline-none"
             />
-
           </label>
-
         </div>
 
-
         <div className="mt-6 flex justify-end gap-2">
-
           <button
             type="button"
             onClick={() =>
-              setReceiptModalOpen(
-                false
-              )
+              setIncomeModalOpen(false)
             }
             className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-black text-slate-600"
           >
@@ -1760,109 +1360,72 @@ export default function GestionEconomique() {
 
           <button
             type="button"
-            disabled={
-              savingReceipt
-            }
-            onClick={
-              saveReceipt
-            }
-            className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-black text-white transition hover:bg-indigo-700 disabled:opacity-60"
+            disabled={savingIncome}
+            onClick={saveIncome}
+            className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-black text-white disabled:opacity-60"
           >
-            {savingReceipt
+            {savingIncome
               ? "جارٍ الحفظ..."
-              : "حفظ"}
+              : "حفظ المدخول"}
           </button>
-
         </div>
+      </Modal>
 
-      </ModalShell>
-
-
-      {/* =======================================================
-          MODAL CATEGORY
-      ======================================================= */}
-
-      <ModalShell
-        open={
-          categoryModalOpen
-        }
+      <Modal
+        open={fundModalOpen}
         title={
-          editingCategory
-            ? "تعديل الفئة"
-            : "إضافة حالة خاصة"
+          editingFund
+            ? "تعديل الصندوق"
+            : "إنشاء صندوق"
         }
         onClose={() =>
-          setCategoryModalOpen(
-            false
-          )
+          setFundModalOpen(false)
         }
         width="max-w-lg"
       >
-
-        {editingCategory?.systeme && (
-
-          <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs font-bold leading-5 text-indigo-700">
-            هذه فئة أساسية في النظام. يمكنك تعديل الاسم والترتيب فقط، ولا يمكن حذفها.
+        {editingFund?.systeme && (
+          <div className="mb-4 rounded-xl border border-indigo-100 bg-indigo-50 p-3 text-xs font-bold text-indigo-700">
+            هذا صندوق أساسي. يمكن تعديل الاسم والترتيب، لكنه يبقى مفعلا دائما.
           </div>
         )}
 
-
         <div className="space-y-4">
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
-              اسم الفئة *
+              اسم الصندوق *
             </span>
 
             <input
-              value={
-                categoryName
-              }
+              value={fundName}
               onChange={(e) =>
-                setCategoryName(
-                  e.target.value
-                )
+                setFundName(e.target.value)
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400"
-              placeholder="مثال: مساعدة رمضان"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none"
+              placeholder="مثال: صندوق رمضان"
             />
-
           </label>
 
-
           <label>
-
             <span className="mb-1.5 block text-xs font-black text-slate-600">
               ترتيب الظهور
             </span>
 
             <input
               type="number"
-              value={
-                categoryOrder
-              }
+              value={fundOrder}
               onChange={(e) =>
-                setCategoryOrder(
-                  e.target.value
-                )
+                setFundOrder(e.target.value)
               }
-              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-indigo-400"
+              className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 outline-none"
             />
-
           </label>
-
         </div>
 
-
         <div className="mt-6 flex justify-end gap-2">
-
           <button
             type="button"
             onClick={() =>
-              setCategoryModalOpen(
-                false
-              )
+              setFundModalOpen(false)
             }
             className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-black text-slate-600"
           >
@@ -1871,56 +1434,216 @@ export default function GestionEconomique() {
 
           <button
             type="button"
-            disabled={
-              savingCategory
-            }
-            onClick={
-              saveCategory
-            }
-            className="rounded-xl bg-emerald-600 px-6 py-2.5 text-sm font-black text-white transition hover:bg-emerald-700 disabled:opacity-60"
+            disabled={savingFund}
+            onClick={saveFund}
+            className="rounded-xl bg-indigo-600 px-6 py-2.5 text-sm font-black text-white disabled:opacity-60"
           >
-            {savingCategory
+            {savingFund
               ? "جارٍ الحفظ..."
               : "حفظ"}
           </button>
-
         </div>
+      </Modal>
 
-      </ModalShell>
+      <Modal
+        open={detailModalOpen}
+        title={selectedFund?.nom || "تفاصيل الصندوق"}
+        subtitle={`السنة الدراسية ${selectedYear}`}
+        onClose={() =>
+          setDetailModalOpen(false)
+        }
+        width="max-w-6xl"
+      >
+        {detailLoading ? (
+          <div className="p-10 text-center font-black text-slate-400">
+            جارٍ تحميل الحركات...
+          </div>
+        ) : fundDetails ? (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <BigStat
+                label="المداخيل"
+                value={fundDetails.entrees}
+                subtitle="مسجلة من المسؤول المالي"
+                className="border-emerald-200 bg-emerald-50 text-emerald-800"
+              />
 
+              <BigStat
+                label="إجمالي المصاريف"
+                value={fundDetails.totalSorties}
+                subtitle="تلقائيا من الوحدات الأخرى"
+                className="border-red-200 bg-red-50 text-red-800"
+              />
 
-      {/* =======================================================
-          SYSTEM CATEGORIES - PETIT RAPPEL
-      ======================================================= */}
+              <BigStat
+                label="الرصيد الحالي"
+                value={fundDetails.solde}
+                subtitle="المداخيل - المصاريف"
+                className="border-slate-900 bg-slate-950 text-white"
+              />
+            </div>
 
-      <section className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <p className="text-xs font-black text-blue-600">
+                  مصاريف الأنشطة
+                </p>
 
-        <p className="text-xs font-black text-slate-500">
-          الفئات الأساسية في النظام:
-        </p>
+                <p className="mt-1 text-xl font-black text-blue-800">
+                  {money(fundDetails.sortiesEvents)}
+                </p>
+              </div>
 
-        <div className="mt-2 flex flex-wrap gap-2">
+              <div className="rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                <p className="text-xs font-black text-violet-600">
+                  الدعم الدراسي
+                </p>
 
-          {systemCategories.map(
-            (category) => (
+                <p className="mt-1 text-xl font-black text-violet-800">
+                  {money(fundDetails.sortiesSoutien)}
+                </p>
+              </div>
 
-              <span
-                key={
-                  category.id
+              <div className="rounded-2xl border border-orange-100 bg-orange-50 p-4">
+                <p className="text-xs font-black text-orange-600">
+                  مساعدات الأسر
+                </p>
+
+                <p className="mt-1 text-xl font-black text-orange-800">
+                  {money(fundDetails.sortiesFamilles)}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["ALL", "الكل"],
+                ["ENTREE", "المداخيل"],
+                ["EVENT", "الأنشطة"],
+                ["SOUTIEN", "الدعم الدراسي"],
+                ["FAMILLE", "مساعدات الأسر"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() =>
+                    setOperationFilter(
+                      value as
+                        | "ALL"
+                        | "ENTREE"
+                        | "EVENT"
+                        | "SOUTIEN"
+                        | "FAMILLE"
+                    )
+                  }
+                  className={`rounded-xl px-4 py-2 text-xs font-black transition ${
+                    operationFilter === value
+                      ? "bg-slate-900 text-white"
+                      : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                onClick={() =>
+                  openNewIncome(fundDetails.fundId)
                 }
-                className={`rounded-full border px-3 py-1.5 text-xs font-black ${getCategoryBadge(
-                  category.code
-                )}`}
+                className="mr-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white"
               >
-                {category.nom}
-              </span>
-            )
-          )}
+                + إضافة مدخول لهذا الصندوق
+              </button>
+            </div>
 
-        </div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200">
+              <div className="overflow-x-auto">
+                <table className="min-w-[900px] w-full text-right text-sm">
+                  <thead className="bg-slate-50 text-xs font-black text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3">التاريخ</th>
+                      <th className="px-4 py-3">النوع</th>
+                      <th className="px-4 py-3">البيان</th>
+                      <th className="px-4 py-3">
+                        المصدر / المستفيد
+                      </th>
+                      <th className="px-4 py-3">المرجع</th>
+                      <th className="px-4 py-3">المبلغ</th>
+                    </tr>
+                  </thead>
 
-      </section>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleOperations.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={6}
+                          className="p-10 text-center font-black text-slate-400"
+                        >
+                          لا توجد حركات في هذا القسم.
+                        </td>
+                      </tr>
+                    ) : (
+                      visibleOperations.map(
+                        (operation, index) => (
+                          <tr
+                            key={`${operation.sourceType}-${operation.id ?? index}`}
+                          >
+                            <td className="px-4 py-3 font-bold">
+                              {formatDate(operation.date)}
+                            </td>
 
+                            <td className="px-4 py-3">
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-black ${
+                                  operation.type === "ENTREE"
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-red-50 text-red-700"
+                                }`}
+                              >
+                                {SOURCE_LABELS[
+                                  operation.sourceType
+                                ] || operation.sourceType}
+                              </span>
+                            </td>
+
+                            <td className="px-4 py-3 font-bold text-slate-700">
+                              {operation.libelle}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-500">
+                              {operation.source ||
+                                operation.beneficiaire ||
+                                "-"}
+                            </td>
+
+                            <td className="px-4 py-3 text-slate-500">
+                              {operation.reference || "-"}
+                            </td>
+
+                            <td
+                              className={`px-4 py-3 text-base font-black ${
+                                operation.type === "ENTREE"
+                                  ? "text-emerald-700"
+                                  : "text-red-600"
+                              }`}
+                            >
+                              {operation.type === "ENTREE"
+                                ? "+"
+                                : "-"}{" "}
+                              {money(operation.montant)}
+                            </td>
+                          </tr>
+                        )
+                      )
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

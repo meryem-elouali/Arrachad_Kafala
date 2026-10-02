@@ -36,6 +36,12 @@ interface CalendarEventProps {
   endDate?: string;
   anneeScolaire?: string;
   sawaedAlKhayr?: boolean;
+  caisseId?: number | null;
+}
+
+interface Caisse {
+  id: number;
+  nom: string;
 }
 
 interface CalendarEvent extends EventInput {
@@ -114,6 +120,8 @@ const Calendar: React.FC = () => {
   const [eventEndDate, setEventEndDate] = useState("");
   const [anneeScolaire, setAnneeScolaire] = useState("");
   const [sawaedAlKhayr, setSawaedAlKhayr] = useState(false);
+  const [caisseId, setCaisseId] = useState<number | "">("");
+  const [caisses, setCaisses] = useState<Caisse[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventTypeId, setEventTypeId] = useState<number | "">("");
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
@@ -167,6 +175,13 @@ const Calendar: React.FC = () => {
 
     return EVENT_TONES[index];
   };
+
+  useEffect(() => {
+    fetch(`${API}/economie/fonds`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setCaisses(Array.isArray(data) ? data : []))
+      .catch(() => setCaisses([]));
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/events/event-types`)
@@ -223,6 +238,7 @@ const Calendar: React.FC = () => {
                   : [],
                 anneeScolaire: ev.anneeScolaire ?? "",
                 sawaedAlKhayr: Boolean(ev.sawaedAlKhayr),
+                caisseId: ev.caisseId ?? null,
               },
             };
           }
@@ -250,6 +266,7 @@ const Calendar: React.FC = () => {
     setPlace("");
     setAnneeScolaire("");
     setSawaedAlKhayr(false);
+    setCaisseId("");
     setSelectedEvent(null);
     setDegresFamille([]);
   };
@@ -296,6 +313,7 @@ const Calendar: React.FC = () => {
     setPlace(props.place ?? "");
     setAnneeScolaire(props.anneeScolaire ?? "");
     setSawaedAlKhayr(Boolean(props.sawaedAlKhayr));
+    setCaisseId(props.caisseId ?? "");
     setDegresFamille(
       Array.isArray(props.degresFamille)
         ? props.degresFamille.map(Number)
@@ -380,6 +398,7 @@ const Calendar: React.FC = () => {
         place: place.trim(),
         anneeScolaire,
         sawaedAlKhayr,
+        caisseId: caisseId === "" ? null : caisseId,
       },
     };
 
@@ -438,6 +457,7 @@ const Calendar: React.FC = () => {
             typeof savedEvent.sawaedAlKhayr === "boolean"
               ? savedEvent.sawaedAlKhayr
               : sawaedAlKhayr,
+          caisseId: caisseId === "" ? null : caisseId,
         },
       };
 
@@ -1229,6 +1249,32 @@ const Calendar: React.FC = () => {
                     لتحديد المستفيدين المؤهلين للنشاط.
                   </div>
                 )}
+
+                <div className="mt-4">
+                  <label className="mb-2 block text-sm font-black text-slate-700 dark:text-slate-200">
+                    الصندوق الذي تُصرف منه مصاريف النشاط
+                  </label>
+                  <select
+                    value={caisseId}
+                    onChange={(e) =>
+                      setCaisseId(e.target.value ? Number(e.target.value) : "")
+                    }
+                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  >
+                    <option value="">
+                      تلقائي (حسب الدرجة / معوز / سواعد الخير)
+                    </option>
+                    {caisses.map((caisse) => (
+                      <option key={caisse.id} value={caisse.id}>
+                        {caisse.nom}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-400">
+                    عند اختيار صندوق، تُخصم كل مصاريف النشاط من هذا الصندوق. بدون
+                    اختيار، يُطبق التوزيع التلقائي المعتاد.
+                  </p>
+                </div>
               </section>
 
               <div className="h-px bg-slate-100 dark:bg-slate-800" />

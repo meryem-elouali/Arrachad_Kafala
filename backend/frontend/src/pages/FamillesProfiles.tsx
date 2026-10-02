@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
+import FamilleDepenses from "../components/famille/FamilleDepenses";
 
 const API = "http://localhost:8080/api";
 
@@ -2241,6 +2242,9 @@ export default function FamillesProfiles() {
             )}
           </div>
         </Section>
+
+        {/* ============ DEPENSES FAMILLE ============ */}
+        <FamilleDepenses familleId={familleId} />
       </div>
 {exportYearOpen && (
   <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">

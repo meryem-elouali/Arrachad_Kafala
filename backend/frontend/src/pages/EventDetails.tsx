@@ -59,6 +59,8 @@ interface EventDetail {
   place?: string;
   anneeScolaire?: string;
   sawaedAlKhayr?: boolean;
+  caisseId?: number | null;
+  caisseNom?: string | null;
   eventType?: EventTypeOption;
   cibles: string[];
   description?: string;
@@ -214,6 +216,8 @@ const EventDetails: React.FC = () => {
   const [editAgeMax, setEditAgeMax] = useState<number | "">("");
   const [editDegresFamille, setEditDegresFamille] = useState<number[]>([]);
   const [editSawaedAlKhayr, setEditSawaedAlKhayr] = useState(false);
+  const [editCaisseId, setEditCaisseId] = useState<number | "">("");
+  const [caisses, setCaisses] = useState<{ id: number; nom: string }[]>([]);
 
   // vrai juste après un chargement serveur : évite de re-sauvegarder ce qu'on vient de recevoir
   const skipNextSave = useRef(true);
@@ -286,6 +290,9 @@ const EventDetails: React.FC = () => {
           getJson(`${API}/famille`),
           getJson(`${API}/events/event-types`),
         ]);
+        getJson(`${API}/economie/fonds`)
+          .then((data) => setCaisses(Array.isArray(data) ? data : []))
+          .catch(() => setCaisses([]));
         setAllMeres(meres);
         setAllEnfants(enfants);
         setAllFamilles(familles);
@@ -513,6 +520,7 @@ const EventDetails: React.FC = () => {
     setEditAgeMax(event.ageMax ?? "");
     setEditDegresFamille((event.degresFamille || []).map(Number));
     setEditSawaedAlKhayr(event.sawaedAlKhayr === true);
+    setEditCaisseId(event.caisseId ?? "");
     setIsEditInfoOpen(true);
   };
 
@@ -562,6 +570,7 @@ const EventDetails: React.FC = () => {
         place: editPlace.trim(),
         anneeScolaire: editAnneeScolaire,
         sawaedAlKhayr: editSawaedAlKhayr,
+        caisseId: editCaisseId === "" ? null : editCaisseId,
       },
     };
 
@@ -883,7 +892,13 @@ const EventDetails: React.FC = () => {
           <InfoCard title="السنة الدراسية" value={event.anneeScolaire || "غير محدد"} />
           <InfoCard
             title="مصدر المصروف"
-            value={event.sawaedAlKhayr ? "سواعد الخير" : "الميزانية العادية"}
+            value={
+              event.caisseNom
+                ? event.caisseNom
+                : event.sawaedAlKhayr
+                ? "سواعد الخير"
+                : "توزيع تلقائي"
+            }
           />
           <InfoCard title="نوع النشاط" value={event.eventType?.name || "غير محدد"} />
         </div>
@@ -1711,6 +1726,27 @@ const EventDetails: React.FC = () => {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <p className="text-sm font-black">الصندوق الذي تُصرف منه مصاريف النشاط</p>
+                <p className="mt-1 mb-3 text-xs text-gray-500">
+                  عند اختيار صندوق، تُخصم كل مصاريف النشاط منه. بدون اختيار، يُطبق التوزيع التلقائي.
+                </p>
+                <select
+                  value={editCaisseId}
+                  onChange={(e) =>
+                    setEditCaisseId(e.target.value ? Number(e.target.value) : "")
+                  }
+                  className={inputCls}
+                >
+                  <option value="">تلقائي (حسب الدرجة / معوز / سواعد الخير)</option>
+                  {caisses.map((caisse) => (
+                    <option key={caisse.id} value={caisse.id}>
+                      {caisse.nom}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="rounded-2xl border bg-gray-50 p-4">

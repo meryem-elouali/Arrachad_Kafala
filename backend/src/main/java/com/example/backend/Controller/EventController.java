@@ -1,5 +1,6 @@
 package com.example.backend.Controller;
 
+import com.example.backend.Repository.EconomicCategoryRepository;
 import com.example.backend.Repository.EventTypeRepository;
 import com.example.backend.model.*;
 import com.example.backend.service.EventService;
@@ -25,6 +26,7 @@ public class EventController {
 
     private final EventService eventService;
     private final EventTypeRepository eventTypeRepository;
+    private final EconomicCategoryRepository caisseRepository;
 
 
     // ============================================================
@@ -33,10 +35,12 @@ public class EventController {
 
     public EventController(
             EventService eventService,
-            EventTypeRepository eventTypeRepository
+            EventTypeRepository eventTypeRepository,
+            EconomicCategoryRepository caisseRepository
     ) {
         this.eventService = eventService;
         this.eventTypeRepository = eventTypeRepository;
+        this.caisseRepository = caisseRepository;
     }
 
 
@@ -420,6 +424,8 @@ public class EventController {
                     )
             );
 
+            applyCaisse(event, props);
+
 
             // ----------------------------------------------------
             // FILES
@@ -746,6 +752,8 @@ public class EventController {
                                     "sawaedAlKhayr",
                                     Boolean.TRUE.equals(event.getSawaedAlKhayr())
                             );
+
+                            putCaisse(map, event);
 
                             map.put(
                                     "description",
@@ -1728,6 +1736,8 @@ public class EventController {
                     );
                 }
 
+                applyCaisse(event, props);
+
 
                 // ------------------------------------------------
                 // DESCRIPTION
@@ -1938,6 +1948,8 @@ public class EventController {
                         )
                 );
             }
+
+            applyCaisse(event, props);
 
 
             // ====================================================
@@ -2471,6 +2483,8 @@ public class EventController {
                                     "sawaedAlKhayr",
                                     Boolean.TRUE.equals(event.getSawaedAlKhayr())
                             );
+
+                            putCaisse(map, event);
 
                             map.put(
                                     "degresFamille",
@@ -4021,6 +4035,8 @@ public class EventController {
                 Boolean.TRUE.equals(event.getSawaedAlKhayr())
         );
 
+        putCaisse(map, event);
+
         MontantsCategories categories =
                 calculerMontantsCategories(event);
 
@@ -4496,6 +4512,77 @@ public class EventController {
 
         return Boolean.parseBoolean(
                 value.toString()
+        );
+    }
+
+
+    // ============================================================
+    // CAISSE (صندوق) CHOISIE
+    //
+    // caisseId absent  -> on ne touche pas
+    // caisseId vide    -> répartition automatique (null)
+    // caisseId = x     -> tout le coût de l'événement va dans cette caisse
+    // ============================================================
+
+    private void applyCaisse(
+            Event event,
+            Map<String, Object> props
+    ) {
+
+        if (
+                props == null
+                        || !props.containsKey("caisseId")
+        ) {
+
+            return;
+        }
+
+        Object value =
+                props.get("caisseId");
+
+        if (
+                value == null
+                        || value.toString().isBlank()
+        ) {
+
+            event.setCaisse(null);
+            return;
+        }
+
+        event.setCaisse(
+                caisseRepository
+                        .findById(
+                                Long.valueOf(
+                                        value.toString()
+                                )
+                        )
+                        .orElseThrow(
+                                () ->
+                                        new RuntimeException(
+                                                "الصندوق غير موجود"
+                                        )
+                        )
+        );
+    }
+
+
+    private void putCaisse(
+            Map<String, Object> map,
+            Event event
+    ) {
+
+        map.put(
+                "caisseId",
+                event.getCaisse() != null
+                        ? event.getCaisse().getId()
+                        : null
+        );
+
+        map.put(
+                "caisseNom",
+                event.getCaisse() != null
+                        ? event.getCaisse().getNom()
+                        : null
         );
     }
 
