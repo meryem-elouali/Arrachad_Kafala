@@ -793,6 +793,168 @@ const addSchoolYear = (
   );
 
   // ==========================================================
+  // DEGRE DE LA FAMILLE DE L'ENFANT
+  //
+  // familleTrouvee = true + degreFamilleEnfant != null
+  //   => degré défini (1 / 2 / 3)
+  //
+  // familleTrouvee = true + degreFamilleEnfant == null
+  //   => معوز / degré non défini
+  // ==========================================================
+
+  const [
+    degreFamilleEnfant,
+    setDegreFamilleEnfant,
+  ] = useState<number | null>(null);
+
+  const [
+    familleTrouvee,
+    setFamilleTrouvee,
+  ] = useState(false);
+
+  const [
+    loadingFamille,
+    setLoadingFamille,
+  ] = useState(true);
+
+  // ==========================================================
+  // CHARGER LA FAMILLE DE L'ENFANT
+  // ==========================================================
+
+  useEffect(() => {
+    if (!enfantid) {
+      setFamilleTrouvee(false);
+      setDegreFamilleEnfant(null);
+      setLoadingFamille(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFamilleEnfant = async () => {
+      setLoadingFamille(true);
+
+      try {
+        const res = await fetch(
+          `${API}/famille`
+        );
+
+        if (!res.ok) {
+          throw new Error(
+            "Erreur chargement familles"
+          );
+        }
+
+        const data = await res.json();
+
+        const familles =
+          Array.isArray(data)
+            ? data
+            : [];
+
+        const famille = familles.find(
+          (item: any) =>
+            Array.isArray(
+              item?.enfants
+            ) &&
+            item.enfants.some(
+              (enfant: any) =>
+                Number(enfant?.id) ===
+                Number(enfantid)
+            )
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!famille) {
+          setFamilleTrouvee(false);
+          setDegreFamilleEnfant(null);
+          return;
+        }
+
+        setFamilleTrouvee(true);
+
+        const rawDegre =
+          famille?.degreFamille ??
+          famille?.degre ??
+          famille?.degree ??
+          null;
+
+        setDegreFamilleEnfant(
+          rawDegre == null ||
+          rawDegre === ""
+            ? null
+            : Number(rawDegre)
+        );
+      } catch (error) {
+        console.error(
+          "Erreur chargement degré famille :",
+          error
+        );
+
+        if (!cancelled) {
+          setFamilleTrouvee(false);
+          setDegreFamilleEnfant(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingFamille(false);
+        }
+      }
+    };
+
+    void loadFamilleEnfant();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [enfantid]);
+
+  const categoriePaiementSoutien =
+    useMemo(() => {
+      if (loadingFamille) {
+        return {
+          type: "LOADING" as const,
+          label: "جارٍ تحديد الفئة...",
+          description:
+            "يتم التحقق من درجة عائلة الطفل.",
+        };
+      }
+
+      if (!familleTrouvee) {
+        return {
+          type: "INCONNU" as const,
+          label: "الفئة غير معروفة",
+          description:
+            "تعذر العثور على عائلة الطفل لتحديد فئة الأداء.",
+        };
+      }
+
+      if (degreFamilleEnfant == null) {
+        return {
+          type: "NON_DEFINI" as const,
+          label: "معوز / درجة غير محددة",
+          description:
+            "المبالغ المؤداة لهذا الطفل تُصنّف ضمن فئة معوز.",
+        };
+      }
+
+      return {
+        type: "DEFINI" as const,
+        label:
+          `درجة محددة - الدرجة ${degreFamilleEnfant}`,
+        description:
+          "المبالغ المؤداة لهذا الطفل تُصنّف ضمن الدرجات المحددة.",
+      };
+    }, [
+      loadingFamille,
+      familleTrouvee,
+      degreFamilleEnfant,
+    ]);
+
+  // ==========================================================
   // AUTOSAVE
   // ==========================================================
 
@@ -2068,6 +2230,31 @@ useEffect(() => {
     ]);
 
   // ==========================================================
+  // REPARTITION DU MONTANT PAYE PAR CATEGORIE DE DEGRE
+  //
+  // IMPORTANT :
+  // On ne mélange jamais les deux catégories.
+  // ==========================================================
+
+  const totalPayeDegresDefinis =
+    categoriePaiementSoutien.type ===
+    "DEFINI"
+      ? totauxSoutienEnfant.totalPaye
+      : 0;
+
+  const totalPayeDegreNonDefini =
+    categoriePaiementSoutien.type ===
+    "NON_DEFINI"
+      ? totauxSoutienEnfant.totalPaye
+      : 0;
+
+  const totalPayeNonClasse =
+    categoriePaiementSoutien.type ===
+    "INCONNU"
+      ? totauxSoutienEnfant.totalPaye
+      : 0;
+
+  // ==========================================================
   // RENDER
   // ==========================================================
 
@@ -2520,20 +2707,79 @@ useEffect(() => {
 
         </div>
 
-        {/* TOTAUX DE L'ENFANT UNIQUEMENT */}
+        {/* ================================================== */}
+        {/* CATEGORIE DE PAIEMENT SELON LE DEGRE DE LA FAMILLE */}
+        {/* ================================================== */}
 
-        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div
+          className={`mb-4 rounded-2xl border p-4 ${
+            categoriePaiementSoutien.type === "DEFINI"
+              ? "border-blue-200 bg-blue-50"
+              : categoriePaiementSoutien.type === "NON_DEFINI"
+              ? "border-orange-200 bg-orange-50"
+              : categoriePaiementSoutien.type === "LOADING"
+              ? "border-gray-200 bg-gray-50"
+              : "border-amber-200 bg-amber-50"
+          }`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 
-          {/* PAYE */}
+            <div>
+              <p className="text-xs font-black text-gray-500">
+                فئة أداء مصاريف الدعم
+              </p>
 
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+              <p
+                className={`mt-1 text-lg font-black ${
+                  categoriePaiementSoutien.type === "DEFINI"
+                    ? "text-blue-800"
+                    : categoriePaiementSoutien.type === "NON_DEFINI"
+                    ? "text-orange-800"
+                    : "text-amber-800"
+                }`}
+              >
+                {categoriePaiementSoutien.label}
+              </p>
+
+              <p className="mt-1 text-xs font-semibold text-gray-500">
+                {categoriePaiementSoutien.description}
+              </p>
+            </div>
+
+            {!loadingFamille &&
+              familleTrouvee && (
+                <span
+                  className={`inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-black ${
+                    degreFamilleEnfant == null
+                      ? "bg-orange-100 text-orange-700"
+                      : "bg-blue-100 text-blue-700"
+                  }`}
+                >
+                  {degreFamilleEnfant == null
+                    ? "غير محدد"
+                    : `الدرجة ${degreFamilleEnfant}`}
+                </span>
+              )}
+
+          </div>
+        </div>
+
+        {/* ================================================== */}
+        {/* TOTAUX DE L'ENFANT - SEPARES PAR CATEGORIE */}
+        {/* ================================================== */}
+
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+
+          {/* PAYE - DEGRES DEFINIS */}
+
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
 
             <p className="text-sm font-semibold text-gray-500">
-              إجمالي المبلغ المؤدى لهذا الطفل
+              المبلغ المؤدى - الدرجات المحددة
             </p>
 
-            <p className="mt-1 text-3xl font-bold text-emerald-700">
-              {totauxSoutienEnfant.totalPaye.toLocaleString(
+            <p className="mt-1 text-3xl font-bold text-blue-700">
+              {totalPayeDegresDefinis.toLocaleString(
                 "fr-FR",
                 {
                   minimumFractionDigits: 2,
@@ -2543,11 +2789,61 @@ useEffect(() => {
               DH
             </p>
 
-            <p className="mt-1 text-xs text-emerald-600">
+            <p className="mt-1 text-xs font-semibold text-blue-600">
+              {degreFamilleEnfant != null
+                ? `الدرجة ${degreFamilleEnfant} • ${soutienYear}`
+                : soutienYear}
+            </p>
+
+          </div>
+
+          {/* PAYE - DEGRE NON DEFINI / معوز */}
+
+          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
+
+            <p className="text-sm font-semibold text-gray-500">
+              المبلغ المؤدى - معوز / درجة غير محددة
+            </p>
+
+            <p className="mt-1 text-3xl font-bold text-orange-700">
+              {totalPayeDegreNonDefini.toLocaleString(
+                "fr-FR",
+                {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                }
+              )}{" "}
+              DH
+            </p>
+
+            <p className="mt-1 text-xs font-semibold text-orange-600">
               {soutienYear}
             </p>
 
           </div>
+
+          {totalPayeNonClasse > 0 && (
+            <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
+              <p className="text-sm font-semibold text-gray-500">
+                مبلغ مؤدى غير مصنف
+              </p>
+
+              <p className="mt-1 text-3xl font-bold text-amber-700">
+                {totalPayeNonClasse.toLocaleString(
+                  "fr-FR",
+                  {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }
+                )}{" "}
+                DH
+              </p>
+
+              <p className="mt-1 text-xs font-semibold text-amber-600">
+                تعذر تحديد درجة العائلة
+              </p>
+            </div>
+          )}
 
           {/* NON PAYE PAR NOUS */}
 
@@ -2580,7 +2876,7 @@ useEffect(() => {
 
         <div className="overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
 
-          <table className="min-w-[1100px] w-full text-right text-sm">
+          <table className="min-w-[1240px] w-full text-right text-sm">
 
             <thead className="bg-gray-50 text-gray-600">
 
@@ -2606,6 +2902,10 @@ useEffect(() => {
 
                 <th className="p-4">
                   المبلغ المؤدى من طرفنا
+                </th>
+
+                <th className="p-4">
+                  فئة الأداء
                 </th>
 
                 <th className="p-4 text-center">
@@ -2846,6 +3146,33 @@ useEffect(() => {
 
                     </td>
 
+                    {/* CATEGORIE DE PAIEMENT */}
+
+                    <td className="p-3">
+
+                      {categoriePaiementSoutien.type === "DEFINI" ? (
+                        <span className="inline-flex whitespace-nowrap rounded-full bg-blue-100 px-3 py-1.5 text-xs font-black text-blue-700">
+                          الدرجات المحددة
+                          {degreFamilleEnfant != null
+                            ? ` - الدرجة ${degreFamilleEnfant}`
+                            : ""}
+                        </span>
+                      ) : categoriePaiementSoutien.type === "NON_DEFINI" ? (
+                        <span className="inline-flex whitespace-nowrap rounded-full bg-orange-100 px-3 py-1.5 text-xs font-black text-orange-700">
+                          معوز / غير محدد
+                        </span>
+                      ) : categoriePaiementSoutien.type === "LOADING" ? (
+                        <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-500">
+                          جارٍ التحقق...
+                        </span>
+                      ) : (
+                        <span className="inline-flex whitespace-nowrap rounded-full bg-amber-100 px-3 py-1.5 text-xs font-black text-amber-700">
+                          غير مصنف
+                        </span>
+                      )}
+
+                    </td>
+
                     {/* EFFECTUE */}
 
                     <td className="p-3 text-center">
@@ -2945,7 +3272,7 @@ useEffect(() => {
                 <tr>
 
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     className="p-10 text-center text-gray-400"
                   >
                     لا توجد بيانات دعم لهذه السنة

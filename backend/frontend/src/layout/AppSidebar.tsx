@@ -1,404 +1,578 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "react-router";
 
-// Assume these icons are imported from an icon library
 import {
-  BoxCubeIcon,
   CalenderIcon,
-  ChevronDownIcon,
   GridIcon,
-  HorizontaLDots,
   ListIcon,
   PageIcon,
-  PieChartIcon,
-  PlugInIcon,
   TableIcon,
   UserCircleIcon,
 } from "../icons";
+
 import { useSidebar } from "../context/SidebarContext";
-import SidebarWidget from "./SidebarWidget";
 
 type NavItem = {
   name: string;
   icon: React.ReactNode;
-  path?: string;
-  subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
+  path: string;
+  perm?: string;
+  role?: string;
+  match?: string[];
 };
 
-const navItems: NavItem[] = [
- /** {
-    icon: <GridIcon />,
-    name: "Dashboard",
-    subItems: [{ name: "Ecommerce", path: "/", pro: false }],
-  },*/
-   {
-      icon: <ListIcon />,
-      name: "اضافة عائلة",
-      path: "/form-elements",
-    },
-{
-  name: "تحديد درجة استحقاق الأسر",
-  icon: <TableIcon />,
-  path: "/degre-famille",
-},
-  {
-    icon: <CalenderIcon />,
-    name: "events",
-    path: "/calendar",
+type NavGroup = {
+  title: string;
+  items: NavItem[];
+};
 
+const GROUPS: NavGroup[] = [
+  {
+    title: "الرئيسية",
+    items: [
+      {
+        name: "لوحة القيادة",
+        icon: <GridIcon />,
+        path: "/home",
+      },
+    ],
   },
+
   {
-      icon: <CalenderIcon />,
-      name: "liste events",
-      path: "/listeevents",
+    title: "العائلات",
+    items: [
+      {
+        name: "إضافة عائلة",
+        icon: <ListIcon />,
+        path: "/form-elements",
+        perm: "FAMILLES",
+      },
 
-    },
-{
-    name: "Liste familles",
-    icon: <TableIcon />,
-      path: "/basic-tables",
+      {
+        name: "لائحة العائلات",
+        icon: <TableIcon />,
+        path: "/basic-tables",
+        perm: "FAMILLES",
+        match: ["/familleprofile"],
+      },
 
+      {
+        name: "درجة استحقاق الأسر",
+        icon: <PageIcon />,
+        path: "/degre-famille",
+        perm: "FAMILLES",
+      },
+    ],
   },
+
   {
-      name: "Suivi etudes",
-      icon: <TableIcon />,
+    title: "الأنشطة",
+    items: [
+      {
+        name: "التقويم",
+        icon: <CalenderIcon />,
+        path: "/calendar",
+        perm: "EVENTS",
+      },
+
+      {
+        name: "لائحة الأنشطة",
+        icon: <ListIcon />,
+        path: "/listeevents",
+        perm: "EVENTS",
+        match: ["/event-details"],
+      },
+    ],
+  },
+
+  {
+    title: "التمدرس",
+    items: [
+      {
+        name: "تتبع الدراسة",
+        icon: <TableIcon />,
         path: "/suivi-etudes",
+        perm: "ETUDES",
+        match: ["/EtudesProfile"],
+      },
+    ],
+  },
 
-    },
+  // =========================================================
+  // GESTION FINANCIERE
+  // =========================================================
   {
-    icon: <UserCircleIcon />,
-    name: "User Profile",
-    path: "/profile",
+    title: "المالية",
+    items: [
+      {
+        name: "الإدارة المالية",
+        icon: <PageIcon />,
+        path: "/gestion-economique",
+        perm: "ECONOMIE",
+      },
+    ],
   },
+
   {
-    name: "Forms",
-    icon: <ListIcon />,
-    subItems: [{ name: "Form Elements", path: "/form-elements", pro: false }],
-  },
-  {
-    name: "Tables",
-    icon: <TableIcon />,
-    subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
-  },
-  {
-    name: "Pages",
-    icon: <PageIcon />,
-    subItems: [
-      { name: "Blank Page", path: "/blank", pro: false },
-      { name: "404 Error", path: "/error-404", pro: false },
+    title: "اللجنة",
+    items: [
+      // {
+      //   name: "اجتماعات اللجنة",
+      //   icon: <CalenderIcon />,
+      //   path: "/reunions",
+      //   perm: "REUNIONS",
+      // },
+
+      {
+        name: "إدارة المستخدمين",
+        icon: <UserCircleIcon />,
+        path: "/utilisateurs",
+        role: "SUPER_ADMIN",
+      },
+
+      {
+        name: "ملفي الشخصي",
+        icon: <UserCircleIcon />,
+        path: "/profile",
+      },
     ],
   },
 ];
 
-const othersItems: NavItem[] = [
-  {
-    icon: <PieChartIcon />,
-    name: "Charts",
-    subItems: [
-      { name: "Line Chart", path: "/line-chart", pro: false },
-      { name: "Bar Chart", path: "/bar-chart", pro: false },
-    ],
-  },
-  {
-    icon: <BoxCubeIcon />,
-    name: "UI Elements",
-    subItems: [
-      { name: "Alerts", path: "/alerts", pro: false },
-      { name: "Avatar", path: "/avatars", pro: false },
-      { name: "Badge", path: "/badge", pro: false },
-      { name: "Buttons", path: "/buttons", pro: false },
-      { name: "Images", path: "/images", pro: false },
-      { name: "Videos", path: "/videos", pro: false },
-    ],
-  },
-  {
-    icon: <PlugInIcon />,
-    name: "Authentication",
-    subItems: [
-      { name: "Sign In", path: "/signin", pro: false },
-      { name: "Sign Up", path: "/signup", pro: false },
-    ],
-  },
-];
+const ROLE_LABEL: Record<string, string> = {
+  SUPER_ADMIN: "مسؤول أعلى",
+  ADMIN: "مشرف",
+  SIMPLE: "مستخدم",
+};
+
+const ASIDE_BASE =
+  "fixed right-0 top-0 z-50 mt-16 flex h-screen flex-col border-l border-gray-200 bg-white px-4 text-gray-900 transition-all duration-300 ease-in-out dark:border-gray-800 dark:bg-gray-900 lg:mt-0 lg:translate-x-0";
 
 const AppSidebar: React.FC = () => {
-  const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
+  const {
+    isExpanded,
+    isMobileOpen,
+    isHovered,
+    setIsHovered,
+  } = useSidebar();
+
   const location = useLocation();
 
-  const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
-    index: number;
-  } | null>(null);
-  const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
-    {}
-  );
-  const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const open =
+    isExpanded ||
+    isHovered ||
+    isMobileOpen;
 
-  // const isActive = (path: string) => location.pathname === path;
-  const isActive = useCallback(
-    (path: string) => location.pathname === path,
-    [location.pathname]
-  );
+  // =========================================================
+  // SESSION
+  // =========================================================
 
-  useEffect(() => {
-    let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "others",
-                index,
-              });
-              submenuMatched = true;
-            }
-          });
-        }
-      });
-    });
-
-    if (!submenuMatched) {
-      setOpenSubmenu(null);
+  const session = useMemo(() => {
+    try {
+      return JSON.parse(
+        localStorage.getItem("lajna_user") ||
+          "{}"
+      );
+    } catch {
+      return {};
     }
-  }, [location, isActive]);
+  }, []);
 
-  useEffect(() => {
-    if (openSubmenu !== null) {
-      const key = `${openSubmenu.type}-${openSubmenu.index}`;
-      if (subMenuRefs.current[key]) {
-        setSubMenuHeight((prevHeights) => ({
-          ...prevHeights,
-          [key]: subMenuRefs.current[key]?.scrollHeight || 0,
-        }));
+  const isAdmin =
+    session.role === "ADMIN" ||
+    session.role === "SUPER_ADMIN";
+
+  // =========================================================
+  // PERMISSIONS
+  // =========================================================
+
+  const allowed = useCallback(
+    (item: NavItem) => {
+      // Restriction par rôle précis
+      if (item.role) {
+        return (
+          session.role ===
+          item.role
+        );
       }
+
+      // Pas de permission = visible
+      if (!item.perm) {
+        return true;
+      }
+
+      // ADMIN et SUPER_ADMIN ont accès
+      if (isAdmin) {
+        return true;
+      }
+
+      // Utilisateur SIMPLE :
+      // vérification des permissions
+      const permissions =
+        Array.isArray(
+          session.permissions
+        )
+          ? session.permissions
+          : [];
+
+      return permissions.includes(
+        item.perm
+      );
+    },
+    [
+      session.role,
+      session.permissions,
+      isAdmin,
+    ]
+  );
+
+  // =========================================================
+  // GROUPES VISIBLES
+  // =========================================================
+
+  const groups = useMemo(
+    () =>
+      GROUPS.map((group) => ({
+        ...group,
+
+        items:
+          group.items.filter(
+            allowed
+          ),
+      })).filter(
+        (group) =>
+          group.items.length > 0
+      ),
+    [allowed]
+  );
+
+  // =========================================================
+  // ROUTE ACTIVE
+  // =========================================================
+
+  const isActive = (
+    item: NavItem
+  ) => {
+    if (
+      location.pathname ===
+      item.path
+    ) {
+      return true;
     }
-  }, [openSubmenu]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
-    setOpenSubmenu((prevOpenSubmenu) => {
-      if (
-        prevOpenSubmenu &&
-        prevOpenSubmenu.type === menuType &&
-        prevOpenSubmenu.index === index
-      ) {
-        return null;
-      }
-      return { type: menuType, index };
-    });
+    return (
+      item.match || []
+    ).some((path) =>
+      location.pathname.startsWith(
+        path
+      )
+    );
   };
 
-  const renderMenuItems = (items: NavItem[], menuType: "main" | "others") => (
-    <ul className="flex flex-col gap-4">
-      {items.map((nav, index) => (
-        <li key={nav.name}>
-          {nav.subItems ? (
-            <button
-              onClick={() => handleSubmenuToggle(index, menuType)}
-              className={`menu-item group ${
-                openSubmenu?.type === menuType && openSubmenu?.index === index
-                  ? "menu-item-active"
-                  : "menu-item-inactive"
-              } cursor-pointer ${
-                !isExpanded && !isHovered
-                  ? "lg:justify-center"
-                  : "lg:justify-start"
-              }`}
-            >
-              <span
-                className={`menu-item-icon-size  ${
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? "menu-item-icon-active"
-                    : "menu-item-icon-inactive"
-                }`}
-              >
-                {nav.icon}
-              </span>
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <span className="menu-item-text">{nav.name}</span>
-              )}
-              {(isExpanded || isHovered || isMobileOpen) && (
-                <ChevronDownIcon
-                  className={`ml-auto w-5 h-5 transition-transform duration-200 ${
-                    openSubmenu?.type === menuType &&
-                    openSubmenu?.index === index
-                      ? "rotate-180 text-brand-500"
-                      : ""
-                  }`}
-                />
-              )}
-            </button>
-          ) : (
-            nav.path && (
-              <Link
-                to={nav.path}
-                className={`menu-item group ${
-                  isActive(nav.path) ? "menu-item-active" : "menu-item-inactive"
-                }`}
-              >
-                <span
-                  className={`menu-item-icon-size ${
-                    isActive(nav.path)
-                      ? "menu-item-icon-active"
-                      : "menu-item-icon-inactive"
-                  }`}
-                >
-                  {nav.icon}
-                </span>
-                {(isExpanded || isHovered || isMobileOpen) && (
-                  <span className="menu-item-text">{nav.name}</span>
-                )}
-              </Link>
-            )
-          )}
-          {nav.subItems && (isExpanded || isHovered || isMobileOpen) && (
-            <div
-              ref={(el) => {
-                subMenuRefs.current[`${menuType}-${index}`] = el;
-              }}
-              className="overflow-hidden transition-all duration-300"
-              style={{
-                height:
-                  openSubmenu?.type === menuType && openSubmenu?.index === index
-                    ? `${subMenuHeight[`${menuType}-${index}`]}px`
-                    : "0px",
-              }}
-            >
-              <ul className="mt-2 space-y-1 ml-9">
-                {nav.subItems.map((subItem) => (
-                  <li key={subItem.name}>
-                    <Link
-                      to={subItem.path}
-                      className={`menu-dropdown-item ${
-                        isActive(subItem.path)
-                          ? "menu-dropdown-item-active"
-                          : "menu-dropdown-item-inactive"
-                      }`}
-                    >
-                      {subItem.name}
-                      <span className="flex items-center gap-1 ml-auto">
-                        {subItem.new && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            new
-                          </span>
-                        )}
-                        {subItem.pro && (
-                          <span
-                            className={`ml-auto ${
-                              isActive(subItem.path)
-                                ? "menu-dropdown-badge-active"
-                                : "menu-dropdown-badge-inactive"
-                            } menu-dropdown-badge`}
-                          >
-                            pro
-                          </span>
-                        )}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
+  // =========================================================
+  // LOGOUT
+  // =========================================================
+
+  const logout = () => {
+    localStorage.removeItem(
+      "lajna_user"
+    );
+
+    window.location.href =
+      "/";
+  };
+
+  const initial = (
+    session.nomComplet ||
+    "؟"
+  ).charAt(0);
+
+  // =========================================================
+  // ASIDE SIZE
+  // =========================================================
+
+  const asideClass =
+    ASIDE_BASE +
+    (open
+      ? " w-[290px]"
+      : " w-[90px]") +
+    (isMobileOpen
+      ? " translate-x-0"
+      : " translate-x-full");
+
+  // =========================================================
+  // RENDER
+  // =========================================================
 
   return (
     <aside
-      className={`fixed mt-16 flex flex-col lg:mt-0 top-0 px-5 right-0 bg-white dark:bg-gray-900 dark:border-gray-800 text-gray-900 h-screen transition-all duration-300 ease-in-out z-50 border-r border-gray-200
-        ${
-          isExpanded || isMobileOpen
-            ? "w-[290px]"
-            : isHovered
-            ? "w-[290px]"
-            : "w-[90px]"
+      dir="rtl"
+      className={asideClass}
+      onMouseEnter={() => {
+        if (!isExpanded) {
+          setIsHovered(true);
         }
-        ${isMobileOpen ? "translate-x-0" : "-translate-x-full"}
-        lg:translate-x-0`}
-      onMouseEnter={() => !isExpanded && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
+      }}
+      onMouseLeave={() =>
+        setIsHovered(false)
+      }
     >
+
+      {/* =====================================================
+          MARQUE
+      ===================================================== */}
+
       <div
-        className={`py-8 flex ${
-          !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
+        className={`flex items-center gap-3 py-6 ${
+          open
+            ? ""
+            : "lg:justify-center"
         }`}
       >
-        <Link to="/">
-          {isExpanded || isHovered || isMobileOpen ? (
-            <>
-              <img
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-              <img
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-            </>
-          ) : (
-            <img
-              src="/images/logo/logo-icon.svg"
-              alt="Logo"
-              width={32}
-              height={32}
-            />
+
+        <Link
+          to="/home"
+          className="flex items-center gap-3"
+        >
+
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-blue-500 text-xl font-extrabold text-white shadow-lg shadow-indigo-200 dark:shadow-none">
+            ر
+          </span>
+
+          {open && (
+
+            <span className="leading-tight">
+
+              <span className="block text-base font-extrabold text-gray-800 dark:text-white">
+                الرشاد للكفالة
+              </span>
+
+              <span className="block text-[11px] font-medium text-gray-400">
+                اللجنة الاجتماعية
+              </span>
+
+            </span>
           )}
+
         </Link>
+
       </div>
-      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
-        <nav className="mb-6">
-          <div className="flex flex-col gap-4">
-            <div>
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
-              >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Menu"
-                ) : (
-                  <HorizontaLDots className="size-6" />
+
+      {/* =====================================================
+          NAVIGATION
+      ===================================================== */}
+
+      <nav className="no-scrollbar flex-1 overflow-y-auto pb-4">
+
+        {groups.map(
+          (
+            group,
+            groupIndex
+          ) => (
+
+            <div
+              key={
+                group.title
+              }
+              className={
+                groupIndex === 0
+                  ? ""
+                  : "mt-5"
+              }
+            >
+
+              {/* TITRE GROUPE */}
+
+              {open ? (
+
+                <h2 className="mb-2 px-3 text-[11px] font-bold tracking-wide text-gray-400">
+                  {group.title}
+                </h2>
+
+              ) : (
+
+                groupIndex > 0 && (
+
+                  <div className="mx-3 mb-3 h-px bg-gray-100 dark:bg-gray-800" />
+
+                )
+              )}
+
+              {/* ITEMS */}
+
+              <ul className="flex flex-col gap-1">
+
+                {group.items.map(
+                  (item) => {
+
+                    const active =
+                      isActive(
+                        item
+                      );
+
+                    const linkClass =
+                      "menu-item group " +
+                      (
+                        active
+                          ? "menu-item-active"
+                          : "menu-item-inactive"
+                      ) +
+                      (
+                        open
+                          ? ""
+                          : " lg:justify-center"
+                      );
+
+                    const iconClass =
+                      "menu-item-icon-size " +
+                      (
+                        active
+                          ? "menu-item-icon-active"
+                          : "menu-item-icon-inactive"
+                      );
+
+                    return (
+
+                      <li
+                        key={
+                          item.path
+                        }
+                      >
+
+                        <Link
+                          to={
+                            item.path
+                          }
+                          title={
+                            !open
+                              ? item.name
+                              : undefined
+                          }
+                          className={
+                            linkClass
+                          }
+                        >
+
+                          <span
+                            className={
+                              iconClass
+                            }
+                          >
+                            {item.icon}
+                          </span>
+
+                          {open && (
+
+                            <span className="menu-item-text">
+                              {item.name}
+                            </span>
+
+                          )}
+
+                          {open &&
+                            active && (
+
+                              <span className="mr-auto h-1.5 w-1.5 rounded-full bg-brand-500" />
+
+                            )}
+
+                        </Link>
+
+                      </li>
+                    );
+                  }
                 )}
-              </h2>
-              {renderMenuItems(navItems, "main")}
+
+              </ul>
+
             </div>
-            <div className="">
-              <h2
-                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
-                  !isExpanded && !isHovered
-                    ? "lg:justify-center"
-                    : "justify-start"
-                }`}
+          )
+        )}
+
+      </nav>
+
+      {/* =====================================================
+          CARTE UTILISATEUR
+      ===================================================== */}
+
+      <div className="border-t border-gray-100 py-4 dark:border-gray-800">
+
+        <div
+          className={
+            "flex items-center gap-3 rounded-2xl bg-gray-50 p-2.5 dark:bg-white/[0.04]" +
+            (
+              open
+                ? ""
+                : " lg:justify-center lg:bg-transparent lg:p-0"
+            )
+          }
+        >
+
+          {/* AVATAR */}
+
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-500 text-base font-bold text-white">
+            {initial}
+          </span>
+
+          {open && (
+            <>
+
+              {/* USER INFOS */}
+
+              <div className="min-w-0 flex-1">
+
+                <p className="truncate text-sm font-bold text-gray-800 dark:text-white">
+                  {session.nomComplet ||
+                    "—"}
+                </p>
+
+                <p className="truncate text-[11px] text-gray-400">
+                  {session.fonction ||
+                    ROLE_LABEL[
+                      session.role
+                    ] ||
+                    ""}
+                </p>
+
+              </div>
+
+              {/* LOGOUT */}
+
+              <button
+                type="button"
+                onClick={
+                  logout
+                }
+                title="تسجيل الخروج"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-gray-400 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
               >
-                {isExpanded || isHovered || isMobileOpen ? (
-                  "Others"
-                ) : (
-                  <HorizontaLDots />
-                )}
-              </h2>
-              {renderMenuItems(othersItems, "others")}
-            </div>
-          </div>
-        </nav>
-        {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
+
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+
+                  <path d="m16 17 5-5-5-5" />
+
+                  <path d="M21 12H9" />
+
+                </svg>
+
+              </button>
+
+            </>
+          )}
+
+        </div>
+
       </div>
+
     </aside>
   );
 };

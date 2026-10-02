@@ -54,11 +54,28 @@ type SoutienStat = {
   nombrePaiements: number;
 };
 
+type DegreCategorie = "DEFINI" | "NON_DEFINI" | "INCONNU";
+
+type DegreInfo = {
+  categorie: DegreCategorie;
+  degre: number | null;
+};
+
 type SortState = { key: string; dir: 1 | -1 };
 
 type ExportScope = "current" | "page" | "all";
 type ExportSupportFilter = "all" | "with" | "without";
 type ExportPaymentFilter = "all" | "paid" | "partial" | "external";
+
+type ExportDegreFilter =
+  | "all"
+  | "defined"
+  | "degree1"
+  | "degree2"
+  | "degree3"
+  | "undefined"
+  | "unknown";
+
 type ExportOrientation = "landscape" | "portrait";
 
 // ============================================================
@@ -135,6 +152,8 @@ const exportableFields: Option[] = [
   { text: "المؤسسة", value: "nomEcole" },
   { text: "السنة الدراسية", value: "anneeScolaire" },
   { text: "النقطة", value: "noteAffichee" },
+  { text: "فئة الدرجة", value: "categorieDegre" },
+  { text: "الدرجة", value: "degreFamilleAffiche" },
   { text: "مبلغ الدعم المستهلك", value: "montantSoutienConsomme" },
   { text: "المبلغ المؤدى من طرفنا", value: "montantSoutienPaye" },
   { text: "المبلغ المؤدى من طرف الغير", value: "montantSoutienAutre" },
@@ -457,6 +476,19 @@ export default function EtudesTable() {
   const [conso, setConso] = useState<Record<string, SoutienStat>>({});
   const [consoLoading, setConsoLoading] = useState(false);
 
+  // ---------- DEGRÉ DE FAMILLE ----------
+  //
+  // Pour chaque enfant :
+  // - DEFINI     => famille avec degré 1 / 2 / 3
+  // - NON_DEFINI => famille sans degré => معوز
+  // - INCONNU    => famille introuvable
+  //
+  const [degresEnfants, setDegresEnfants] =
+    useState<Record<string, DegreInfo>>({});
+
+  const [degresLoading, setDegresLoading] =
+    useState(false);
+
   // ---------- FILTRES ----------
   const [year, setYear] = useState("");
   const [anneesDisponibles, setAnneesDisponibles] = useState<string[]>([]);
@@ -486,6 +518,11 @@ export default function EtudesTable() {
   const [exportEcoles, setExportEcoles] = useState<string[]>([]);
   const [exportSupportFilter, setExportSupportFilter] = useState<ExportSupportFilter>("all");
   const [exportPaymentFilter, setExportPaymentFilter] = useState<ExportPaymentFilter>("all");
+
+  // Filtre de degré utilisé dans le formulaire d'export PDF / Excel.
+  const [exportDegreFilter, setExportDegreFilter] =
+    useState<ExportDegreFilter>("all");
+
   const [exportMinConsomme, setExportMinConsomme] = useState("");
   const [exportMaxConsomme, setExportMaxConsomme] = useState("");
   const [exportMinPaye, setExportMinPaye] = useState("");
@@ -613,6 +650,149 @@ export default function EtudesTable() {
   }, [etudes]);
 
   // =========================================================
+  // DEGRÉ DE FAMILLE DES ENFANTS
+  // =========================================================
+  //
+  // On récupère les familles afin de savoir dans quelle caisse
+  // classer les montants de soutien scolaire :
+  //
+  // degré 1 / 2 / 3 => الدرجات المحددة
+  // degré null      => معوز / درجة غير محددة
+  //
+  // IMPORTANT :
+  // cette classification utilise le degré ACTUEL de la famille.
+  // =========================================================
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setDegresLoading(true);
+
+    axios
+      .get(`${API}/famille`)
+      .then((res) => {
+        if (cancelled) return;
+
+        const familles =
+          Array.isArray(res.data)
+            ? res.data
+            : [];
+
+        const map: Record<string, DegreInfo> = {};
+
+        familles.forEach((famille: any) => {
+          const rawDegre =
+            famille?.degreFamille ??
+            famille?.degre ??
+            famille?.degree ??
+            null;
+
+          const degre =
+            rawDegre === null ||
+            rawDegre === undefined ||
+            rawDegre === ""
+              ? null
+              : Number(rawDegre);
+
+          const info: DegreInfo =
+            degre === null
+              ? {
+                  categorie: "NON_DEFINI",
+                  degre: null,
+                }
+              : {
+                  categorie: "DEFINI",
+                  degre: Number.isFinite(degre)
+                    ? degre
+                    : null,
+                };
+
+          const enfants =
+            Array.isArray(famille?.enfants)
+              ? famille.enfants
+              : [];
+
+          enfants.forEach((enfant: any) => {
+            const enfantId =
+              Number(enfant?.id);
+
+            if (
+              Number.isFinite(enfantId)
+            ) {
+              map[String(enfantId)] =
+                info;
+            }
+          });
+        });
+
+        setDegresEnfants(map);
+      })
+      .catch((error) => {
+        console.error(
+          "Erreur chargement degrés familles :",
+          error
+        );
+
+        if (!cancelled) {
+          setDegresEnfants({});
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDegresLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const getDegreInfo = (
+    row: EtudeRow
+  ): DegreInfo => {
+    const enfantId =
+      row.enfant?.id;
+
+    if (!enfantId) {
+      return {
+        categorie: "INCONNU",
+        degre: null,
+      };
+    }
+
+    return (
+      degresEnfants[
+        String(enfantId)
+      ] || {
+        categorie: "INCONNU",
+        degre: null,
+      }
+    );
+  };
+
+  const getDegreLabel = (
+    info: DegreInfo
+  ) => {
+    if (
+      info.categorie === "DEFINI"
+    ) {
+      return info.degre != null
+        ? `الدرجات المحددة - الدرجة ${info.degre}`
+        : "الدرجات المحددة";
+    }
+
+    if (
+      info.categorie ===
+      "NON_DEFINI"
+    ) {
+      return "معوز / درجة غير محددة";
+    }
+
+    return "غير مصنف";
+  };
+
+  // =========================================================
   // CONSOMMATION SOUTIEN (année de la page)
   // =========================================================
 
@@ -717,24 +897,122 @@ export default function EtudesTable() {
   const statsSoutien = useMemo(() => {
     const ids = new Set(
       filteredEtudes
-        .map((row) => (row.enfant?.id != null ? String(row.enfant.id) : null))
-        .filter((id): id is string => id !== null)
+        .map((row) =>
+          row.enfant?.id != null
+            ? String(row.enfant.id)
+            : null
+        )
+        .filter(
+          (id): id is string =>
+            id !== null
+        )
     );
 
-    const consommateurs = Object.values(conso).filter(
-      (item) => ids.has(String(item.enfantId)) && Number(item.totalConsomme) > 0
-    );
+    let nombreEtudiants = 0;
 
-    const sum = (key: "totalConsomme" | "totalPaye" | "totalAutre") =>
-      consommateurs.reduce((acc, item) => acc + Number(item[key] || 0), 0);
+    let totalConsomme = 0;
+    let totalPaye = 0;
+    let totalAutre = 0;
+
+    let consommeDegreDefini = 0;
+    let payeDegreDefini = 0;
+
+    let consommeDegreNonDefini = 0;
+    let payeDegreNonDefini = 0;
+
+    let consommeNonClasse = 0;
+    let payeNonClasse = 0;
+
+    Object.values(conso).forEach(
+      (item) => {
+        const enfantId =
+          String(item.enfantId);
+
+        if (!ids.has(enfantId)) {
+          return;
+        }
+
+        const consomme =
+          Number(
+            item.totalConsomme || 0
+          );
+
+        const paye =
+          Number(
+            item.totalPaye || 0
+          );
+
+        const autre =
+          Number(
+            item.totalAutre || 0
+          );
+
+        if (consomme > 0) {
+          nombreEtudiants += 1;
+        }
+
+        totalConsomme += consomme;
+        totalPaye += paye;
+        totalAutre += autre;
+
+        const info =
+          degresEnfants[enfantId];
+
+        if (
+          info?.categorie ===
+          "DEFINI"
+        ) {
+          consommeDegreDefini +=
+            consomme;
+
+          payeDegreDefini +=
+            paye;
+
+          return;
+        }
+
+        if (
+          info?.categorie ===
+          "NON_DEFINI"
+        ) {
+          consommeDegreNonDefini +=
+            consomme;
+
+          payeDegreNonDefini +=
+            paye;
+
+          return;
+        }
+
+        consommeNonClasse +=
+          consomme;
+
+        payeNonClasse +=
+          paye;
+      }
+    );
 
     return {
-      nombreEtudiants: consommateurs.length,
-      totalConsomme: sum("totalConsomme"),
-      totalPaye: sum("totalPaye"),
-      totalAutre: sum("totalAutre"),
+      nombreEtudiants,
+
+      totalConsomme,
+      totalPaye,
+      totalAutre,
+
+      consommeDegreDefini,
+      payeDegreDefini,
+
+      consommeDegreNonDefini,
+      payeDegreNonDefini,
+
+      consommeNonClasse,
+      payeNonClasse,
     };
-  }, [conso, filteredEtudes]);
+  }, [
+    conso,
+    filteredEtudes,
+    degresEnfants,
+  ]);
 
   const statsParCycle = useMemo(() => {
     const cycles: CycleScolaire[] = [
@@ -935,11 +1213,29 @@ export default function EtudesTable() {
         const note = getNoteValue(row);
         const cycle = getCycleScolaire(row.niveauNom);
 
+        const degreInfo =
+          getDegreInfo(row);
+
         return {
           ...row,
           cycle,
           cycleLabel: NOTE_CONFIG[cycle].label,
           noteNumerique: note,
+
+          categorieDegre:
+            getDegreLabel(
+              degreInfo
+            ),
+
+          degreFamilleAffiche:
+            degreInfo.categorie ===
+            "DEFINI"
+              ? degreInfo.degre ?? "—"
+              : degreInfo.categorie ===
+                "NON_DEFINI"
+                ? "غير محدد"
+                : "—",
+
           montantSoutienConsommeNombre: Number(soutien.totalConsomme || 0),
           montantSoutienPayeNombre: Number(soutien.totalPaye || 0),
           montantSoutienAutreNombre: Number(soutien.totalAutre || 0),
@@ -952,7 +1248,15 @@ export default function EtudesTable() {
       .filter((row: any) => {
         if (
           query &&
-          ![row.nomEnfant, row.nomEcole, row.niveauNom, row.anneeScolaire, row.cycleLabel]
+          ![
+            row.nomEnfant,
+            row.nomEcole,
+            row.niveauNom,
+            row.anneeScolaire,
+            row.cycleLabel,
+            row.categorieDegre,
+            row.degreFamilleAffiche,
+          ]
             .join(" ")
             .toLowerCase()
             .includes(query)
@@ -982,6 +1286,87 @@ export default function EtudesTable() {
         if (exportPaymentFilter === "partial" && !(paye > 0 && paye < consomme)) return false;
         if (exportPaymentFilter === "external" && !(autre > 0)) return false;
 
+        // =====================================================
+        // FILTRE DEGRE POUR L'EXPORT
+        // =====================================================
+        //
+        // defined   => tous les degrés définis
+        // degree1   => degré 1 uniquement
+        // degree2   => degré 2 uniquement
+        // degree3   => degré 3 uniquement
+        // undefined => famille sans degré (معوز)
+        // unknown   => famille introuvable / non classée
+        // =====================================================
+
+        if (exportDegreFilter !== "all") {
+          const categorieDegre =
+            String(
+              row.categorieDegre ?? ""
+            );
+
+          const degreFamille =
+            row.degreFamilleAffiche;
+
+          if (
+            exportDegreFilter === "defined" &&
+            !categorieDegre.startsWith(
+              "الدرجات المحددة"
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            exportDegreFilter === "degree1" &&
+            !(
+              categorieDegre.startsWith(
+                "الدرجات المحددة"
+              ) &&
+              Number(degreFamille) === 1
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            exportDegreFilter === "degree2" &&
+            !(
+              categorieDegre.startsWith(
+                "الدرجات المحددة"
+              ) &&
+              Number(degreFamille) === 2
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            exportDegreFilter === "degree3" &&
+            !(
+              categorieDegre.startsWith(
+                "الدرجات المحددة"
+              ) &&
+              Number(degreFamille) === 3
+            )
+          ) {
+            return false;
+          }
+
+          if (
+            exportDegreFilter === "undefined" &&
+            !categorieDegre.includes("معوز")
+          ) {
+            return false;
+          }
+
+          if (
+            exportDegreFilter === "unknown" &&
+            categorieDegre !== "غير مصنف"
+          ) {
+            return false;
+          }
+        }
+
         if (minConsomme !== null && Number.isFinite(minConsomme) && consomme < minConsomme) return false;
         if (maxConsomme !== null && Number.isFinite(maxConsomme) && consomme > maxConsomme) return false;
         if (minPaye !== null && Number.isFinite(minPaye) && paye < minPaye) return false;
@@ -1006,25 +1391,91 @@ export default function EtudesTable() {
     exportEcoles,
     exportSupportFilter,
     exportPaymentFilter,
+    exportDegreFilter,
     exportMinConsomme,
     exportMaxConsomme,
     exportMinPaye,
     exportMaxPaye,
     exportMinNote,
     exportMaxNote,
+    degresEnfants,
   ]);
 
   const exportStats = useMemo(
     () =>
       exportFilteredData.reduce(
         (acc: any, row: any) => {
-          acc.totalConsomme += row.montantSoutienConsommeNombre;
-          acc.totalPaye += row.montantSoutienPayeNombre;
-          acc.totalAutre += row.montantSoutienAutreNombre;
-          if (row.montantSoutienConsommeNombre > 0) acc.beneficiaires += 1;
+          const consomme =
+            Number(
+              row.montantSoutienConsommeNombre ||
+              0
+            );
+
+          const paye =
+            Number(
+              row.montantSoutienPayeNombre ||
+              0
+            );
+
+          acc.totalConsomme += consomme;
+          acc.totalPaye += paye;
+          acc.totalAutre +=
+            Number(
+              row.montantSoutienAutreNombre ||
+              0
+            );
+
+          if (consomme > 0) {
+            acc.beneficiaires += 1;
+          }
+
+          if (
+            String(
+              row.categorieDegre
+            ).startsWith(
+              "الدرجات المحددة"
+            )
+          ) {
+            acc.consommeDegreDefini +=
+              consomme;
+
+            acc.payeDegreDefini +=
+              paye;
+          } else if (
+            String(
+              row.categorieDegre
+            ).includes("معوز")
+          ) {
+            acc.consommeDegreNonDefini +=
+              consomme;
+
+            acc.payeDegreNonDefini +=
+              paye;
+          } else {
+            acc.consommeNonClasse +=
+              consomme;
+
+            acc.payeNonClasse +=
+              paye;
+          }
+
           return acc;
         },
-        { totalConsomme: 0, totalPaye: 0, totalAutre: 0, beneficiaires: 0 }
+        {
+          totalConsomme: 0,
+          totalPaye: 0,
+          totalAutre: 0,
+          beneficiaires: 0,
+
+          consommeDegreDefini: 0,
+          payeDegreDefini: 0,
+
+          consommeDegreNonDefini: 0,
+          payeDegreNonDefini: 0,
+
+          consommeNonClasse: 0,
+          payeNonClasse: 0,
+        }
       ),
     [exportFilteredData]
   );
@@ -1055,6 +1506,30 @@ export default function EtudesTable() {
     if (exportPaymentFilter === "partial") labels.push("الأداء: مؤدى جزئيا");
     if (exportPaymentFilter === "external") labels.push("الأداء: تكفل به الغير");
 
+    if (exportDegreFilter === "defined") {
+      labels.push("الدرجة: الدرجات المحددة");
+    }
+
+    if (exportDegreFilter === "degree1") {
+      labels.push("الدرجة: الدرجة 1");
+    }
+
+    if (exportDegreFilter === "degree2") {
+      labels.push("الدرجة: الدرجة 2");
+    }
+
+    if (exportDegreFilter === "degree3") {
+      labels.push("الدرجة: الدرجة 3");
+    }
+
+    if (exportDegreFilter === "undefined") {
+      labels.push("الدرجة: معوز / درجة غير محددة");
+    }
+
+    if (exportDegreFilter === "unknown") {
+      labels.push("الدرجة: غير مصنف");
+    }
+
     if (exportMinConsomme !== "" || exportMaxConsomme !== "") {
       labels.push(`المستهلك: ${exportMinConsomme || "0"} - ${exportMaxConsomme || "∞"} DH`);
     }
@@ -1074,6 +1549,7 @@ export default function EtudesTable() {
     exportEcoles,
     exportSupportFilter,
     exportPaymentFilter,
+    exportDegreFilter,
     exportMinConsomme,
     exportMaxConsomme,
     exportMinPaye,
@@ -1091,6 +1567,7 @@ export default function EtudesTable() {
     setExportEcoles([]);
     setExportSupportFilter("all");
     setExportPaymentFilter("all");
+    setExportDegreFilter("all");
     setExportMinConsomme("");
     setExportMaxConsomme("");
     setExportMinPaye("");
@@ -1169,7 +1646,16 @@ export default function EtudesTable() {
     ws.mergeCells(`A${tr.number}:${lastCol}${tr.number}`);
     tr.height = 26;
     const tc = tr.getCell(1);
-    tc.value = `المجموع — المستهلك: ${fmtMoney(exportStats.totalConsomme)} | المؤدى من طرفنا: ${fmtMoney(exportStats.totalPaye)} | تكفل به الغير: ${fmtMoney(exportStats.totalAutre)}`;
+    tc.value =
+      `الدرجات المحددة — المستهلك: ${fmtMoney(
+        exportStats.consommeDegreDefini
+      )} | المؤدى: ${fmtMoney(
+        exportStats.payeDegreDefini
+      )}   ||   معوز / غير محدد — المستهلك: ${fmtMoney(
+        exportStats.consommeDegreNonDefini
+      )} | المؤدى: ${fmtMoney(
+        exportStats.payeDegreNonDefini
+      )}`;
     tc.font = { name: "Arial", size: 11, bold: true, color: { argb: "FF065F46" } };
     tc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD1FAE5" } };
     tc.alignment = { horizontal: "center", vertical: "middle" };
@@ -1223,9 +1709,32 @@ export default function EtudesTable() {
     const summary = [
       `النطاق: ${scopeLabel}`,
       `عدد السجلات: ${rows.length}`,
+      exportDegreFilter === "undefined"
+        ? "فئة الدرجة: معوز / درجة غير محددة"
+        : exportDegreFilter === "defined"
+          ? "فئة الدرجة: الدرجات المحددة"
+          : exportDegreFilter === "degree1"
+            ? "فئة الدرجة: الدرجة 1"
+            : exportDegreFilter === "degree2"
+              ? "فئة الدرجة: الدرجة 2"
+              : exportDegreFilter === "degree3"
+                ? "فئة الدرجة: الدرجة 3"
+                : exportDegreFilter === "unknown"
+                  ? "فئة الدرجة: غير مصنف"
+                  : "فئة الدرجة: جميع الدرجات",
       `المستفيدون من الدعم: ${exportStats.beneficiaires}`,
-      `إجمالي الدعم المستهلك: ${fmtMoney(exportStats.totalConsomme)}`,
-      `المبلغ المؤدى من طرفنا: ${fmtMoney(exportStats.totalPaye)}`,
+      `الدرجات المحددة - المستهلك: ${fmtMoney(
+        exportStats.consommeDegreDefini
+      )}`,
+      `الدرجات المحددة - المؤدى: ${fmtMoney(
+        exportStats.payeDegreDefini
+      )}`,
+      `معوز / غير محدد - المستهلك: ${fmtMoney(
+        exportStats.consommeDegreNonDefini
+      )}`,
+      `معوز / غير محدد - المؤدى: ${fmtMoney(
+        exportStats.payeDegreNonDefini
+      )}`,
       `المبلغ المؤدى من طرف الغير: ${fmtMoney(exportStats.totalAutre)}`,
       ...exportCriteriaLabels,
     ];
@@ -1243,10 +1752,34 @@ export default function EtudesTable() {
       summary,
       exportOrientation,
       [
-        { label: "عدد السجلات", value: String(rows.length), color: "#eef2ff" },
-        { label: "الدعم المستهلك", value: fmtMoney(exportStats.totalConsomme), color: "#ecfdf5" },
-        { label: "المؤدى من طرفنا", value: fmtMoney(exportStats.totalPaye), color: "#f5f3ff" },
-        { label: "تكفل به الغير", value: fmtMoney(exportStats.totalAutre), color: "#fffbeb" },
+        {
+          label: "مستهلك - الدرجات المحددة",
+          value: fmtMoney(
+            exportStats.consommeDegreDefini
+          ),
+          color: "#eff6ff",
+        },
+        {
+          label: "مؤدى - الدرجات المحددة",
+          value: fmtMoney(
+            exportStats.payeDegreDefini
+          ),
+          color: "#dbeafe",
+        },
+        {
+          label: "مستهلك - معوز / غير محدد",
+          value: fmtMoney(
+            exportStats.consommeDegreNonDefini
+          ),
+          color: "#fff7ed",
+        },
+        {
+          label: "مؤدى - معوز / غير محدد",
+          value: fmtMoney(
+            exportStats.payeDegreNonDefini
+          ),
+          color: "#ffedd5",
+        },
       ]
     );
 
@@ -1398,7 +1931,7 @@ export default function EtudesTable() {
         </div>
 
         {/* STATS GÉNÉRALES */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
             <p className="text-sm text-gray-500">عدد الطلاب</p>
             <p className="mt-1 text-3xl font-bold text-blue-700">{stats.totalEtudiants}</p>
@@ -1422,21 +1955,75 @@ export default function EtudesTable() {
             <p className="mt-1 text-xs text-cyan-600">{yearLabel}</p>
           </div>
 
-          <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
-            <p className="text-sm text-gray-500">إجمالي الدعم المستهلك</p>
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-emerald-700">
-              {consoLoading ? "..." : fmtMoney(statsSoutien.totalConsomme)}
+          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+            <p className="text-sm font-semibold text-gray-500">
+              المستهلك - الدرجات المحددة
             </p>
-            <p className="mt-1 text-xs text-emerald-600">{yearLabel}</p>
+
+            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-blue-700">
+              {consoLoading || degresLoading
+                ? "..."
+                : fmtMoney(
+                    statsSoutien.consommeDegreDefini
+                  )}
+            </p>
+
+            <p className="mt-1 text-xs text-blue-600">
+              {yearLabel}
+            </p>
           </div>
 
-          <div className="rounded-2xl border border-violet-100 bg-violet-50 p-5">
-            <p className="text-sm text-gray-500">المبلغ المؤدى من طرفنا</p>
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-violet-700">
-              {consoLoading ? "..." : fmtMoney(statsSoutien.totalPaye)}
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
+            <p className="text-sm font-semibold text-gray-500">
+              المؤدى - الدرجات المحددة
             </p>
-            <p className="mt-1 text-xs text-violet-600">
-              تكفل به الغير: {consoLoading ? "..." : fmtMoney(statsSoutien.totalAutre)}
+
+            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-indigo-700">
+              {consoLoading || degresLoading
+                ? "..."
+                : fmtMoney(
+                    statsSoutien.payeDegreDefini
+                  )}
+            </p>
+
+            <p className="mt-1 text-xs text-indigo-600">
+              {yearLabel}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
+            <p className="text-sm font-semibold text-gray-500">
+              المستهلك - معوز / درجة غير محددة
+            </p>
+
+            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-orange-700">
+              {consoLoading || degresLoading
+                ? "..."
+                : fmtMoney(
+                    statsSoutien.consommeDegreNonDefini
+                  )}
+            </p>
+
+            <p className="mt-1 text-xs text-orange-600">
+              {yearLabel}
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
+            <p className="text-sm font-semibold text-gray-500">
+              المؤدى - معوز / درجة غير محددة
+            </p>
+
+            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-amber-700">
+              {consoLoading || degresLoading
+                ? "..."
+                : fmtMoney(
+                    statsSoutien.payeDegreNonDefini
+                  )}
+            </p>
+
+            <p className="mt-1 text-xs text-amber-600">
+              {yearLabel}
             </p>
           </div>
         </div>
@@ -1607,7 +2194,7 @@ export default function EtudesTable() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1350px] text-right">
+            <table className="w-full min-w-[1500px] text-right">
               <thead>
                 <tr className="bg-gray-50/70 text-xs font-semibold text-gray-500">
                   <th className="px-5 py-4">{sortHeader("nomEnfant", "الطالب")}</th>
@@ -1616,6 +2203,7 @@ export default function EtudesTable() {
                   <th className="px-5 py-4">{sortHeader("nomEcole", "المؤسسة")}</th>
                   <th className="px-5 py-4 text-center">{sortHeader("anneeScolaire", "السنة الدراسية", true)}</th>
                   <th className="px-5 py-4 text-center">{sortHeader("note", "النقطة", true)}</th>
+                  <th className="px-5 py-4 text-center">فئة الدرجة</th>
                   <th className="px-5 py-4">{sortHeader("total", "الدعم المالي")}</th>
                   <th className="px-5 py-4 text-center">الإجراء</th>
                 </tr>
@@ -1624,7 +2212,7 @@ export default function EtudesTable() {
               <tbody className="divide-y divide-gray-100">
                 {loading && (
                   <tr>
-                    <td colSpan={8} className="py-16 text-center text-gray-400">
+                    <td colSpan={9} className="py-16 text-center text-gray-400">
                       جاري التحميل...
                     </td>
                   </tr>
@@ -1632,7 +2220,7 @@ export default function EtudesTable() {
 
                 {!loading && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-16 text-center text-gray-400">
+                    <td colSpan={9} className="py-16 text-center text-gray-400">
                       لا توجد نتائج
                     </td>
                   </tr>
@@ -1648,6 +2236,10 @@ export default function EtudesTable() {
                     const consomme = Number(consommation.totalConsomme || 0);
                     const paye = Number(consommation.totalPaye || 0);
                     const autre = Number(consommation.totalAutre || 0);
+
+                    const degreInfo =
+                      getDegreInfo(row);
+
                     const pourcentagePaye =
                       consomme > 0 ? Math.min(100, Math.max(0, (paye / consomme) * 100)) : 0;
 
@@ -1681,10 +2273,43 @@ export default function EtudesTable() {
                         <td className="px-5 py-4 text-center">{anneeBodyTemplate(row)}</td>
                         <td className="px-5 py-4 text-center">{noteBodyTemplate(row)}</td>
 
+                        <td className="px-5 py-4 text-center">
+                          {degreInfo.categorie === "DEFINI" ? (
+                            <span className="inline-flex whitespace-nowrap rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">
+                              الدرجات المحددة
+                              {degreInfo.degre != null
+                                ? ` - الدرجة ${degreInfo.degre}`
+                                : ""}
+                            </span>
+                          ) : degreInfo.categorie === "NON_DEFINI" ? (
+                            <span className="inline-flex whitespace-nowrap rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700">
+                              معوز / غير محدد
+                            </span>
+                          ) : (
+                            <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-500">
+                              غير مصنف
+                            </span>
+                          )}
+                        </td>
+
                         <td className="px-5 py-4">
                           <div className="min-w-[190px]">
                             <div className="flex items-center justify-between gap-3">
-                              <span className="text-[11px] text-gray-400">مستهلك</span>
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  degreInfo.categorie === "DEFINI"
+                                    ? "text-blue-600"
+                                    : degreInfo.categorie === "NON_DEFINI"
+                                      ? "text-orange-600"
+                                      : "text-gray-400"
+                                }`}
+                              >
+                                {degreInfo.categorie === "DEFINI"
+                                  ? "مستهلك - درجات محددة"
+                                  : degreInfo.categorie === "NON_DEFINI"
+                                    ? "مستهلك - معوز"
+                                    : "مستهلك"}
+                              </span>
                               <span
                                 className={`whitespace-nowrap text-sm font-bold ${
                                   consomme > 0 ? "text-emerald-700" : "text-gray-400"
@@ -1695,7 +2320,21 @@ export default function EtudesTable() {
                             </div>
 
                             <div className="mt-1 flex items-center justify-between gap-3">
-                              <span className="text-[11px] text-gray-400">مدفوع من طرفنا</span>
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  degreInfo.categorie === "DEFINI"
+                                    ? "text-indigo-600"
+                                    : degreInfo.categorie === "NON_DEFINI"
+                                      ? "text-amber-600"
+                                      : "text-gray-400"
+                                }`}
+                              >
+                                {degreInfo.categorie === "DEFINI"
+                                  ? "مؤدى - درجات محددة"
+                                  : degreInfo.categorie === "NON_DEFINI"
+                                    ? "مؤدى - معوز"
+                                    : "مدفوع من طرفنا"}
+                              </span>
                               <span className="whitespace-nowrap text-xs font-bold text-violet-700">
                                 {fmtMoney(paye)}
                               </span>
@@ -2153,12 +2792,19 @@ export default function EtudesTable() {
                     </div>
                   </div>
 
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-3">
                     <div>
-                      <label className="mb-1.5 block text-xs font-bold text-gray-600">الاستفادة من الدعم</label>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-600">
+                        الاستفادة من الدعم
+                      </label>
+
                       <select
                         value={exportSupportFilter}
-                        onChange={(e) => setExportSupportFilter(e.target.value as ExportSupportFilter)}
+                        onChange={(e) =>
+                          setExportSupportFilter(
+                            e.target.value as ExportSupportFilter
+                          )
+                        }
                         className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-indigo-300 focus:bg-white"
                       >
                         <option value="all">الكل</option>
@@ -2168,10 +2814,17 @@ export default function EtudesTable() {
                     </div>
 
                     <div>
-                      <label className="mb-1.5 block text-xs font-bold text-gray-600">حالة الأداء</label>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-600">
+                        حالة الأداء
+                      </label>
+
                       <select
                         value={exportPaymentFilter}
-                        onChange={(e) => setExportPaymentFilter(e.target.value as ExportPaymentFilter)}
+                        onChange={(e) =>
+                          setExportPaymentFilter(
+                            e.target.value as ExportPaymentFilter
+                          )
+                        }
                         className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none focus:border-indigo-300 focus:bg-white"
                       >
                         <option value="all">الكل</option>
@@ -2179,6 +2832,62 @@ export default function EtudesTable() {
                         <option value="partial">مؤدى جزئيا</option>
                         <option value="external">تكفل به الغير</option>
                       </select>
+                    </div>
+
+                    {/* =========================================
+                        FILTRE DEGRE
+                        Inclut explicitement degré non défini.
+                    ========================================= */}
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-bold text-gray-600">
+                        فئة الدرجة
+                      </label>
+
+                      <select
+                        value={exportDegreFilter}
+                        onChange={(e) =>
+                          setExportDegreFilter(
+                            e.target.value as ExportDegreFilter
+                          )
+                        }
+                        className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm outline-none transition focus:border-indigo-300 focus:bg-white focus:ring-4 focus:ring-indigo-500/10"
+                      >
+                        <option value="all">
+                          جميع الدرجات
+                        </option>
+
+                        <option value="defined">
+                          الدرجات المحددة
+                        </option>
+
+                        <option value="degree1">
+                          الدرجة 1
+                        </option>
+
+                        <option value="degree2">
+                          الدرجة 2
+                        </option>
+
+                        <option value="degree3">
+                          الدرجة 3
+                        </option>
+
+                        <option value="undefined">
+                          معوز / درجة غير محددة
+                        </option>
+
+                        <option value="unknown">
+                          غير مصنف
+                        </option>
+                      </select>
+
+                      {exportDegreFilter ===
+                        "undefined" && (
+                        <div className="mt-2 rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-[11px] font-semibold leading-5 text-orange-700">
+                          سيتم تصدير الأطفال المنتمين إلى عائلات بدون درجة محددة فقط.
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2243,17 +2952,59 @@ export default function EtudesTable() {
                 </div>
 
                 <div className="space-y-3 p-5">
-                  <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
-                    <span className="text-xs font-semibold text-gray-500">الدعم المستهلك</span>
-                    <strong className="text-sm text-emerald-700">
-                      {exportConsoLoading ? "..." : fmtMoney(exportStats.totalConsomme)}
+                  <div className="flex items-center justify-between rounded-xl bg-blue-50 px-3 py-2.5">
+                    <span className="text-xs font-semibold text-gray-500">
+                      مستهلك - الدرجات المحددة
+                    </span>
+
+                    <strong className="text-sm text-blue-700">
+                      {exportConsoLoading
+                        ? "..."
+                        : fmtMoney(
+                            exportStats.consommeDegreDefini
+                          )}
                     </strong>
                   </div>
 
-                  <div className="flex items-center justify-between rounded-xl bg-violet-50 px-3 py-2.5">
-                    <span className="text-xs font-semibold text-gray-500">المؤدى من طرفنا</span>
-                    <strong className="text-sm text-violet-700">
-                      {exportConsoLoading ? "..." : fmtMoney(exportStats.totalPaye)}
+                  <div className="flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2.5">
+                    <span className="text-xs font-semibold text-gray-500">
+                      مؤدى - الدرجات المحددة
+                    </span>
+
+                    <strong className="text-sm text-indigo-700">
+                      {exportConsoLoading
+                        ? "..."
+                        : fmtMoney(
+                            exportStats.payeDegreDefini
+                          )}
+                    </strong>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
+                    <span className="text-xs font-semibold text-gray-500">
+                      مستهلك - معوز / غير محدد
+                    </span>
+
+                    <strong className="text-sm text-orange-700">
+                      {exportConsoLoading
+                        ? "..."
+                        : fmtMoney(
+                            exportStats.consommeDegreNonDefini
+                          )}
+                    </strong>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5">
+                    <span className="text-xs font-semibold text-gray-500">
+                      مؤدى - معوز / غير محدد
+                    </span>
+
+                    <strong className="text-sm text-amber-700">
+                      {exportConsoLoading
+                        ? "..."
+                        : fmtMoney(
+                            exportStats.payeDegreNonDefini
+                          )}
                     </strong>
                   </div>
 

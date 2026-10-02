@@ -62,7 +62,10 @@ const FIELDS: Record<Group, FieldDef[]> = {
     { key: "nbParticipations", label: "عدد المشاركات", kind: "number" },
     { key: "present", label: "حضور", kind: "number" },
     { key: "absent", label: "غياب", kind: "number" },
-    { key: "totalEvenements", label: "مصاريف الأنشطة", kind: "money" },
+    { key: "eventDegresDefinis", label: "الأنشطة - الدرجات المحددة", kind: "money" },
+    { key: "eventDegreNonDefini", label: "الأنشطة - معوز / درجة غير محددة", kind: "money" },
+    { key: "eventSawaedAlKhayr", label: "الأنشطة - سواعد الخير", kind: "money" },
+    { key: "totalEvenements", label: "مجموع مصاريف الأنشطة", kind: "money" },
     { key: "scolaireConsomme", label: "الدعم الدراسي المستهلك", kind: "money" },
     { key: "scolairePaye", label: "الدعم الدراسي المؤدى من الجمعية", kind: "money" },
     { key: "scolaireNonPaye", label: "الدعم الدراسي غير المؤدى من الجمعية", kind: "money" },
@@ -108,6 +111,7 @@ const FIELDS: Record<Group, FieldDef[]> = {
     { key: "statut", label: "الحالة" },
     { key: "motif", label: "سبب الغياب" },
     { key: "montant", label: "المبلغ", kind: "money" },
+    { key: "categorieMontant", label: "فئة المصروف" },
     { key: "degre", label: "الدرجة" },
     { key: "typeFamille", label: "نوع العائلة" },
   ],
@@ -115,11 +119,35 @@ const FIELDS: Record<Group, FieldDef[]> = {
 
 const DEFAULT_FIELDS: Record<ExportType, string[]> = {
   FAMILLES: ["nomFamille", "mere", "nombreEnfants", "typeFamille", "degre"],
-  CONSO: ["nomFamille", "degre", "typeFamille", "totalEvenements", "scolairePaye", "scolaireNonPaye", "total", "nbParticipations", "present", "absent"],
+  CONSO: [
+    "nomFamille",
+    "degre",
+    "typeFamille",
+    "eventDegresDefinis",
+    "eventDegreNonDefini",
+    "eventSawaedAlKhayr",
+    "totalEvenements",
+    "scolairePaye",
+    "scolaireNonPaye",
+    "total",
+    "nbParticipations",
+    "present",
+    "absent",
+  ],
   MERES: ["nom", "prenom", "familleNom", "nombreEnfants", "degre"],
   PERES: ["nom", "prenom", "familleNom", "nombreEnfants", "degre"],
   ENFANTS: ["nom", "prenom", "age", "familleNom", "degre"],
-  PARTICIPATIONS: ["familleNom", "activite", "date", "type", "participant", "statut", "motif", "montant"],
+  PARTICIPATIONS: [
+    "familleNom",
+    "activite",
+    "date",
+    "type",
+    "participant",
+    "statut",
+    "motif",
+    "montant",
+    "categorieMontant",
+  ],
 };
 
 type Crit = {
@@ -182,6 +210,32 @@ const AVATARS = [
 ];
 
 const yn = (v: any) => (v ? "نعم" : "لا");
+
+const eventCategoryLabel = (event: any) => {
+  const code = String(
+    event?.categorieMontant ?? ""
+  );
+
+  if (
+    code === "SAAWED_AL_KHAYR" ||
+    event?.sawaedAlKhayr === true
+  ) {
+    return "سواعد الخير";
+  }
+
+  if (code === "DEGRE_DEFINI") {
+    return "الدرجات المحددة";
+  }
+
+  if (
+    code === "DEGRE_NON_DEFINI" ||
+    code === "MOUAWIZ"
+  ) {
+    return "معوز / درجة غير محددة";
+  }
+
+  return "غير مصنف";
+};
 
 const fmtDate = (d?: string) => {
   const s = String(d ?? "");
@@ -474,6 +528,18 @@ export default function FamillesTable() {
   const [studyYear, setStudyYear] = useState<string>(currentSchoolYear);
   const [customStudyYear, setCustomStudyYear] = useState("");
   const [conso, setConso] = useState<Record<string, any>>({});
+
+  // Totaux globaux des événements.
+  // Ils servent aux cartes du haut afin de ne pas perdre les
+  // événements GLOBAL qui ne peuvent pas être répartis par famille.
+  const [eventTotals, setEventTotals] = useState({
+    degresDefinis: 0,
+    degreNonDefini: 0,
+    sawaedAlKhayr: 0,
+    nonVentile: 0,
+    total: 0,
+  });
+
   const [consoScolaire, setConsoScolaire] = useState<Record<string, ConsoScolaireFamille>>({});
   const [soutiensLoading, setSoutiensLoading] = useState(false);
   const [allSoutiens, setAllSoutiens] = useState<SoutienEtude[]>([]);
@@ -530,6 +596,66 @@ export default function FamillesTable() {
         setConso(m);
       })
       .catch(() => setConso({}));
+  }, [year]);
+
+  // ===== Totaux globaux des événements par catégorie =====
+  useEffect(() => {
+    axios
+      .get(`${API}/events/stats`, {
+        params:
+          year === "all"
+            ? {}
+            : { year },
+      })
+      .then((res) => {
+        const data =
+          res.data || {};
+
+        const degresDefinis =
+          Number(
+            data.totalMontantDegresDefinis ||
+            0
+          );
+
+        const degreNonDefini =
+          Number(
+            data.totalMontantMouawiz ||
+            0
+          );
+
+        const sawaedAlKhayr =
+          Number(
+            data.totalMontantSawaedAlKhayr ||
+            0
+          );
+
+        const nonVentile =
+          Number(
+            data.totalMontantNonVentile ||
+            0
+          );
+
+        setEventTotals({
+          degresDefinis,
+          degreNonDefini,
+          sawaedAlKhayr,
+          nonVentile,
+          total:
+            degresDefinis +
+            degreNonDefini +
+            sawaedAlKhayr +
+            nonVentile,
+        });
+      })
+      .catch(() => {
+        setEventTotals({
+          degresDefinis: 0,
+          degreNonDefini: 0,
+          sawaedAlKhayr: 0,
+          nonVentile: 0,
+          total: 0,
+        });
+      });
   }, [year]);
 
   // ===== Soutien scolaire de tous les enfants =====
@@ -772,7 +898,15 @@ export default function FamillesTable() {
   );
 
   const getConso = (f: any) =>
-    conso[String(f.id)] || { total: 0, presentCount: 0, absentCount: 0, events: [] };
+    conso[String(f.id)] || {
+      total: 0,
+      montantDegresDefinis: 0,
+      montantMouawiz: 0,
+      montantSawaedAlKhayr: 0,
+      presentCount: 0,
+      absentCount: 0,
+      events: [],
+    };
 
   const getConsoScolaire = (f: any) =>
     consoScolaire[String(f.id)] || {
@@ -785,20 +919,81 @@ export default function FamillesTable() {
   const getCombinedConso = (f: any) => {
     const ev = getConso(f);
     const sc = getConsoScolaire(f);
-    const totalEvenements = Number(ev.total || 0);
-    const scolaireConsomme = Number(sc.totalConsomme || 0);
-    const scolairePaye = Number(sc.totalPaye || 0);
-    const scolaireNonPaye = Number(sc.totalNonPaye || 0);
+
+    // ==========================================================
+    // MONTANTS DES EVENEMENTS, SEPARES EN 3 CAISSES
+    // ==========================================================
+
+    const hasSplitEventAmounts =
+      ev.montantDegresDefinis !== undefined ||
+      ev.montantMouawiz !== undefined ||
+      ev.montantSawaedAlKhayr !== undefined;
+
+    const eventDegresDefinis =
+      Number(
+        ev.montantDegresDefinis || 0
+      );
+
+    const eventDegreNonDefini =
+      Number(
+        ev.montantMouawiz || 0
+      );
+
+    const eventSawaedAlKhayr =
+      Number(
+        ev.montantSawaedAlKhayr || 0
+      );
+
+    // Si le backend est encore ancien, on conserve ev.total
+    // temporairement pour ne pas perdre les anciennes données.
+    const totalEvenements =
+      hasSplitEventAmounts
+        ? eventDegresDefinis +
+          eventDegreNonDefini +
+          eventSawaedAlKhayr
+        : Number(ev.total || 0);
+
+    const scolaireConsomme =
+      Number(
+        sc.totalConsomme || 0
+      );
+
+    const scolairePaye =
+      Number(
+        sc.totalPaye || 0
+      );
+
+    const scolaireNonPaye =
+      Number(
+        sc.totalNonPaye || 0
+      );
 
     return {
       ...ev,
+
+      eventDegresDefinis,
+      eventDegreNonDefini,
+      eventSawaedAlKhayr,
       totalEvenements,
+
       scolaireConsomme,
       scolairePaye,
       scolaireNonPaye,
-      total: totalEvenements + scolairePaye,
-      totalConsomme: totalEvenements + scolaireConsomme,
-      soutienDetails: sc.details,
+
+      // Ce que l'association a effectivement payé :
+      // événements + soutien scolaire payé.
+      total:
+        totalEvenements +
+        scolairePaye,
+
+      // Valeur totale consommée :
+      // événements + soutien scolaire consommé.
+      totalConsomme:
+        totalEvenements +
+        scolaireConsomme,
+
+      soutienDetails:
+        sc.details,
     };
   };
 
@@ -824,10 +1019,21 @@ export default function FamillesTable() {
         a[0].localeCompare(b[0], undefined, { numeric: true })
       ),
       parType: countBy("typeFamilleNom").filter(([k]) => k !== "—"),
-      totalEvenements: familles.reduce(
-        (s, f) => s + Number(getConso(f).total || 0),
-        0
-      ),
+      totalEventDegresDefinis:
+        eventTotals.degresDefinis,
+
+      totalEventDegreNonDefini:
+        eventTotals.degreNonDefini,
+
+      totalEventSawaedAlKhayr:
+        eventTotals.sawaedAlKhayr,
+
+      totalEventNonVentile:
+        eventTotals.nonVentile,
+
+      totalEvenements:
+        eventTotals.total,
+
       totalScolaireConsomme: familles.reduce(
         (s, f) => s + Number(getConsoScolaire(f).totalConsomme || 0),
         0
@@ -840,16 +1046,36 @@ export default function FamillesTable() {
         (s, f) => s + Number(getConsoScolaire(f).totalNonPaye || 0),
         0
       ),
-      totalDepense: familles.reduce(
-        (s, f) => s + Number(getCombinedConso(f).total || 0),
-        0
-      ),
-      totalConsomme: familles.reduce(
-        (s, f) => s + Number(getCombinedConso(f).totalConsomme || 0),
-        0
-      ),
+      totalDepense:
+        eventTotals.total +
+        familles.reduce(
+          (s, f) =>
+            s +
+            Number(
+              getConsoScolaire(f)
+                .totalPaye || 0
+            ),
+          0
+        ),
+
+      totalConsomme:
+        eventTotals.total +
+        familles.reduce(
+          (s, f) =>
+            s +
+            Number(
+              getConsoScolaire(f)
+                .totalConsomme || 0
+            ),
+          0
+        ),
     };
-  }, [familles, conso, consoScolaire]);
+  }, [
+    familles,
+    conso,
+    consoScolaire,
+    eventTotals,
+  ]);
 
   const typesFamille = useMemo(() => stats.parType.map(([k]) => ({ label: k, value: k })), [stats]);
   const degresList = useMemo(() => stats.parDegre.map(([k]) => k), [stats]);
@@ -922,7 +1148,15 @@ export default function FamillesTable() {
 
   const records = useMemo(() => {
     const cf = (f: any) =>
-      exportConso[String(f.id)] || { total: 0, presentCount: 0, absentCount: 0, events: [] };
+      exportConso[String(f.id)] || {
+        total: 0,
+        montantDegresDefinis: 0,
+        montantMouawiz: 0,
+        montantSawaedAlKhayr: 0,
+        presentCount: 0,
+        absentCount: 0,
+        events: [],
+      };
 
     const cs = (f: any) =>
       exportConsoScolaire[String(f.id)] || {
@@ -935,19 +1169,62 @@ export default function FamillesTable() {
     const combinedExport = (f: any) => {
       const ev = cf(f);
       const sc = cs(f);
-      const totalEvenements = Number(ev.total || 0);
-      const scolaireConsomme = Number(sc.totalConsomme || 0);
-      const scolairePaye = Number(sc.totalPaye || 0);
-      const scolaireNonPaye = Number(sc.totalNonPaye || 0);
+
+      const hasSplitEventAmounts =
+        ev.montantDegresDefinis !== undefined ||
+        ev.montantMouawiz !== undefined ||
+        ev.montantSawaedAlKhayr !== undefined;
+
+      const eventDegresDefinis =
+        Number(
+          ev.montantDegresDefinis || 0
+        );
+
+      const eventDegreNonDefini =
+        Number(
+          ev.montantMouawiz || 0
+        );
+
+      const eventSawaedAlKhayr =
+        Number(
+          ev.montantSawaedAlKhayr || 0
+        );
+
+      const totalEvenements =
+        hasSplitEventAmounts
+          ? eventDegresDefinis +
+            eventDegreNonDefini +
+            eventSawaedAlKhayr
+          : Number(ev.total || 0);
+
+      const scolaireConsomme =
+        Number(sc.totalConsomme || 0);
+
+      const scolairePaye =
+        Number(sc.totalPaye || 0);
+
+      const scolaireNonPaye =
+        Number(sc.totalNonPaye || 0);
 
       return {
         ...ev,
+
+        eventDegresDefinis,
+        eventDegreNonDefini,
+        eventSawaedAlKhayr,
         totalEvenements,
+
         scolaireConsomme,
         scolairePaye,
         scolaireNonPaye,
-        total: totalEvenements + scolairePaye,
-        totalConsomme: totalEvenements + scolaireConsomme,
+
+        total:
+          totalEvenements +
+          scolairePaye,
+
+        totalConsomme:
+          totalEvenements +
+          scolaireConsomme,
       };
     };
 
@@ -980,6 +1257,9 @@ export default function FamillesTable() {
           nbParticipations: c.events.length,
           present: c.presentCount,
           absent: c.absentCount,
+          eventDegresDefinis: Number(c.eventDegresDefinis || 0),
+          eventDegreNonDefini: Number(c.eventDegreNonDefini || 0),
+          eventSawaedAlKhayr: Number(c.eventSawaedAlKhayr || 0),
           totalEvenements: Number(c.totalEvenements || 0),
           scolaireConsomme: Number(c.scolaireConsomme || 0),
           scolairePaye: Number(c.scolairePaye || 0),
@@ -1069,6 +1349,9 @@ export default function FamillesTable() {
           statut: ev.present ? "حاضر" : "غائب",
           motif: ev.present ? "" : ev.motif || "",
           montant: Number(ev.montant || 0),
+          categorieMontant:
+            ev.categorieMontantLabel ||
+            eventCategoryLabel(ev),
           _present: !!ev.present,
           _sick: !!f.possedeMalade,
         }))
@@ -1104,20 +1387,176 @@ export default function FamillesTable() {
   }, [exportType, exportFamilles, exportConso, exportConsoScolaire, crit, enfantsEmbedded, enfantsApi, familles]);
 
   const exportSummary = useMemo(() => {
-    const isPart = exportType === "PARTICIPATIONS";
-    const isFam = exportType === "FAMILLES" || exportType === "CONSO";
-    const famIds = new Set(records.map((r) => r._fam?.id).filter((x) => x != null));
+    const isPart =
+      exportType === "PARTICIPATIONS";
+
+    const isFam =
+      exportType === "FAMILLES" ||
+      exportType === "CONSO";
+
+    const famIds =
+      new Set(
+        records
+          .map((r) => r._fam?.id)
+          .filter(
+            (x) => x != null
+          )
+      );
+
+    let eventDegresDefinis = 0;
+    let eventDegreNonDefini = 0;
+    let eventSawaedAlKhayr = 0;
+
+
+    if (isFam) {
+
+      eventDegresDefinis =
+        records.reduce(
+          (s, r) =>
+            s +
+            Number(
+              r.eventDegresDefinis || 0
+            ),
+          0
+        );
+
+      eventDegreNonDefini =
+        records.reduce(
+          (s, r) =>
+            s +
+            Number(
+              r.eventDegreNonDefini || 0
+            ),
+          0
+        );
+
+      eventSawaedAlKhayr =
+        records.reduce(
+          (s, r) =>
+            s +
+            Number(
+              r.eventSawaedAlKhayr || 0
+            ),
+          0
+        );
+
+    } else if (isPart) {
+
+      records.forEach((r) => {
+
+        const montant =
+          Number(
+            r.montant || 0
+          );
+
+        const categorie =
+          String(
+            r.categorieMontant || ""
+          );
+
+
+        if (
+          categorie.includes(
+            "سواعد الخير"
+          )
+        ) {
+
+          eventSawaedAlKhayr +=
+            montant;
+
+        } else if (
+          categorie.includes(
+            "الدرجات المحددة"
+          )
+        ) {
+
+          eventDegresDefinis +=
+            montant;
+
+        } else if (
+          categorie.includes(
+            "معوز"
+          )
+        ) {
+
+          eventDegreNonDefini +=
+            montant;
+        }
+      });
+    }
+
+
+    const totalEvenements =
+      eventDegresDefinis +
+      eventDegreNonDefini +
+      eventSawaedAlKhayr;
+
+
+    const amount =
+      records.reduce(
+        (s, r) =>
+          s +
+          Number(
+            (
+              isPart
+                ? r.montant
+                : r.total
+            ) || 0
+          ),
+        0
+      );
+
+
     return {
-      count: records.length,
-      familles: famIds.size,
-      hasAmount: isPart || isFam,
-      amount: records.reduce((s, r) => s + Number((isPart ? r.montant : r.total) || 0), 0),
-      present: isPart
-        ? records.filter((r) => r._present).length
-        : records.reduce((s, r) => s + Number(r.present || 0), 0),
-      absent: isPart
-        ? records.filter((r) => !r._present).length
-        : records.reduce((s, r) => s + Number(r.absent || 0), 0),
+
+      count:
+        records.length,
+
+      familles:
+        famIds.size,
+
+      hasAmount:
+        isPart || isFam,
+
+      eventDegresDefinis,
+      eventDegreNonDefini,
+      eventSawaedAlKhayr,
+      totalEvenements,
+
+      // Pour FAMILLES / CONSO :
+      // événements + soutien scolaire payé.
+      //
+      // Pour PARTICIPATIONS :
+      // somme des participations affichées.
+      amount,
+
+      present:
+        isPart
+          ? records.filter(
+              (r) => r._present
+            ).length
+          : records.reduce(
+              (s, r) =>
+                s +
+                Number(
+                  r.present || 0
+                ),
+              0
+            ),
+
+      absent:
+        isPart
+          ? records.filter(
+              (r) => !r._present
+            ).length
+          : records.reduce(
+              (s, r) =>
+                s +
+                Number(
+                  r.absent || 0
+                ),
+              0
+            ),
     };
   }, [records, exportType]);
 
@@ -1170,8 +1609,42 @@ export default function FamillesTable() {
     }
 
     const title = exportTitle.trim() || `لائحة ${typeInfo.label}`;
-    const params = [`العدد: ${records.length}`, ...criteriaLabels];
-    if (exportSummary.hasAmount) params.push(`المجموع: ${fmt(exportSummary.amount)}`);
+    const params = [
+      `العدد: ${records.length}`,
+      ...criteriaLabels,
+    ];
+
+    if (exportSummary.hasAmount) {
+      params.push(
+        `الدرجات المحددة: ${fmt(
+          exportSummary.eventDegresDefinis
+        )}`
+      );
+
+      params.push(
+        `معوز / درجة غير محددة: ${fmt(
+          exportSummary.eventDegreNonDefini
+        )}`
+      );
+
+      params.push(
+        `سواعد الخير: ${fmt(
+          exportSummary.eventSawaedAlKhayr
+        )}`
+      );
+
+      params.push(
+        `مجموع مصاريف الأنشطة: ${fmt(
+          exportSummary.totalEvenements
+        )}`
+      );
+
+      params.push(
+        `المجموع الكلي: ${fmt(
+          exportSummary.amount
+        )}`
+      );
+    }
 
     if (exportFormat === "EXCEL") {
       await exportExcel(title, params, chosenDefs, records, exportFileName.trim() || typeInfo.label);
@@ -1187,13 +1660,64 @@ export default function FamillesTable() {
       : null;
 
     const cards = [
-      { label: "عدد السجلات", value: String(records.length), color: "#eef2ff" },
-      { label: "عدد العائلات", value: String(exportSummary.familles), color: "#f0f9ff" },
+      {
+        label: "عدد السجلات",
+        value: String(records.length),
+        color: "#eef2ff",
+      },
+
+      {
+        label: "عدد العائلات",
+        value: String(
+          exportSummary.familles
+        ),
+        color: "#f0f9ff",
+      },
+
       ...(exportSummary.hasAmount
-        ? [{ label: "المبلغ المصروف", value: fmt(exportSummary.amount), color: "#ecfdf5" }]
-        : []),
-      ...(exportSummary.hasAmount
-        ? [{ label: "حضور / غياب", value: `${exportSummary.present} / ${exportSummary.absent}`, color: "#fffbeb" }]
+        ? [
+            {
+              label: "الدرجات المحددة",
+              value: fmt(
+                exportSummary.eventDegresDefinis
+              ),
+              color: "#eff6ff",
+            },
+            {
+              label: "معوز / درجة غير محددة",
+              value: fmt(
+                exportSummary.eventDegreNonDefini
+              ),
+              color: "#fff7ed",
+            },
+            {
+              label: "سواعد الخير",
+              value: fmt(
+                exportSummary.eventSawaedAlKhayr
+              ),
+              color: "#f5f3ff",
+            },
+            {
+              label: "مجموع مصاريف الأنشطة",
+              value: fmt(
+                exportSummary.totalEvenements
+              ),
+              color: "#ecfeff",
+            },
+            {
+              label: "المجموع الكلي",
+              value: fmt(
+                exportSummary.amount
+              ),
+              color: "#ecfdf5",
+            },
+            {
+              label: "حضور / غياب",
+              value:
+                `${exportSummary.present} / ${exportSummary.absent}`,
+              color: "#fffbeb",
+            },
+          ]
         : []),
     ];
 
@@ -1318,28 +1842,106 @@ export default function FamillesTable() {
 
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
           <StatCard
-            label={`مصاريف الأنشطة ${year === "all" ? "" : year}`}
-            value={fmt(stats.totalEvenements)}
-            color="bg-sky-50 text-sky-700 border-sky-100"
+            label="الأنشطة - الدرجات المحددة"
+            value={fmt(
+              stats.totalEventDegresDefinis
+            )}
+            color="bg-blue-50 text-blue-700 border-blue-100"
           />
+
           <StatCard
-            label={`الدعم الدراسي المستهلك ${studyYear === "all" ? "" : studyYear}`}
-            value={soutiensLoading ? "..." : fmt(stats.totalScolaireConsomme)}
+            label="الأنشطة - معوز / درجة غير محددة"
+            value={fmt(
+              stats.totalEventDegreNonDefini
+            )}
+            color="bg-orange-50 text-orange-700 border-orange-100"
+          />
+
+          <StatCard
+            label="الأنشطة - سواعد الخير"
+            value={fmt(
+              stats.totalEventSawaedAlKhayr
+            )}
             color="bg-violet-50 text-violet-700 border-violet-100"
           />
+
+          {Number(
+            stats.totalEventNonVentile
+          ) > 0 && (
+            <StatCard
+              label="الأنشطة - مبلغ غير موزع"
+              value={fmt(
+                stats.totalEventNonVentile
+              )}
+              color="bg-gray-50 text-gray-700 border-gray-200"
+            />
+          )}
+
+          <StatCard
+            label={`مجموع مصاريف الأنشطة ${year === "all" ? "" : year}`}
+            value={fmt(
+              stats.totalEvenements
+            )}
+            color="bg-cyan-50 text-cyan-700 border-cyan-100"
+          />
+
+          <StatCard
+            label={`الدعم الدراسي المستهلك ${studyYear === "all" ? "" : studyYear}`}
+            value={
+              soutiensLoading
+                ? "..."
+                : fmt(
+                    stats.totalScolaireConsomme
+                  )
+            }
+            color="bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100"
+          />
+
           <StatCard
             label="الدعم المؤدى من الجمعية"
-            value={soutiensLoading ? "..." : fmt(stats.totalScolairePaye)}
+            value={
+              soutiensLoading
+                ? "..."
+                : fmt(
+                    stats.totalScolairePaye
+                  )
+            }
             color="bg-emerald-50 text-emerald-700 border-emerald-100"
           />
+
           <StatCard
             label="الدعم غير المؤدى من الجمعية"
-            value={soutiensLoading ? "..." : fmt(stats.totalScolaireNonPaye)}
+            value={
+              soutiensLoading
+                ? "..."
+                : fmt(
+                    stats.totalScolaireNonPaye
+                  )
+            }
             color="bg-amber-50 text-amber-700 border-amber-100"
           />
+
+          <StatCard
+            label="إجمالي ما دفعته الجمعية"
+            value={
+              soutiensLoading
+                ? "..."
+                : fmt(
+                    stats.totalDepense
+                  )
+            }
+            color="bg-green-50 text-green-700 border-green-100"
+          />
+
           <StatCard
             label="القيمة الإجمالية المستهلكة"
-            value={soutiensLoading ? "..." : fmt(stats.totalConsomme)}
+            value={
+              soutiensLoading
+                ? "..."
+                : fmt(
+                    stats.totalConsomme
+                  )
+            }
             color="bg-slate-50 text-slate-700 border-slate-200"
           />
         </div>
@@ -1514,8 +2116,25 @@ export default function FamillesTable() {
                           {fmt(c.total)}
                         </p>
                         <div className="mt-1 space-y-0.5 text-[10px] text-gray-400">
-                          <p>الأنشطة: {fmt(c.totalEvenements)}</p>
-                          <p>الدعم المؤدى: {fmt(c.scolairePaye)}</p>
+                          <p className="text-blue-600">
+                            درجات محددة: {fmt(c.eventDegresDefinis)}
+                          </p>
+
+                          <p className="text-orange-600">
+                            معوز / غير محدد: {fmt(c.eventDegreNonDefini)}
+                          </p>
+
+                          <p className="text-violet-600">
+                            سواعد الخير: {fmt(c.eventSawaedAlKhayr)}
+                          </p>
+
+                          <p className="font-semibold text-cyan-700">
+                            مجموع الأنشطة: {fmt(c.totalEvenements)}
+                          </p>
+
+                          <p>
+                            الدعم المؤدى: {fmt(c.scolairePaye)}
+                          </p>
                           {Number(c.scolaireNonPaye) > 0 && (
                             <p className="text-amber-600">
                               غير مؤدى: {fmt(c.scolaireNonPaye)}
@@ -1907,10 +2526,76 @@ export default function FamillesTable() {
                     </div>
                     {exportSummary.hasAmount && (
                       <>
-                        <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
-                          <span className="text-xs font-semibold text-gray-500">المبلغ المصروف</span>
-                          <strong className="text-sm text-emerald-700">{exportConsoLoading ? "..." : fmt(exportSummary.amount)}</strong>
+                        <div className="flex items-center justify-between rounded-xl bg-blue-50 px-3 py-2.5">
+                          <span className="text-xs font-semibold text-gray-500">
+                            الدرجات المحددة
+                          </span>
+
+                          <strong className="text-sm text-blue-700">
+                            {exportConsoLoading
+                              ? "..."
+                              : fmt(
+                                  exportSummary.eventDegresDefinis
+                                )}
+                          </strong>
                         </div>
+
+                        <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
+                          <span className="text-xs font-semibold text-gray-500">
+                            معوز / درجة غير محددة
+                          </span>
+
+                          <strong className="text-sm text-orange-700">
+                            {exportConsoLoading
+                              ? "..."
+                              : fmt(
+                                  exportSummary.eventDegreNonDefini
+                                )}
+                          </strong>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-xl bg-violet-50 px-3 py-2.5">
+                          <span className="text-xs font-semibold text-gray-500">
+                            سواعد الخير
+                          </span>
+
+                          <strong className="text-sm text-violet-700">
+                            {exportConsoLoading
+                              ? "..."
+                              : fmt(
+                                  exportSummary.eventSawaedAlKhayr
+                                )}
+                          </strong>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-xl bg-cyan-50 px-3 py-2.5">
+                          <span className="text-xs font-semibold text-gray-500">
+                            مجموع مصاريف الأنشطة
+                          </span>
+
+                          <strong className="text-sm text-cyan-700">
+                            {exportConsoLoading
+                              ? "..."
+                              : fmt(
+                                  exportSummary.totalEvenements
+                                )}
+                          </strong>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-3 py-2.5">
+                          <span className="text-xs font-semibold text-gray-500">
+                            المجموع الكلي
+                          </span>
+
+                          <strong className="text-sm text-emerald-700">
+                            {exportConsoLoading
+                              ? "..."
+                              : fmt(
+                                  exportSummary.amount
+                                )}
+                          </strong>
+                        </div>
+
                         <div className="flex items-center justify-between rounded-xl bg-green-50 px-3 py-2.5">
                           <span className="text-xs font-semibold text-gray-500">حضور</span>
                           <strong className="text-sm text-green-700">{exportSummary.present}</strong>
@@ -1995,36 +2680,116 @@ export default function FamillesTable() {
                     </span>
                   </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6 text-center">
-                    <div className="rounded-xl bg-sky-50 p-3">
-                      <p className="text-[11px] text-gray-500">الأنشطة</p>
-                      <p className="font-bold text-sky-700">{fmt(c.totalEvenements)}</p>
+                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5 text-center">
+
+                    <div className="rounded-xl bg-blue-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        الأنشطة - الدرجات المحددة
+                      </p>
+
+                      <p className="font-bold text-blue-700">
+                        {fmt(
+                          c.eventDegresDefinis
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-orange-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        الأنشطة - معوز / غير محدد
+                      </p>
+
+                      <p className="font-bold text-orange-700">
+                        {fmt(
+                          c.eventDegreNonDefini
+                        )}
+                      </p>
                     </div>
 
                     <div className="rounded-xl bg-violet-50 p-3">
-                      <p className="text-[11px] text-gray-500">الدعم المستهلك</p>
-                      <p className="font-bold text-violet-700">{fmt(c.scolaireConsomme)}</p>
-                    </div>
+                      <p className="text-[11px] text-gray-500">
+                        الأنشطة - سواعد الخير
+                      </p>
 
-                    <div className="rounded-xl bg-emerald-50 p-3">
-                      <p className="text-[11px] text-gray-500">الدعم المؤدى</p>
-                      <p className="font-bold text-emerald-700">{fmt(c.scolairePaye)}</p>
-                    </div>
-
-                    <div className="rounded-xl bg-amber-50 p-3">
-                      <p className="text-[11px] text-gray-500">الدعم غير المؤدى</p>
-                      <p className="font-bold text-amber-700">{fmt(c.scolaireNonPaye)}</p>
+                      <p className="font-bold text-violet-700">
+                        {fmt(
+                          c.eventSawaedAlKhayr
+                        )}
+                      </p>
                     </div>
 
                     <div className="rounded-xl bg-cyan-50 p-3">
-                      <p className="text-[11px] text-gray-500">ما دفعته الجمعية</p>
-                      <p className="font-bold text-cyan-700">{fmt(c.total)}</p>
+                      <p className="text-[11px] text-gray-500">
+                        مجموع مصاريف الأنشطة
+                      </p>
+
+                      <p className="font-bold text-cyan-700">
+                        {fmt(
+                          c.totalEvenements
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-fuchsia-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        الدعم المستهلك
+                      </p>
+
+                      <p className="font-bold text-fuchsia-700">
+                        {fmt(
+                          c.scolaireConsomme
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-emerald-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        الدعم المؤدى
+                      </p>
+
+                      <p className="font-bold text-emerald-700">
+                        {fmt(
+                          c.scolairePaye
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-amber-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        الدعم غير المؤدى
+                      </p>
+
+                      <p className="font-bold text-amber-700">
+                        {fmt(
+                          c.scolaireNonPaye
+                        )}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-green-50 p-3">
+                      <p className="text-[11px] text-gray-500">
+                        إجمالي ما دفعته الجمعية
+                      </p>
+
+                      <p className="font-bold text-green-700">
+                        {fmt(
+                          c.total
+                        )}
+                      </p>
                     </div>
 
                     <div className="rounded-xl bg-slate-100 p-3">
-                      <p className="text-[11px] text-gray-500">إجمالي المستهلك</p>
-                      <p className="font-bold text-slate-800">{fmt(c.totalConsomme)}</p>
+                      <p className="text-[11px] text-gray-500">
+                        إجمالي المستهلك
+                      </p>
+
+                      <p className="font-bold text-slate-800">
+                        {fmt(
+                          c.totalConsomme
+                        )}
+                      </p>
                     </div>
+
                   </div>
                 </div>
 
@@ -2061,6 +2826,7 @@ export default function FamillesTable() {
                               <th className="border-b p-3">التاريخ</th>
                               <th className="border-b p-3">المشارك</th>
                               <th className="border-b p-3">الحالة</th>
+                              <th className="border-b p-3">فئة المصروف</th>
                               <th className="border-b p-3">المبلغ</th>
                             </tr>
                           </thead>
@@ -2080,6 +2846,26 @@ export default function FamillesTable() {
                                     </span>
                                   )}
                                 </td>
+                                <td className="p-3">
+                                  {eventCategoryLabel(ev) === "سواعد الخير" ? (
+                                    <span className="inline-flex whitespace-nowrap rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
+                                      سواعد الخير
+                                    </span>
+                                  ) : eventCategoryLabel(ev) === "الدرجات المحددة" ? (
+                                    <span className="inline-flex whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                      الدرجات المحددة
+                                    </span>
+                                  ) : eventCategoryLabel(ev).includes("معوز") ? (
+                                    <span className="inline-flex whitespace-nowrap rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
+                                      معوز / درجة غير محددة
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">
+                                      غير مصنف
+                                    </span>
+                                  )}
+                                </td>
+
                                 <td className="p-3 font-semibold text-emerald-700">
                                   {fmt(ev.montant)}
                                 </td>

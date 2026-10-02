@@ -1,10 +1,10 @@
-
 import { BrowserRouter as Router, Routes, Route } from "react-router";
 
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
 import UserProfiles from "./pages/UserProfiles";
+import Utilisateurs from "./pages/Utilisateurs";
 import FamillesProfiles from "./pages/FamillesProfiles";
 import EtudesProfile from "./pages/EtudesProfile";
 import Videos from "./pages/UiElements/Videos";
@@ -19,6 +19,7 @@ import Calendar from "./pages/Calendar";
 import ListeEvents from "./pages/ListeEvents";
 import EventDetails from "./pages/EventDetails";
 import DegreFamillePage from "./pages/DegreFamillePage";
+import GestionEconomique from "./pages/GestionEconomique";
 import BasicTables from "./pages/Tables/BasicTables";
 import SuiviEtudes from "./pages/Tables/SuiviEtudes";
 import AjoutFamille from "./pages/Forms/AjoutFamille";
@@ -33,50 +34,143 @@ export default function App() {
     <>
       <Router>
         <ScrollToTop />
+
         <Routes>
-          {/* Dashboard Layout */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
-            <Route index path="/home" element={<Home />} />
 
-            {/* Others Page */}
-            <Route path="/profile" element={<UserProfiles />} />
-        <Route path="/familleprofile/:familleId" element={<FamillesProfiles />} />
-        <Route path="/degre-famille" element={<DegreFamillePage />} />
-   <Route path="/EtudesProfile/:enfantid" element={<EtudesProfile />} />
+          <Route element={<ProtectedRoute />}>
+            <Route element={<AppLayout />}>
 
-            <Route path="/calendar" element={<Calendar />} />
-                 <Route path="/listeevents" element={<ListeEvents />} />
-                 <Route path="/event-details/:id" element={<EventDetails />} />
+              <Route
+                index
+                path="/home"
+                element={<Home />}
+              />
 
-            <Route path="/blank" element={<Blank />} />
+              <Route
+                path="/gestion-economique"
+                element={<GestionEconomique />}
+              />
 
-            {/* Forms */}
-            <Route path="/form-elements" element={<AjoutFamille />} />
+              <Route
+                path="/profile"
+                element={<UserProfiles />}
+              />
 
-            {/* Tables */}
-            <Route path="/basic-tables" element={<BasicTables />} />
-   <Route path="/suivi-etudes" element={<SuiviEtudes />} />
-            {/* Ui Elements */}
-            <Route path="/alerts" element={<Alerts />} />
-            <Route path="/avatars" element={<Avatars />} />
-            <Route path="/badge" element={<Badges />} />
-            <Route path="/buttons" element={<Buttons />} />
-            <Route path="/images" element={<Images />} />
-            <Route path="/videos" element={<Videos />} />
+              <Route
+                path="/utilisateurs"
+                element={<Utilisateurs />}
+              />
 
-            {/* Charts */}
-            <Route path="/line-chart" element={<LineChart />} />
-            <Route path="/bar-chart" element={<BarChart />} />
+              <Route
+                path="/familleprofile/:familleId"
+                element={<FamillesProfiles />}
+              />
+
+              <Route
+                path="/degre-famille"
+                element={<DegreFamillePage />}
+              />
+
+              <Route
+                path="/EtudesProfile/:enfantid"
+                element={<EtudesProfile />}
+              />
+
+              <Route
+                path="/calendar"
+                element={<Calendar />}
+              />
+
+              <Route
+                path="/listeevents"
+                element={<ListeEvents />}
+              />
+
+              <Route
+                path="/event-details/:id"
+                element={<EventDetails />}
+              />
+
+              <Route
+                path="/blank"
+                element={<Blank />}
+              />
+
+              <Route
+                path="/form-elements"
+                element={<AjoutFamille />}
+              />
+
+              <Route
+                path="/basic-tables"
+                element={<BasicTables />}
+              />
+
+              <Route
+                path="/suivi-etudes"
+                element={<SuiviEtudes />}
+              />
+
+              <Route
+                path="/alerts"
+                element={<Alerts />}
+              />
+
+              <Route
+                path="/avatars"
+                element={<Avatars />}
+              />
+
+              <Route
+                path="/badge"
+                element={<Badges />}
+              />
+
+              <Route
+                path="/buttons"
+                element={<Buttons />}
+              />
+
+              <Route
+                path="/images"
+                element={<Images />}
+              />
+
+              <Route
+                path="/videos"
+                element={<Videos />}
+              />
+
+              <Route
+                path="/line-chart"
+                element={<LineChart />}
+              />
+
+              <Route
+                path="/bar-chart"
+                element={<BarChart />}
+              />
+
+            </Route>
           </Route>
-</Route>
-          {/* Auth Layout */}
-          <Route path="/" element={<SignIn />} />
-          <Route path="/signup" element={<SignUp />} />
 
-          {/* Fallback Route */}
-          <Route path="*" element={<NotFound />} />
+          <Route
+            path="/"
+            element={<SignIn />}
+          />
+
+          <Route
+            path="/signup"
+            element={<SignUp />}
+          />
+
+          <Route
+            path="*"
+            element={<NotFound />}
+          />
+
         </Routes>
+
       </Router>
     </>
   );

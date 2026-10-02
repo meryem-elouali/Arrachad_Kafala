@@ -50,6 +50,38 @@ public class FamilleController {
         this.etudeRepo = etudeRepo;
         this.degreRepo = degreRepo;
     }
+    private boolean doitCalculerDegre(Famille famille) {
+
+        if (famille == null
+                || famille.getTypeFamille() == null
+                || famille.getTypeFamille().getNom() == null) {
+            return false;
+        }
+
+        String type = famille.getTypeFamille().getNom().trim();
+
+        // ✅ On calcule uniquement pour أيتام et لطيم
+        return "أيتام".equals(type)
+                || "لطيم".equals(type);
+    }
+
+
+    private void appliquerDegreSelonType(Famille famille) {
+
+        if (doitCalculerDegre(famille)) {
+
+            // ✅ أيتام ou لطيم
+            famille.setDegreFamille(
+                    calculerDegre(famille)
+            );
+
+        } else {
+
+            // ✅ معوز ou autre type :
+            // aucun degré
+            famille.setDegreFamille(null);
+        }
+    }
     private int calculerDegre(Famille f) {
         DegreFamille d = degreRepo.findAll().stream().findFirst()
                 .orElseThrow(() -> new RuntimeException("Paramètres de degré non trouvés"));
@@ -234,7 +266,9 @@ public class FamilleController {
                 }
             }
             famille.setEnfants(enfants);
-            famille.setDegreFamille(calculerDegre(famille));
+
+// ✅ Calcul du degré seulement si أيتام ou لطيم
+            appliquerDegreSelonType(famille);
             // 🔹 Sauvegarder la famille avec tous les enfants
             Famille savedFamille = familleService.saveFamille(famille);
 
@@ -374,8 +408,7 @@ public class FamilleController {
         if (payload.containsKey("beneficieAutreAssociation")) {
             existingFamille.setBeneficieAutreAssociation((Boolean) payload.get("beneficieAutreAssociation"));
         }
-        existingFamille.setDegreFamille(calculerDegre(existingFamille));
-
+        appliquerDegreSelonType(existingFamille);
 
         return familleService.saveFamille(existingFamille);
     }
@@ -429,7 +462,7 @@ public class FamilleController {
             mere.setTypeTravail(null);
         }
 
-        famille.setDegreFamille(calculerDegre(famille));
+        appliquerDegreSelonType(famille);
         familleService.saveFamille(famille);
         return mere;
     }
@@ -483,6 +516,7 @@ public class FamilleController {
             pere.setTypeTravail(null);
         }
 
+        appliquerDegreSelonType(famille);
         familleService.saveFamille(famille);
         return pere;
     }
