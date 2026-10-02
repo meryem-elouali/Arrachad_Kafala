@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { TabView, TabPanel } from "primereact/tabview";
 import { Link, useNavigate } from "react-router-dom";
+import { ORGANISATEURS, Organisateur, organisateurCls, organisateurLabel, organisateurOf } from "../lib/organisateur";
+import ExportButtons from "../components/common/ExportButtons";
+import type { TableExport } from "../lib/exportTable";
 
 const API = "http://localhost:8080/api";
 
@@ -28,6 +31,7 @@ interface CalendarEvent {
   montantNonVentile?: number;
   caisseNom?: string | null;
   caisseChargeNom?: string | null;
+  organisateur?: string;
 }
 
 interface TypeStat {
@@ -285,6 +289,9 @@ const ListeEvents: React.FC = () => {
 
   const [error, setError] = useState<string>("");
 
+  // "" = tous les organisateurs
+  const [organisateurFilter, setOrganisateurFilter] = useState<Organisateur | "">("");
+
   const [selectedAnneeScolaire, setSelectedAnneeScolaire] =
     useState<string>(CURRENT_SCHOOL_YEAR);
 
@@ -499,6 +506,61 @@ const ListeEvents: React.FC = () => {
 
   const getTone = (index: number) =>
     TYPE_TONES[index % TYPE_TONES.length];
+
+  // Export : activités affichées (année + organisateur choisis)
+  const buildExport = (): TableExport => {
+    const rows = eventTypes.flatMap((type) =>
+      (eventsByType[type.id] || [])
+        .filter((e) => !organisateurFilter || organisateurOf(e.organisateur) === organisateurFilter)
+        .map((e) => {
+          const total =
+            numberValue(e.montantDegresDefinis) +
+            numberValue(e.montantMouawiz) +
+            numberValue(e.montantSawaedAlKhayr) +
+            numberValue(e.montantNonVentile);
+          return [
+            e.title,
+            type.name,
+            organisateurLabel(e.organisateur),
+            e.endDate && e.endDate !== e.startDate ? `${e.startDate} ← ${e.endDate}` : e.startDate,
+            e.place || "",
+            (e.cibles || []).map((c) => CIBLE_LABELS[c] || c).join("، "),
+            e.caisseNom || (e.sawaedAlKhayr ? "سواعد الخير" : "توزيع تلقائي"),
+            total,
+          ];
+        })
+    );
+    const total = rows.reduce((a, r) => a + Number(r[7] || 0), 0);
+    const orgLabel = ORGANISATEURS.find((o) => o.value === organisateurFilter)?.label;
+    return {
+      kind: "لائحة الأنشطة",
+      title: `الأنشطة — ${selectedAnneeScolaire}`,
+      chips: [`السنة الدراسية: ${selectedAnneeScolaire}`, `الجهة المنظمة: ${orgLabel || "الكل"}`],
+      summary: [
+        { label: "عدد الأنشطة", value: String(rows.length), tone: "blue" },
+        { label: "مجموع المصاريف", value: formatMoney(total), tone: "green" },
+      ],
+      sections: [
+        {
+          title: "الأنشطة",
+          columns: [
+            { label: "النشاط", align: "start" },
+            { label: "النوع" },
+            { label: "الجهة المنظمة" },
+            { label: "التاريخ" },
+            { label: "المكان" },
+            { label: "الفئة" },
+            { label: "الصندوق" },
+            { label: "المبلغ", money: true, numeric: true },
+          ],
+          rows,
+          totals: ["المجموع", "", "", "", "", "", "", total],
+        },
+      ],
+      fileName: `الأنشطة_${selectedAnneeScolaire.replace("/", "-")}`,
+      orientation: "landscape",
+    };
+  };
 
   // ==========================================================================
   // UI
@@ -827,11 +889,33 @@ const ListeEvents: React.FC = () => {
               </p>
             </div>
 
-            {!loading && (
-              <div className="rounded-xl bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                {allEvents.length} نشاط محمّل
+            <div className="flex flex-wrap items-center gap-2">
+              <ExportButtons build={buildExport} disabled={loading} compact />
+              <div className="flex gap-1 rounded-xl bg-slate-100 p-1 text-xs font-bold dark:bg-slate-800">
+                {[{ value: "" as const, label: "كل الجهات" }, ...ORGANISATEURS].map((o) => (
+                  <button
+                    key={o.value || "all"}
+                    type="button"
+                    onClick={() => setOrganisateurFilter(o.value)}
+                    className={`rounded-lg px-3 py-2 transition ${
+                      organisateurFilter === o.value
+                        ? "bg-white text-indigo-700 shadow-sm dark:bg-slate-700 dark:text-white"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {o.label}
+                  </button>
+                ))}
               </div>
-            )}
+              {!loading && (
+                <div className="rounded-xl bg-slate-50 px-4 py-2 text-xs font-bold text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                  {organisateurFilter
+                    ? allEvents.filter((e) => organisateurOf(e.organisateur) === organisateurFilter).length
+                    : allEvents.length}{" "}
+                  نشاط
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="events-tabs">
@@ -1068,8 +1152,11 @@ const ListeEvents: React.FC = () => {
               =================================================== */}
 
               {eventTypes.map((type, typeIndex) => {
-                const list =
-                  eventsByType[type.id] || [];
+                const list = (eventsByType[type.id] || []).filter(
+                  (event) =>
+                    !organisateurFilter ||
+                    organisateurOf(event.organisateur) === organisateurFilter
+                );
 
                 const tone =
                   getTone(typeIndex);
@@ -1253,6 +1340,10 @@ const ListeEvents: React.FC = () => {
                                         />
 
                                         {type.name}
+                                      </span>
+
+                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ${organisateurCls(event.organisateur)}`}>
+                                        {organisateurLabel(event.organisateur)}
                                       </span>
 
                                       <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500 dark:bg-slate-800 dark:text-slate-300">

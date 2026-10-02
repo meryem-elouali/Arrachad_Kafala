@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import ExportButtons from "../components/common/ExportButtons";
 
 const API = "http://localhost:8080/api/lajna";
 
@@ -157,12 +158,47 @@ export default function Utilisateurs() {
           )}
         </div>
 
-        <input
-          className={inp}
-          placeholder="بحث بالاسم أو اسم المستخدم..."
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            className={inp}
+            placeholder="بحث بالاسم أو اسم المستخدم..."
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <ExportButtons
+            build={() => ({
+              kind: "اللجنة",
+              title: "لائحة المستخدمين",
+              chips: q.trim() ? [`بحث: ${q.trim()}`] : [],
+              summary: [
+                { label: "المستخدمون", value: String(shown.length), tone: "blue" },
+                { label: "حسابات مفعلة", value: String(shown.filter((m) => m.compteActif).length), tone: "green" },
+              ],
+              sections: [
+                {
+                  title: "المستخدمون",
+                  columns: [
+                    { label: "الاسم", align: "start" },
+                    { label: "الوظيفة" },
+                    { label: "الدور" },
+                    { label: "اسم المستخدم" },
+                    { label: "الحالة" },
+                    { label: "آخر دخول" },
+                  ],
+                  rows: shown.map((m) => [
+                    `${m.prenom || ""} ${m.nom || ""}`.trim(),
+                    m.fonction?.nom,
+                    (ROLES[m.role || "SIMPLE"] || ROLES.SIMPLE).l,
+                    m.username || "لا يوجد حساب",
+                    m.username ? (m.compteActif ? "مفعل" : "موقوف") : "",
+                    m.derniereConnexion?.replace("T", " ").slice(0, 16),
+                  ]),
+                },
+              ],
+              fileName: "المستخدمون",
+            })}
+          />
+        </div>
 
         <div className="overflow-x-auto rounded-3xl border border-gray-200 bg-white shadow-sm">
           <table className="min-w-full text-right text-sm">

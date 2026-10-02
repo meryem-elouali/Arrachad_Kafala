@@ -689,7 +689,7 @@ const printFamilleReport = (
         fields(
           [
             ["الفئة", f.typeFamille?.nom],
-            ["درجة الاستحقاق", f.degreFamille ?? "غير محددة"],
+            ["درجة الاستحقاق", f.degreFamille ?? "معوز"],
             ["السكن", f.habitationFamille?.nom],
             ["الهاتف", f.phone],
             ["العنوان", f.adresseFamille],
@@ -1857,7 +1857,7 @@ export default function FamillesProfiles() {
                 <h2 className="mt-1 text-3xl font-extrabold">عائلة {nomFamille}</h2>
                 <div className="mt-3 flex flex-wrap justify-center gap-2 lg:justify-start">
                   {famille.typeFamille?.nom && <Badge tone="white">{famille.typeFamille.nom}</Badge>}
-                  <Badge tone="white">الدرجة: {famille.degreFamille ?? "غير محددة"}</Badge>
+                  <Badge tone="white">{famille.degreFamille != null ? `الدرجة: ${famille.degreFamille}` : "معوز"}</Badge>
                   {famille.phone && <Badge tone="white">📞 {famille.phone}</Badge>}
                 </div>
               </div>

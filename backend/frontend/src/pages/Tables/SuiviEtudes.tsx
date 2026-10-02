@@ -573,7 +573,7 @@ export default function EtudesTable() {
   // classer les montants de soutien scolaire :
   //
   // degré 1 / 2 / 3 => الدرجات المحددة
-  // degré null      => معوز / درجة غير محددة
+  // degré null      => معوز
   //
   // IMPORTANT :
   // cette classification utilise le degré ACTUEL de la famille.
@@ -707,7 +707,7 @@ export default function EtudesTable() {
       info.categorie ===
       "NON_DEFINI"
     ) {
-      return "معوز / درجة غير محددة";
+      return "معوز";
     }
 
     return "غير مصنف";
@@ -839,6 +839,8 @@ export default function EtudesTable() {
     );
 
     let nombreEtudiants = 0;
+    // Enfants dont tout ou partie du soutien est payé par une autre personne / organisme
+    let nombreAutre = 0;
 
     let totalConsomme = 0;
     let totalPaye = 0;
@@ -879,6 +881,10 @@ export default function EtudesTable() {
 
         if (consomme > 0) {
           nombreEtudiants += 1;
+        }
+
+        if (autre > 0) {
+          nombreAutre += 1;
         }
 
         totalConsomme += consomme;
@@ -924,6 +930,7 @@ export default function EtudesTable() {
 
     return {
       nombreEtudiants,
+      nombreAutre,
 
       totalConsomme,
       totalPaye,
@@ -1167,7 +1174,7 @@ export default function EtudesTable() {
               ? degreInfo.degre ?? "—"
               : degreInfo.categorie ===
                 "NON_DEFINI"
-                ? "غير محدد"
+                ? "معوز"
                 : "—",
 
           montantSoutienConsommeNombre: Number(soutien.totalConsomme || 0),
@@ -1457,7 +1464,7 @@ export default function EtudesTable() {
     }
 
     if (exportDegreFilter === "undefined") {
-      labels.push("الدرجة: معوز / درجة غير محددة");
+      labels.push("الدرجة: معوز");
     }
 
     if (exportDegreFilter === "unknown") {
@@ -1585,7 +1592,7 @@ export default function EtudesTable() {
         exportStats.consommeDegreDefini
       )} | المؤدى: ${fmtMoney(
         exportStats.payeDegreDefini
-      )}   ||   معوز / غير محدد — المستهلك: ${fmtMoney(
+      )}   ||   معوز — المستهلك: ${fmtMoney(
         exportStats.consommeDegreNonDefini
       )} | المؤدى: ${fmtMoney(
         exportStats.payeDegreNonDefini
@@ -1644,7 +1651,7 @@ export default function EtudesTable() {
       `النطاق: ${scopeLabel}`,
       `عدد السجلات: ${rows.length}`,
       exportDegreFilter === "undefined"
-        ? "فئة الدرجة: معوز / درجة غير محددة"
+        ? "فئة الدرجة: معوز"
         : exportDegreFilter === "defined"
           ? "فئة الدرجة: الدرجات المحددة"
           : exportDegreFilter === "degree1"
@@ -1663,12 +1670,12 @@ export default function EtudesTable() {
       `الدرجات المحددة - المؤدى: ${fmtMoney(
         exportStats.payeDegreDefini
       )}`,
-      `معوز / غير محدد - المستهلك: ${fmtMoney(
-        exportStats.consommeDegreNonDefini
-      )}`,
-      `معوز / غير محدد - المؤدى: ${fmtMoney(
-        exportStats.payeDegreNonDefini
-      )}`,
+      ...(exportStats.consommeDegreNonDefini > 0 || exportStats.payeDegreNonDefini > 0
+        ? [
+            `معوز - المستهلك: ${fmtMoney(exportStats.consommeDegreNonDefini)}`,
+            `معوز - المؤدى: ${fmtMoney(exportStats.payeDegreNonDefini)}`,
+          ]
+        : []),
       `المبلغ المؤدى من طرف الغير: ${fmtMoney(exportStats.totalAutre)}`,
       ...exportCriteriaLabels,
     ];
@@ -1700,20 +1707,13 @@ export default function EtudesTable() {
           ),
           color: "#dbeafe",
         },
-        {
-          label: "مستهلك - معوز / غير محدد",
-          value: fmtMoney(
-            exportStats.consommeDegreNonDefini
-          ),
-          color: "#fff7ed",
-        },
-        {
-          label: "مؤدى - معوز / غير محدد",
-          value: fmtMoney(
-            exportStats.payeDegreNonDefini
-          ),
-          color: "#ffedd5",
-        },
+        ...(exportStats.consommeDegreNonDefini > 0 || exportStats.payeDegreNonDefini > 0
+          ? [
+              { label: "مستهلك - معوز", value: fmtMoney(exportStats.consommeDegreNonDefini), color: "#fff7ed" },
+              { label: "مؤدى - معوز", value: fmtMoney(exportStats.payeDegreNonDefini), color: "#ffedd5" },
+            ]
+          : []),
+        { label: "أداه الغير", value: fmtMoney(exportStats.totalAutre), color: "#fffbeb" },
       ]
     );
 
@@ -1864,103 +1864,79 @@ export default function EtudesTable() {
           </div>
         </div>
 
-        {/* STATS GÉNÉRALES */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
-            <p className="text-sm text-gray-500">عدد الطلاب</p>
-            <p className="mt-1 text-3xl font-bold text-blue-700">{stats.totalEtudiants}</p>
-          </div>
+        {/* STATS GÉNÉRALES
+            Le soutien est compté en entier (y compris la part payée par d'autres),
+            puis séparé entre l'association et les autres payeurs. */}
+        {(() => {
+          const wait = consoLoading || degresLoading;
+          const money = (v: number) => (wait ? "..." : fmtMoney(v));
+          const pctAsso =
+            statsSoutien.totalConsomme > 0
+              ? Math.round((statsSoutien.totalPaye / statsSoutien.totalConsomme) * 100)
+              : 0;
+          const showMouawiz =
+            statsSoutien.consommeDegreNonDefini > 0 || statsSoutien.payeDegreNonDefini > 0;
 
-          <div className="rounded-2xl border border-purple-100 bg-purple-50 p-5">
-            <p className="text-sm text-gray-500">عدد المؤسسات</p>
-            <p className="mt-1 text-3xl font-bold text-purple-700">{stats.totalEcoles}</p>
-          </div>
+          return (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
+                  <p className="text-sm text-gray-500">عدد الطلاب</p>
+                  <p className="mt-1 text-3xl font-bold text-blue-700">{stats.totalEtudiants}</p>
+                  <p className="mt-1 text-xs text-blue-600">{stats.totalEcoles} مؤسسة</p>
+                </div>
 
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
-            <p className="text-sm text-gray-500">عدد المستويات</p>
-            <p className="mt-1 text-3xl font-bold text-amber-700">{stats.totalNiveaux}</p>
-          </div>
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
+                  <p className="text-sm text-gray-500">المستفيدون من الدعم الدراسي</p>
+                  <p className="mt-1 text-3xl font-bold text-cyan-700">
+                    {consoLoading ? "..." : statsSoutien.nombreEtudiants}
+                  </p>
+                  <p className="mt-1 text-xs text-cyan-600">{yearLabel}</p>
+                </div>
 
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-5">
-            <p className="text-sm text-gray-500">الطلاب المستفيدون من الدعم</p>
-            <p className="mt-1 text-3xl font-bold text-cyan-700">
-              {consoLoading ? "..." : statsSoutien.nombreEtudiants}
-            </p>
-            <p className="mt-1 text-xs text-cyan-600">{yearLabel}</p>
-          </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <p className="text-sm text-gray-500">الكلفة الإجمالية للدعم</p>
+                  <p className="mt-1 whitespace-nowrap text-2xl font-bold text-slate-800">{money(statsSoutien.totalConsomme)}</p>
+                  <p className="mt-1 text-xs text-slate-500">كل الجهات</p>
+                </div>
 
-          <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
-            <p className="text-sm font-semibold text-gray-500">
-              المستهلك - الدرجات المحددة
-            </p>
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+                  <p className="text-sm text-gray-500">أدته الجمعية</p>
+                  <p className="mt-1 whitespace-nowrap text-2xl font-bold text-emerald-700">{money(statsSoutien.totalPaye)}</p>
+                  <p className="mt-1 text-xs text-emerald-600">{wait ? "" : `${pctAsso}% من الكلفة`}</p>
+                </div>
+              </div>
 
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-blue-700">
-              {consoLoading || degresLoading
-                ? "..."
-                : fmtMoney(
-                    statsSoutien.consommeDegreDefini
-                  )}
-            </p>
+              <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${showMouawiz ? "lg:grid-cols-3" : ""}`}>
+                <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
+                  <p className="text-sm text-gray-500">أداه أشخاص أو جهات أخرى</p>
+                  <p className="mt-1 whitespace-nowrap text-2xl font-bold text-amber-700">{money(statsSoutien.totalAutre)}</p>
+                  <p className="mt-1 text-xs text-amber-600">
+                    {consoLoading ? "" : `${statsSoutien.nombreAutre} طفل · غير محتسب في مصاريف الجمعية`}
+                  </p>
+                </div>
 
-            <p className="mt-1 text-xs text-blue-600">
-              {yearLabel}
-            </p>
-          </div>
+                <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
+                  <p className="text-sm text-gray-500">الدرجات المحددة</p>
+                  <p className="mt-1 whitespace-nowrap text-xl font-bold text-indigo-700">
+                    أدته الجمعية: {money(statsSoutien.payeDegreDefini)}
+                  </p>
+                  <p className="mt-1 text-xs text-indigo-600">الكلفة: {money(statsSoutien.consommeDegreDefini)}</p>
+                </div>
 
-          <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
-            <p className="text-sm font-semibold text-gray-500">
-              المؤدى - الدرجات المحددة
-            </p>
-
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-indigo-700">
-              {consoLoading || degresLoading
-                ? "..."
-                : fmtMoney(
-                    statsSoutien.payeDegreDefini
-                  )}
-            </p>
-
-            <p className="mt-1 text-xs text-indigo-600">
-              {yearLabel}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
-            <p className="text-sm font-semibold text-gray-500">
-              المستهلك - معوز / درجة غير محددة
-            </p>
-
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-orange-700">
-              {consoLoading || degresLoading
-                ? "..."
-                : fmtMoney(
-                    statsSoutien.consommeDegreNonDefini
-                  )}
-            </p>
-
-            <p className="mt-1 text-xs text-orange-600">
-              {yearLabel}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-amber-100 bg-amber-50 p-5">
-            <p className="text-sm font-semibold text-gray-500">
-              المؤدى - معوز / درجة غير محددة
-            </p>
-
-            <p className="mt-1 whitespace-nowrap text-2xl font-bold text-amber-700">
-              {consoLoading || degresLoading
-                ? "..."
-                : fmtMoney(
-                    statsSoutien.payeDegreNonDefini
-                  )}
-            </p>
-
-            <p className="mt-1 text-xs text-amber-600">
-              {yearLabel}
-            </p>
-          </div>
-        </div>
+                {showMouawiz && (
+                  <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
+                    <p className="text-sm text-gray-500">معوز</p>
+                    <p className="mt-1 whitespace-nowrap text-xl font-bold text-orange-700">
+                      أدته الجمعية: {money(statsSoutien.payeDegreNonDefini)}
+                    </p>
+                    <p className="mt-1 text-xs text-orange-600">الكلفة: {money(statsSoutien.consommeDegreNonDefini)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* STATS PAR CYCLE */}
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -2745,7 +2721,7 @@ export default function EtudesTable() {
                         </option>
 
                         <option value="undefined">
-                          معوز / درجة غير محددة
+                          معوز
                         </option>
 
                         <option value="unknown">
@@ -2851,9 +2827,11 @@ export default function EtudesTable() {
                     </strong>
                   </div>
 
+                  {(exportStats.consommeDegreNonDefini > 0 || exportStats.payeDegreNonDefini > 0) && (
+                  <>
                   <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
                     <span className="text-xs font-semibold text-gray-500">
-                      مستهلك - معوز / غير محدد
+                      مستهلك - معوز
                     </span>
 
                     <strong className="text-sm text-orange-700">
@@ -2867,7 +2845,7 @@ export default function EtudesTable() {
 
                   <div className="flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5">
                     <span className="text-xs font-semibold text-gray-500">
-                      مؤدى - معوز / غير محدد
+                      مؤدى - معوز
                     </span>
 
                     <strong className="text-sm text-amber-700">
@@ -2878,6 +2856,8 @@ export default function EtudesTable() {
                           )}
                     </strong>
                   </div>
+                  </>
+                  )}
 
                   <div className="flex items-center justify-between rounded-xl bg-amber-50 px-3 py-2.5">
                     <span className="text-xs font-semibold text-gray-500">تكفل به الغير</span>

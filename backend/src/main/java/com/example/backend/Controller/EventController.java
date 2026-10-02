@@ -4533,6 +4533,10 @@ public class EventController {
             return;
         }
 
+        if (props.containsKey("organisateur")) {
+            event.setOrganisateur(stringValue(props.get("organisateur")));
+        }
+
         if (props.containsKey("caisseId")) {
             event.setCaisse(findCaisse(props.get("caisseId")));
         }
@@ -4587,6 +4591,11 @@ public class EventController {
                 event.getCaisse() != null
                         ? event.getCaisse().getNom()
                         : null
+        );
+
+        map.put(
+                "organisateur",
+                event.getOrganisateur()
         );
 
         map.put(

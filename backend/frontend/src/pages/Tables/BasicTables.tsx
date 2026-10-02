@@ -6,7 +6,7 @@ import { PriseEnCharge, besoinLabel, resumePec } from "../../lib/prisesEnCharge"
 import { Tone, kpis, openReport, table } from "../../lib/report";
 
 const API = "http://localhost:8080/api";
-const UNDEF = "غير محددة";
+const UNDEF = "معوز";
 
 /* ============================== EXPORT : CONFIG ============================== */
 type ExportType = "FAMILLES" | "CONSO" | "MERES" | "PERES" | "ENFANTS" | "PARTICIPATIONS";
@@ -65,7 +65,7 @@ const FIELDS: Record<Group, FieldDef[]> = {
     { key: "present", label: "حضور", kind: "number" },
     { key: "absent", label: "غياب", kind: "number" },
     { key: "eventDegresDefinis", label: "الأنشطة - الدرجات المحددة", kind: "money" },
-    { key: "eventDegreNonDefini", label: "الأنشطة - معوز / درجة غير محددة", kind: "money" },
+    { key: "eventDegreNonDefini", label: "الأنشطة - معوز", kind: "money" },
     { key: "eventSawaedAlKhayr", label: "الأنشطة - سواعد الخير", kind: "money" },
     { key: "totalEvenements", label: "مجموع مصاريف الأنشطة", kind: "money" },
     { key: "scolaireConsomme", label: "الدعم الدراسي المستهلك", kind: "money" },
@@ -233,7 +233,7 @@ const eventCategoryLabel = (event: any) => {
     code === "DEGRE_NON_DEFINI" ||
     code === "MOUAWIZ"
   ) {
-    return "معوز / درجة غير محددة";
+    return "معوز";
   }
 
   return "غير مصنف";
@@ -1606,7 +1606,7 @@ export default function FamillesTable() {
       );
 
       params.push(
-        `معوز / درجة غير محددة: ${fmt(
+        `معوز: ${fmt(
           exportSummary.eventDegreNonDefini
         )}`
       );
@@ -1668,7 +1668,7 @@ export default function FamillesTable() {
               color: "#eff6ff",
             },
             {
-              label: "معوز / درجة غير محددة",
+              label: "معوز",
               value: fmt(
                 exportSummary.eventDegreNonDefini
               ),
@@ -1810,124 +1810,21 @@ export default function FamillesTable() {
           </div>
         </div>
 
-        {/* ===== STATS ===== */}
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-4 lg:grid-cols-7">
+        {/* ===== STATS =====
+            Uniquement l'essentiel sur les familles.
+            Finances -> الإدارة المالية ; scolarité -> تتبع الدراسة. */}
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <StatCard label="عدد العائلات" value={stats.totalFamilles} color="bg-blue-50 text-blue-700 border-blue-100" />
-          <StatCard label="الأمهات" value={stats.totalMeres} color="bg-purple-50 text-purple-700 border-purple-100" />
           <StatCard label="إجمالي الأطفال" value={stats.totalEnfants} color="bg-indigo-50 text-indigo-700 border-indigo-100" />
-         <StatCard label="عائلات بدون أطفال" value={stats.sansEnfants} color="bg-amber-50 text-amber-700 border-amber-100" />
-          <StatCard label="درجة غير محددة" value={stats.sansDegre} color="bg-red-50 text-red-700 border-red-100" />
+          <StatCard label="معوز" value={stats.sansDegre} color="bg-orange-50 text-orange-700 border-orange-100" />
           <StatCard
-            label="إجمالي ما دفعته الجمعية"
-            value={soutiensLoading ? "..." : fmt(stats.totalDepense)}
-            color="bg-emerald-50 text-emerald-700 border-emerald-100"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
-          <StatCard
-            label="الأنشطة - الدرجات المحددة"
-            value={fmt(
-              stats.totalEventDegresDefinis
-            )}
-            color="bg-blue-50 text-blue-700 border-blue-100"
-          />
-
-          <StatCard
-            label="الأنشطة - معوز / درجة غير محددة"
-            value={fmt(
-              stats.totalEventDegreNonDefini
-            )}
-            color="bg-orange-50 text-orange-700 border-orange-100"
-          />
-
-          <StatCard
-            label="الأنشطة - سواعد الخير"
-            value={fmt(
-              stats.totalEventSawaedAlKhayr
-            )}
+            label="بتكفل خارجي"
+            value={familles.filter((f) => (pecParFamille[String(f.id)] ?? []).length > 0).length}
             color="bg-violet-50 text-violet-700 border-violet-100"
           />
-
-          {Number(
-            stats.totalEventNonVentile
-          ) > 0 && (
-            <StatCard
-              label="الأنشطة - مبلغ غير موزع"
-              value={fmt(
-                stats.totalEventNonVentile
-              )}
-              color="bg-gray-50 text-gray-700 border-gray-200"
-            />
+          {stats.sansEnfants > 0 && (
+            <StatCard label="عائلات بدون أطفال" value={stats.sansEnfants} color="bg-amber-50 text-amber-700 border-amber-100" />
           )}
-
-          <StatCard
-            label={`مجموع مصاريف الأنشطة ${year === "all" ? "" : year}`}
-            value={fmt(
-              stats.totalEvenements
-            )}
-            color="bg-cyan-50 text-cyan-700 border-cyan-100"
-          />
-
-          <StatCard
-            label={`الدعم الدراسي المستهلك ${studyYear === "all" ? "" : studyYear}`}
-            value={
-              soutiensLoading
-                ? "..."
-                : fmt(
-                    stats.totalScolaireConsomme
-                  )
-            }
-            color="bg-fuchsia-50 text-fuchsia-700 border-fuchsia-100"
-          />
-
-          <StatCard
-            label="الدعم المؤدى من الجمعية"
-            value={
-              soutiensLoading
-                ? "..."
-                : fmt(
-                    stats.totalScolairePaye
-                  )
-            }
-            color="bg-emerald-50 text-emerald-700 border-emerald-100"
-          />
-
-          <StatCard
-            label="الدعم غير المؤدى من الجمعية"
-            value={
-              soutiensLoading
-                ? "..."
-                : fmt(
-                    stats.totalScolaireNonPaye
-                  )
-            }
-            color="bg-amber-50 text-amber-700 border-amber-100"
-          />
-
-          <StatCard
-            label="إجمالي ما دفعته الجمعية"
-            value={
-              soutiensLoading
-                ? "..."
-                : fmt(
-                    stats.totalDepense
-                  )
-            }
-            color="bg-green-50 text-green-700 border-green-100"
-          />
-
-          <StatCard
-            label="القيمة الإجمالية المستهلكة"
-            value={
-              soutiensLoading
-                ? "..."
-                : fmt(
-                    stats.totalConsomme
-                  )
-            }
-            color="bg-slate-50 text-slate-700 border-slate-200"
-          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -2086,7 +1983,7 @@ export default function FamillesTable() {
                       <td className="px-5 py-4">
                         <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">{row.typeFamilleNom}</span>
                         <p className={`mt-1 text-[11px] font-semibold ${row.degreFamille === UNDEF ? "text-gray-400" : "text-amber-700"}`}>
-                          {row.degreFamille === UNDEF ? "درجة غير محددة" : `الدرجة ${row.degreFamille}`}
+                          {row.degreFamille === UNDEF ? "معوز" : `الدرجة ${row.degreFamille}`}
                         </p>
                       </td>
                       <td className="px-5 py-4">
@@ -2511,7 +2408,7 @@ export default function FamillesTable() {
 
                         <div className="flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2.5">
                           <span className="text-xs font-semibold text-gray-500">
-                            معوز / درجة غير محددة
+                            معوز
                           </span>
 
                           <strong className="text-sm text-orange-700">
@@ -2665,7 +2562,7 @@ export default function FamillesTable() {
 
                     <div className="rounded-xl bg-orange-50 p-3">
                       <p className="text-[11px] text-gray-500">
-                        الأنشطة - معوز / غير محدد
+                        الأنشطة - معوز
                       </p>
 
                       <p className="font-bold text-orange-700">
@@ -2826,7 +2723,7 @@ export default function FamillesTable() {
                                     </span>
                                   ) : eventCategoryLabel(ev).includes("معوز") ? (
                                     <span className="inline-flex whitespace-nowrap rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">
-                                      معوز / درجة غير محددة
+                                      معوز
                                     </span>
                                   ) : (
                                     <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1 text-xs font-bold text-gray-500">

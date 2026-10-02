@@ -62,6 +62,17 @@ public class Event {
     private EconomicCategory caisseCharge;
 
     // =========================================================
+    // ORGANISATEUR : LAJNA (اللجنة) ou SAWAED_AL_KHAYR (سواعد الخير)
+    // Indépendant de "sawaedAlKhayr" (qui concerne le financement).
+    // Valeur absente (anciens événements) = LAJNA.
+    // =========================================================
+    @Column(name = "organisateur", length = 20)
+    private String organisateur;
+
+    public static final String ORGANISATEUR_LAJNA = "LAJNA";
+    public static final String ORGANISATEUR_SAWAED = "SAWAED_AL_KHAYR";
+
+    // =========================================================
     // CHARGE SUPPLÉMENTAIRE
     // =========================================================
     @Column(
@@ -357,6 +368,19 @@ public class Event {
     // =========================================================
     // سواعد الخير
     // =========================================================
+
+    public String getOrganisateur() {
+        return ORGANISATEUR_SAWAED.equals(organisateur) ? ORGANISATEUR_SAWAED : ORGANISATEUR_LAJNA;
+    }
+
+    public void setOrganisateur(
+            String organisateur
+    ) {
+        this.organisateur =
+                ORGANISATEUR_SAWAED.equals(organisateur)
+                        ? ORGANISATEUR_SAWAED
+                        : ORGANISATEUR_LAJNA;
+    }
 
     public EconomicCategory getCaisseCharge() {
         return caisseCharge;

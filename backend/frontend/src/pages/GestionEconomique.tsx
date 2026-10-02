@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import ExportButtons from "../components/common/ExportButtons";
+import type { TableExport } from "../lib/exportTable";
 
 const API = "http://localhost:8080/api";
 
@@ -803,6 +805,124 @@ export default function GestionEconomique() {
     }
   };
 
+  const exportFunds = (): TableExport => ({
+    kind: "الإدارة المالية",
+    title: `وضعية الصناديق — ${selectedYear}`,
+    chips: [`السنة الدراسية: ${selectedYear}`],
+    summary: [
+      { label: "المداخيل", value: money(dashboard.totalEntrees), tone: "green" },
+      { label: "المصاريف", value: money(dashboard.totalSorties), tone: "red" },
+      { label: "الرصيد", value: money(dashboard.solde), tone: "blue" },
+    ],
+    sections: [
+      {
+        title: "الصناديق",
+        columns: [
+          { label: "الصندوق", align: "start" },
+          { label: "المداخيل", money: true, numeric: true },
+          { label: "الأنشطة", money: true, numeric: true },
+          { label: "الدعم الدراسي", money: true, numeric: true },
+          { label: "مصاريف الأسر", money: true, numeric: true },
+          { label: "مجموع المصاريف", money: true, numeric: true },
+          { label: "الرصيد", money: true, numeric: true },
+        ],
+        rows: dashboard.fonds.map((f) => [
+          f.nom,
+          f.entrees,
+          f.sortiesEvents,
+          f.sortiesSoutien,
+          f.sortiesFamilles,
+          f.totalSorties,
+          f.solde,
+        ]),
+        totals: ["المجموع", dashboard.totalEntrees, "", "", "", dashboard.totalSorties, dashboard.solde],
+      },
+    ],
+    fileName: `الصناديق_${selectedYear.replace("/", "-")}`,
+    orientation: "landscape",
+  });
+
+  const exportIncomes = (): TableExport => ({
+    kind: "الإدارة المالية",
+    title: `سجل المداخيل — ${selectedYear}`,
+    chips: [`السنة الدراسية: ${selectedYear}`],
+    summary: [
+      { label: "عدد العمليات", value: String(incomes.length), tone: "blue" },
+      { label: "المجموع", value: money(incomes.reduce((a, i) => a + Number(i.montant || 0), 0)), tone: "green" },
+    ],
+    sections: [
+      {
+        title: "المداخيل",
+        columns: [
+          { label: "التاريخ" },
+          { label: "الصندوق" },
+          { label: "المصدر", align: "start" },
+          { label: "طريقة الأداء" },
+          { label: "المرجع" },
+          { label: "ملاحظة", align: "start" },
+          { label: "المبلغ", money: true, numeric: true },
+        ],
+        rows: incomes.map((i) => [
+          i.dateReception,
+          i.fundNom,
+          i.source,
+          i.modePaiement,
+          i.referencePaiement,
+          i.note,
+          i.montant,
+        ]),
+        totals: ["", "", "", "", "", "المجموع", incomes.reduce((a, i) => a + Number(i.montant || 0), 0)],
+      },
+    ],
+    fileName: `المداخيل_${selectedYear.replace("/", "-")}`,
+    orientation: "landscape",
+  });
+
+  const exportOperations = (): TableExport => {
+    const ops = visibleOperations;
+    const entrees = ops.filter((o) => o.type === "ENTREE").reduce((a, o) => a + Number(o.montant || 0), 0);
+    const sorties = ops.filter((o) => o.type === "SORTIE").reduce((a, o) => a + Number(o.montant || 0), 0);
+    return {
+      kind: "حركات الصندوق",
+      title: `${fundDetails?.nom || ""} — ${selectedYear}`,
+      chips: [
+        `السنة الدراسية: ${selectedYear}`,
+        `العمليات: ${operationFilter === "ALL" ? "الكل" : SOURCE_LABELS[operationFilter] || operationFilter}`,
+      ],
+      summary: [
+        { label: "المداخيل", value: money(entrees), tone: "green" },
+        { label: "المصاريف", value: money(sorties), tone: "red" },
+        { label: "الرصيد", value: money(fundDetails?.solde ?? 0), tone: "blue" },
+      ],
+      sections: [
+        {
+          title: "الحركات",
+          columns: [
+            { label: "التاريخ" },
+            { label: "النوع" },
+            { label: "المصدر" },
+            { label: "البيان", align: "start" },
+            { label: "المستفيد", align: "start" },
+            { label: "مدخول", money: true, numeric: true },
+            { label: "مصروف", money: true, numeric: true },
+          ],
+          rows: ops.map((o) => [
+            o.date,
+            o.type === "ENTREE" ? "مدخول" : "مصروف",
+            SOURCE_LABELS[o.sourceType] || o.sourceType,
+            o.libelle,
+            o.beneficiaire,
+            o.type === "ENTREE" ? o.montant : "",
+            o.type === "SORTIE" ? o.montant : "",
+          ]),
+          totals: ["", "", "", "", "المجموع", entrees, sorties],
+        },
+      ],
+      fileName: `حركات_${(fundDetails?.nom || "الصندوق").replace(/\s+/g, "_")}_${selectedYear.replace("/", "-")}`,
+      orientation: "landscape",
+    };
+  };
+
   const visibleOperations =
     useMemo(() => {
       const list =
@@ -940,9 +1060,12 @@ export default function GestionEconomique() {
             </p>
           </div>
 
-          <span className="w-fit rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-500 shadow-sm dark:bg-slate-900">
-            {dashboard.fonds.length} صندوق
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButtons build={exportFunds} disabled={loading} compact />
+            <span className="w-fit rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-500 shadow-sm dark:bg-slate-900">
+              {dashboard.fonds.length} صندوق
+            </span>
+          </div>
         </div>
 
         {loading ? (
@@ -988,13 +1111,16 @@ export default function GestionEconomique() {
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => openNewIncome()}
-            className="w-fit rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white"
-          >
-            + مدخول جديد
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButtons build={exportIncomes} disabled={loading} compact />
+            <button
+              type="button"
+              onClick={() => openNewIncome()}
+              className="w-fit rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-black text-white"
+            >
+              + مدخول جديد
+            </button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -1546,15 +1672,18 @@ export default function GestionEconomique() {
                 </button>
               ))}
 
-              <button
-                type="button"
-                onClick={() =>
-                  openNewIncome(fundDetails.fundId)
-                }
-                className="mr-auto rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white"
-              >
-                + إضافة مدخول لهذا الصندوق
-              </button>
+              <div className="mr-auto flex flex-wrap items-center gap-2">
+                <ExportButtons build={exportOperations} compact />
+                <button
+                  type="button"
+                  onClick={() =>
+                    openNewIncome(fundDetails.fundId)
+                  }
+                  className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-black text-white"
+                >
+                  + إضافة مدخول لهذا الصندوق
+                </button>
+              </div>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-slate-200">

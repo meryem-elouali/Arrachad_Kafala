@@ -14,6 +14,7 @@ import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
 import { useNavigate } from "react-router-dom";
+import { ORGANISATEURS, Organisateur, organisateurOf } from "../lib/organisateur";
 
 const API = "http://localhost:8080/api";
 
@@ -37,6 +38,7 @@ interface CalendarEventProps {
   anneeScolaire?: string;
   sawaedAlKhayr?: boolean;
   caisseId?: number | null;
+  organisateur?: Organisateur;
 }
 
 interface Caisse {
@@ -78,7 +80,7 @@ const DEGREE_OPTIONS = [
   { value: 1, label: "الدرجة 1", short: "1" },
   { value: 2, label: "الدرجة 2", short: "2" },
   { value: 3, label: "الدرجة 3", short: "3" },
-  { value: 0, label: "غير محدد", short: "—" },
+  { value: 0, label: "معوز", short: "معوز" },
 ];
 
 const EVENT_TONES = [
@@ -121,6 +123,7 @@ const Calendar: React.FC = () => {
   const [anneeScolaire, setAnneeScolaire] = useState("");
   const [sawaedAlKhayr, setSawaedAlKhayr] = useState(false);
   const [caisseId, setCaisseId] = useState<number | "">("");
+  const [organisateur, setOrganisateur] = useState<Organisateur>("LAJNA");
   const [caisses, setCaisses] = useState<Caisse[]>([]);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventTypeId, setEventTypeId] = useState<number | "">("");
@@ -239,6 +242,7 @@ const Calendar: React.FC = () => {
                 anneeScolaire: ev.anneeScolaire ?? "",
                 sawaedAlKhayr: Boolean(ev.sawaedAlKhayr),
                 caisseId: ev.caisseId ?? null,
+                organisateur: organisateurOf(ev.organisateur),
               },
             };
           }
@@ -267,6 +271,7 @@ const Calendar: React.FC = () => {
     setAnneeScolaire("");
     setSawaedAlKhayr(false);
     setCaisseId("");
+    setOrganisateur("LAJNA");
     setSelectedEvent(null);
     setDegresFamille([]);
   };
@@ -314,6 +319,7 @@ const Calendar: React.FC = () => {
     setAnneeScolaire(props.anneeScolaire ?? "");
     setSawaedAlKhayr(Boolean(props.sawaedAlKhayr));
     setCaisseId(props.caisseId ?? "");
+    setOrganisateur(organisateurOf(props.organisateur));
     setDegresFamille(
       Array.isArray(props.degresFamille)
         ? props.degresFamille.map(Number)
@@ -399,6 +405,7 @@ const Calendar: React.FC = () => {
         anneeScolaire,
         sawaedAlKhayr,
         caisseId: caisseId === "" ? null : caisseId,
+        organisateur,
       },
     };
 
@@ -458,6 +465,7 @@ const Calendar: React.FC = () => {
               ? savedEvent.sawaedAlKhayr
               : sawaedAlKhayr,
           caisseId: caisseId === "" ? null : caisseId,
+          organisateur,
         },
       };
 
@@ -1140,6 +1148,34 @@ const Calendar: React.FC = () => {
                     />
                   </div>
                 </div>
+              </section>
+
+              <div className="h-px bg-slate-100 dark:bg-slate-800" />
+
+              {/* Organisateur */}
+              <section>
+                <h4 className="mb-3 font-black text-slate-800 dark:text-white">الجهة المنظمة</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  {ORGANISATEURS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setOrganisateur(o.value)}
+                      className={`h-12 rounded-2xl border text-sm font-black transition ${
+                        organisateur === o.value
+                          ? o.value === "LAJNA"
+                            ? "border-sky-600 bg-sky-600 text-white"
+                            : "border-violet-600 bg-violet-600 text-white"
+                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] font-semibold text-slate-400">
+                  من نظم النشاط. مصدر التمويل والصندوق يُحددان في القسم الموالي.
+                </p>
               </section>
 
               <div className="h-px bg-slate-100 dark:bg-slate-800" />

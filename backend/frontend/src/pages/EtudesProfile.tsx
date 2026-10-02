@@ -8,6 +8,8 @@ import {
 import { useParams } from "react-router";
 
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import ExportButtons from "../components/common/ExportButtons";
+import type { TableExport } from "../lib/exportTable";
 
 import { FaCheck, FaTimes } from "react-icons/fa";
 
@@ -820,6 +822,15 @@ const addSchoolYear = (
     setLoadingFamille,
   ] = useState(true);
 
+  // Identité de l'enfant (pour l'en-tête et la fiche exportée)
+  const [identite, setIdentite] = useState<{
+    enfant: string;
+    famille: string;
+    type: string;
+    sexe: string;
+    dateNaissance: string;
+  } | null>(null);
+
   // ==========================================================
   // CHARGER LA FAMILLE DE L'ENFANT
   // ==========================================================
@@ -878,6 +889,17 @@ const addSchoolYear = (
         }
 
         setFamilleTrouvee(true);
+
+        const enfantData = famille.enfants.find(
+          (e: any) => Number(e?.id) === Number(enfantid)
+        );
+        setIdentite({
+          enfant: `${enfantData?.prenom || ""} ${enfantData?.nom || ""}`.trim(),
+          famille: famille?.pere?.nom || famille?.mere?.nom || "",
+          type: famille?.typeFamille?.nom || "",
+          sexe: enfantData?.sexe === "FILLE" ? "بنت" : enfantData?.sexe === "GARCON" ? "ولد" : "",
+          dateNaissance: enfantData?.dateNaissance || "",
+        });
 
         const rawDegre =
           famille?.degreFamille ??
@@ -938,7 +960,7 @@ const addSchoolYear = (
       if (degreFamilleEnfant == null) {
         return {
           type: "NON_DEFINI" as const,
-          label: "معوز / درجة غير محددة",
+          label: "معوز",
           description:
             "المبالغ المؤداة لهذا الطفل تُصنّف ضمن فئة معوز.",
         };
@@ -2270,6 +2292,98 @@ useEffect(() => {
   // RENDER
   // ==========================================================
 
+  // ==========================================================
+  // FICHE SCOLARITE (export PDF / Excel)
+  // ==========================================================
+
+  const buildFicheScolarite = (): TableExport => {
+    const label = (opts: Option[], v: string | number) =>
+      opts.find((o) => String(o.value) === String(v))?.label ?? (v === "" || v == null ? "" : String(v));
+
+    const parcours = [...rows].sort((a, b) => String(a.annee).localeCompare(String(b.annee)));
+    const soutienRows = [...soutiens].sort((a, b) => String(a.annee).localeCompare(String(b.annee)));
+
+    const totalCout = soutienRows.filter((x) => x.effectue).reduce((a, x) => a + Number(x.montant || 0), 0);
+    const totalAsso = soutienRows
+      .filter((x) => x.effectue)
+      .reduce((a, x) => a + Math.min(Number(x.montantPaye || 0), Number(x.montant || 0)), 0);
+
+    const nom = identite?.enfant || `الطفل #${enfantid}`;
+
+    return {
+      kind: "الملف الدراسي",
+      title: nom,
+      chips: [
+        identite?.famille ? `عائلة ${identite.famille}` : "",
+        identite?.type ? `الفئة: ${identite.type}` : "",
+        identite?.sexe || "",
+        identite?.dateNaissance ? `تاريخ الازدياد: ${identite.dateNaissance}` : "",
+        degreFamilleEnfant != null ? `الدرجة ${degreFamilleEnfant}` : familleTrouvee ? "معوز" : "",
+      ].filter(Boolean),
+      summary: [
+        { label: "سنوات دراسية مسجلة", value: String(parcours.length), tone: "blue" },
+        { label: "كلفة الدعم الدراسي", value: `${totalCout.toFixed(2)} DH`, tone: "slate" },
+        { label: "أدته الجمعية", value: `${totalAsso.toFixed(2)} DH`, tone: "green" },
+        { label: "أداه الغير", value: `${Math.max(totalCout - totalAsso, 0).toFixed(2)} DH`, tone: "amber" },
+      ],
+      sections: [
+        {
+          title: "المسار الدراسي",
+          columns: [
+            { label: "السنة" },
+            { label: "المستوى" },
+            { label: "المؤسسة", align: "start" },
+            { label: "الدورة 1" },
+            { label: "الدورة 2" },
+            { label: "المعدل العام" },
+            { label: "النتيجة" },
+          ],
+          rows: parcours.map((r) => [
+            r.annee,
+            label(niveauxscolaires, r.niveau),
+            label(ecoles, r.ecole),
+            r.note1,
+            r.note2,
+            r.noteGenerale,
+            r.resultat,
+          ]),
+        },
+        {
+          title: "الدعم الدراسي",
+          columns: [
+            { label: "السنة" },
+            { label: "الشهر" },
+            { label: "المركز", align: "start" },
+            { label: "المتدخل", align: "start" },
+            { label: "الكلفة", money: true, numeric: true },
+            { label: "أدته الجمعية", money: true, numeric: true },
+            { label: "أداه الغير", money: true, numeric: true },
+            { label: "الجهة الأخرى", align: "start" },
+            { label: "منجز" },
+          ],
+          rows: soutienRows.map((x) => {
+            const cout = Number(x.montant || 0);
+            const asso = Math.min(Number(x.montantPaye || 0), cout);
+            return [
+              x.annee,
+              x.mois,
+              x.centre,
+              x.intervenant,
+              cout,
+              asso,
+              Math.max(cout - asso, 0),
+              cout > asso ? x.payeurAutre || "غير محددة" : "",
+              x.effectue ? "نعم" : "لا",
+            ];
+          }),
+          totals: ["", "", "", "المجموع (المنجز)", totalCout, totalAsso, Math.max(totalCout - totalAsso, 0), "", ""],
+        },
+      ],
+      fileName: `الملف_الدراسي_${nom.replace(/\s+/g, "_")}`,
+      orientation: "landscape",
+    };
+  };
+
   return (
     <div
       dir="rtl"
@@ -2290,13 +2404,26 @@ useEffect(() => {
           الملف الدراسي
         </p>
 
-        <h1 className="mt-1 text-2xl font-bold text-gray-900">
-          التتبع الدراسي والدعم الإضافي
-        </h1>
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="mt-1 text-2xl font-bold text-gray-900">
+              {identite?.enfant || "التتبع الدراسي والدعم الإضافي"}
+            </h1>
 
-        <p className="mt-1 text-sm text-gray-400">
-          إدارة السنوات الدراسية والنقط والملاحظات والدروس الإضافية
-        </p>
+            <p className="mt-1 text-sm text-gray-400">
+              {identite
+                ? [identite.famille && `عائلة ${identite.famille}`, identite.type, identite.sexe]
+                    .filter(Boolean)
+                    .join(" · ")
+                : "إدارة السنوات الدراسية والنقط والملاحظات والدروس الإضافية"}
+            </p>
+          </div>
+
+          <div>
+            <p className="mb-1 text-xs font-semibold text-gray-400">تصدير الملف الدراسي</p>
+            <ExportButtons build={buildFicheScolarite} />
+          </div>
+        </div>
 
       </div>
 
@@ -2768,7 +2895,7 @@ useEffect(() => {
                   }`}
                 >
                   {degreFamilleEnfant == null
-                    ? "غير محدد"
+                    ? "معوز"
                     : `الدرجة ${degreFamilleEnfant}`}
                 </span>
               )}
@@ -2814,7 +2941,7 @@ useEffect(() => {
           <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
 
             <p className="text-sm font-semibold text-gray-500">
-              المبلغ المؤدى - معوز / درجة غير محددة
+              المبلغ المؤدى - معوز
             </p>
 
             <p className="mt-1 text-3xl font-bold text-orange-700">
@@ -3190,7 +3317,7 @@ useEffect(() => {
                         </span>
                       ) : categoriePaiementSoutien.type === "NON_DEFINI" ? (
                         <span className="inline-flex whitespace-nowrap rounded-full bg-orange-100 px-3 py-1.5 text-xs font-black text-orange-700">
-                          معوز / غير محدد
+                          معوز
                         </span>
                       ) : categoriePaiementSoutien.type === "LOADING" ? (
                         <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-500">

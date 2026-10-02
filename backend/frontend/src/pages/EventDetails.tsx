@@ -12,6 +12,7 @@ import { TextStyle } from "@tiptap/extension-text-style";
 import { pdf } from "@react-pdf/renderer";
 import ParticipantsPdf, { ParticipantRow } from "./ParticipantsPdf";
 import EventPdf, { EVENT_REPORT_SECTIONS } from "./EventPdf";
+import { ORGANISATEURS, Organisateur, organisateurLabel, organisateurOf } from "../lib/organisateur";
 import ReportOptionsModal from "../components/common/ReportOptionsModal";
 import { ReportSettings, loadReportSettings } from "../lib/report";
 import { PriseEnCharge, besoinLabel, resumePec } from "../lib/prisesEnCharge";
@@ -64,6 +65,7 @@ interface EventDetail {
   sawaedAlKhayr?: boolean;
   caisseId?: number | null;
   caisseNom?: string | null;
+  organisateur?: Organisateur;
   eventType?: EventTypeOption;
   cibles: string[];
   description?: string;
@@ -94,7 +96,7 @@ interface EventDetail {
 const formatMoney = (value: number) => `${Number(value || 0).toFixed(2)} DH`;
 
 const degreLabel = (d: number | null | undefined) =>
-  d == null || d === 0 ? "غير محدد" : `الدرجة ${d}`;
+  d == null || d === 0 ? "معوز" : `الدرجة ${d}`;
 
 const CIBLE_LABEL: Record<string, string> = { MERE: "أم", ENFANT: "طفل", FAMILLE: "عائلة" };
 const getCibleLabel = (c: string) => CIBLE_LABEL[c] || c;
@@ -223,6 +225,7 @@ const EventDetails: React.FC = () => {
   const [editDegresFamille, setEditDegresFamille] = useState<number[]>([]);
   const [editSawaedAlKhayr, setEditSawaedAlKhayr] = useState(false);
   const [editCaisseId, setEditCaisseId] = useState<number | "">("");
+  const [editOrganisateur, setEditOrganisateur] = useState<Organisateur>("LAJNA");
   // Caisse des المصاريف الإضافية ("" = même caisse que l'activité / répartition automatique)
   const [chargeCaisseId, setChargeCaisseId] = useState<number | "">("");
   // Prises en charge externes actives, par famille
@@ -549,6 +552,7 @@ const EventDetails: React.FC = () => {
     setEditDegresFamille((event.degresFamille || []).map(Number));
     setEditSawaedAlKhayr(event.sawaedAlKhayr === true);
     setEditCaisseId(event.caisseId ?? "");
+    setEditOrganisateur(organisateurOf(event.organisateur));
     setIsEditInfoOpen(true);
   };
 
@@ -599,6 +603,7 @@ const EventDetails: React.FC = () => {
         anneeScolaire: editAnneeScolaire,
         sawaedAlKhayr: editSawaedAlKhayr,
         caisseId: editCaisseId === "" ? null : editCaisseId,
+        organisateur: editOrganisateur,
       },
     };
 
@@ -774,7 +779,7 @@ const EventDetails: React.FC = () => {
           p.type === "FAMILLE"
             ? pereNomOf(p)
             : `${p.nom || ""} ${p.prenom || ""}`.trim(),
-        degre: degre == null ? "غير محدد" : String(degre),
+        degre: degre == null ? "معوز" : String(degre),
         pec: pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، ") || undefined,
         montant:
           typeMontant === "GLOBAL" ? "-" : `${getMontantParticipant(p).toFixed(2)} DH`,
@@ -850,7 +855,7 @@ const EventDetails: React.FC = () => {
         النوع: getParticipantTypeLabel(p.type),
         الاسم: p.type === "FAMILLE" ? "عائلة" : p.nom || "",
         اللقب: p.type === "FAMILLE" ? pereNomOf(p) : p.prenom || "",
-        الدرجة: degre == null ? "غير محدد" : degre,
+        الدرجة: degre == null ? "معوز" : degre,
         "المبلغ (DH)": typeMontant === "GLOBAL" ? "-" : getMontantParticipant(p),
         الحضور: (p.present ?? true) ? "نعم" : "لا",
         "سبب الغياب": p.motif || "",
@@ -936,6 +941,7 @@ const EventDetails: React.FC = () => {
           <InfoCard title="تاريخ النهاية" value={event.endDate} />
           <InfoCard title="المكان" value={event.place || "غير محدد"} />
           <InfoCard title="السنة الدراسية" value={event.anneeScolaire || "غير محدد"} />
+          <InfoCard title="الجهة المنظمة" value={organisateurLabel(event.organisateur)} />
           <InfoCard
             title="مصدر المصروف"
             value={
@@ -1833,6 +1839,26 @@ const EventDetails: React.FC = () => {
                       نعم - سواعد الخير
                     </button>
                   </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4">
+                <p className="mb-3 text-sm font-black">الجهة المنظمة</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {ORGANISATEURS.map((o) => (
+                    <button
+                      key={o.value}
+                      type="button"
+                      onClick={() => setEditOrganisateur(o.value)}
+                      className={`rounded-xl border px-4 py-2 text-sm font-bold ${
+                        editOrganisateur === o.value
+                          ? "border-slate-800 bg-slate-800 text-white"
+                          : "bg-white text-slate-600"
+                      }`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
