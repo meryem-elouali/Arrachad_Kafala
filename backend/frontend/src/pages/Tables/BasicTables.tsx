@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import { useNavigate } from "react-router-dom";
+import { PriseEnCharge, besoinLabel, resumePec } from "../../lib/prisesEnCharge";
+import { Tone, kpis, openReport, table } from "../../lib/report";
 
 const API = "http://localhost:8080/api";
 const UNDEF = "غير محددة";
@@ -279,10 +281,20 @@ const downloadBlob = (blob: Blob, filename: string) => {
 const cellText = (v: any, d: FieldDef) =>
   d.kind === "money" ? fmt(v) : v === "" || v === null || v === undefined ? "-" : String(v);
 
-const esc = (v: any) =>
-  String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /* ============================== PDF (impression) ============================== */
+const toneOf = (color: string): Tone => {
+  const c = (color || "").toLowerCase();
+  if (c.includes("ecfdf5") || c.includes("d1fae5") || c.includes("f0fdf4") || c.includes("dcfce7")) return "green";
+  if (c.includes("fffbeb") || c.includes("fef3c7") || c.includes("fff7ed")) return "amber";
+  if (c.includes("fef2f2") || c.includes("fee2e2")) return "red";
+  if (c.includes("f5f3ff") || c.includes("ede9fe")) return "violet";
+  if (c.includes("ecfeff") || c.includes("cffafe")) return "cyan";
+  if (c.includes("eff6ff") || c.includes("eef2ff") || c.includes("dbeafe") || c.includes("e0e7ff")) return "blue";
+  return "slate";
+};
+
+/* PDF (impression) : moteur commun lib/report */
 const printPdf = (
   title: string,
   params: string[],
@@ -292,55 +304,19 @@ const printPdf = (
   orientation: Orientation,
   cards: { label: string; value: string; color: string }[]
 ) => {
-  const w = window.open("", "_blank");
-  if (!w) {
-    alert("اسمح بالنوافذ المنبثقة لتصدير PDF");
-    return;
-  }
-  const generatedAt = new Date().toLocaleString("fr-FR");
-
-  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-<title>${esc(title)}</title>
-<style>
-  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body{font-family:Tahoma,Arial,sans-serif;margin:0;padding:24px;color:#111827}
-  .hero{background:linear-gradient(270deg,#4f46e5,#3b82f6);color:#fff;border-radius:16px;padding:18px 22px;margin-bottom:12px}
-  .hero small{opacity:.8;font-size:11px}
-  .hero h1{margin:4px 0 0;font-size:22px}
-  .info{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-  .chip{border:1px solid #e5e7eb;background:#f9fafb;border-radius:99px;padding:5px 11px;font-size:10px;font-weight:bold;color:#374151}
-  .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-  .card{border-radius:12px;padding:10px;text-align:center;border:1px solid #e5e7eb}
-  .card b{display:block;font-size:15px}
-  .card span{font-size:9px;color:#6b7280}
-  table{width:100%;border-collapse:collapse;font-size:11px}
-  th{background:#2563eb;color:#fff;padding:8px;border:1px solid #d1d5db}
-  td{padding:7px;border:1px solid #e5e7eb;text-align:center}
-  tbody tr:nth-child(even) td{background:#f9fafb}
-  tfoot td{background:#d1fae5;font-weight:bold;color:#065f46}
-  thead{display:table-header-group} tr{page-break-inside:avoid}
-  .foot{margin-top:14px;display:flex;justify-content:space-between;font-size:9px;color:#9ca3af}
-  @page{size:A4 ${orientation};margin:10mm}
-</style></head><body>
-<div class="hero"><small>تقرير مخصص</small><h1>${esc(title)}</h1></div>
-<div class="info">${params.map((p) => `<span class="chip">${esc(p)}</span>`).join("")}</div>
-${
-  cards.length
-    ? `<div class="cards">${cards
-        .map((c) => `<div class="card" style="background:${c.color}"><b>${esc(c.value)}</b><span>${esc(c.label)}</span></div>`)
-        .join("")}</div>`
-    : ""
-}
-<table>
-<thead><tr><th>#</th>${headers.map((h) => `<th>${esc(h)}</th>`).join("")}</tr></thead>
-<tbody>${rows.map((r, i) => `<tr><td>${i + 1}</td>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody>
-${totals ? `<tfoot><tr><td>المجموع</td>${totals.map((t) => `<td>${esc(t)}</td>`).join("")}</tr></tfoot>` : ""}
-</table>
-<div class="foot"><span>إدارة العائلات</span><span>تم إنشاء التقرير: ${esc(generatedAt)}</span></div>
-</body></html>`);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 450);
+  openReport({
+    kind: "تقرير العائلات",
+    title,
+    chips: params,
+    body:
+      kpis(cards.map((c) => ({ label: c.label, value: c.value, tone: toneOf(c.color) }))) +
+      table(
+        headers.map((h) => ({ label: h })),
+        rows,
+        { numbered: true, totals: totals ? totals : null }
+      ),
+    settings: { orientation },
+  });
 };
 
 /* ============================== EXCEL ============================== */
@@ -513,6 +489,15 @@ export default function FamillesTable() {
   const navigate = useNavigate();
   const [familles, setFamilles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  // Prises en charge externes actives, par famille
+  const [pecParFamille, setPecParFamille] = useState<Record<string, PriseEnCharge[]>>({});
+
+  useEffect(() => {
+    fetch(`${API}/prises-en-charge/actives`)
+      .then((r) => (r.ok ? r.json() : {}))
+      .then((d: Record<string, PriseEnCharge[]>) => setPecParFamille(d && typeof d === "object" ? d : {}))
+      .catch(() => setPecParFamille({}));
+  }, []);
 
   // ===== Filtres / tri / pagination =====
   const [search, setSearch] = useState("");
@@ -1121,7 +1106,6 @@ export default function FamillesTable() {
 
   const pageCount = Math.max(1, Math.ceil(sortedFamilles.length / rowsPerPage));
   const pageRows = sortedFamilles.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
-  const maxConso = Math.max(...familles.map((f) => Number(getCombinedConso(f).total)), 1);
 
   const toggleSort = (key: string) =>
     setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: 1 }));
@@ -2049,10 +2033,9 @@ export default function FamillesTable() {
                 <tr className="bg-gray-50/70 text-xs font-semibold text-gray-500">
                   {[
                     ["nomFamille", "العائلة"],
+                    ["typeFamilleNom", "الفئة"],
                     ["nombreEnfants", "الأطفال"],
-                    ["typeFamilleNom", "النوع"],
-                    ["degreFamille", "الدرجة"],
-                    ["total", "إجمالي المصروف"],
+                    ["total", "ما أدته الجمعية"],
                   ].map(([key, label]) => (
                     <th key={key} className="px-5 py-4">
                       <button type="button" onClick={() => toggleSort(key)} className="inline-flex items-center gap-1 hover:text-indigo-600">
@@ -2063,20 +2046,20 @@ export default function FamillesTable() {
                       </button>
                     </th>
                   ))}
-                  <th className="px-5 py-4">الحضور / الغياب</th>
-                  <th className="px-5 py-4 text-center">الإجراء</th>
+                  <th className="px-5 py-4">التكفل الخارجي</th>
+                  <th className="px-5 py-4 text-center" />
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
                 {loading && (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-gray-400">جاري التحميل...</td>
+                    <td colSpan={6} className="py-16 text-center text-gray-400">جاري التحميل...</td>
                   </tr>
                 )}
                 {!loading && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-16 text-center text-gray-400">لا توجد نتائج</td>
+                    <td colSpan={6} className="py-16 text-center text-gray-400">لا توجد نتائج</td>
                   </tr>
                 )}
 
@@ -2084,17 +2067,27 @@ export default function FamillesTable() {
                   const c = getCombinedConso(row);
                   const grad = AVATARS[Number(row.id) % AVATARS.length];
                   return (
-                    <tr key={row.id} className="group transition hover:bg-indigo-50/40">
+                    <tr
+                      key={row.id}
+                      onClick={() => navigate(`/familleprofile/${row.id}`)}
+                      className="group cursor-pointer transition hover:bg-indigo-50/40"
+                    >
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
-                          <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${grad} text-base font-bold text-white shadow-sm`}>
+                          <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${grad} text-sm font-bold text-white shadow-sm`}>
                             {row.nomFamille?.charAt(0) || "ع"}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate font-bold text-gray-800">عائلة {row.nomFamille}</p>
+                            <p className="truncate font-bold text-gray-800 group-hover:text-indigo-700">عائلة {row.nomFamille}</p>
                             <p className="truncate text-xs text-gray-400">{row.nomCompletMere}</p>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-bold text-sky-700">{row.typeFamilleNom}</span>
+                        <p className={`mt-1 text-[11px] font-semibold ${row.degreFamille === UNDEF ? "text-gray-400" : "text-amber-700"}`}>
+                          {row.degreFamille === UNDEF ? "درجة غير محددة" : `الدرجة ${row.degreFamille}`}
+                        </p>
                       </td>
                       <td className="px-5 py-4">
                         <span className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
@@ -2103,66 +2096,42 @@ export default function FamillesTable() {
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">{row.typeFamilleNom}</span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${row.degreFamille === UNDEF ? "bg-red-50 text-red-600" : "bg-amber-50 text-amber-700"}`}>
-                          <span className={`h-1.5 w-1.5 rounded-full ${row.degreFamille === UNDEF ? "bg-red-500" : "bg-amber-500"}`} />
-                          {row.degreFamille === UNDEF ? row.degreFamille : `الدرجة ${row.degreFamille}`}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="whitespace-nowrap text-sm font-extrabold text-emerald-700">
-                          {fmt(c.total)}
+                        <p className="whitespace-nowrap text-sm font-extrabold text-emerald-700">{fmt(c.total)}</p>
+                        <p className="mt-0.5 whitespace-nowrap text-[11px] text-gray-400">
+                          أنشطة {fmt(c.totalEvenements)} · دعم {fmt(c.scolairePaye)}
                         </p>
-                        <div className="mt-1 space-y-0.5 text-[10px] text-gray-400">
-                          <p className="text-blue-600">
-                            درجات محددة: {fmt(c.eventDegresDefinis)}
+                        {Number(c.scolaireNonPaye) > 0 && (
+                          <p className="whitespace-nowrap text-[11px] font-semibold text-amber-600">
+                            أداه الغير: {fmt(c.scolaireNonPaye)}
                           </p>
-
-                          <p className="text-orange-600">
-                            معوز / غير محدد: {fmt(c.eventDegreNonDefini)}
-                          </p>
-
-                          <p className="text-violet-600">
-                            سواعد الخير: {fmt(c.eventSawaedAlKhayr)}
-                          </p>
-
-                          <p className="font-semibold text-cyan-700">
-                            مجموع الأنشطة: {fmt(c.totalEvenements)}
-                          </p>
-
-                          <p>
-                            الدعم المؤدى: {fmt(c.scolairePaye)}
-                          </p>
-                          {Number(c.scolaireNonPaye) > 0 && (
-                            <p className="text-amber-600">
-                              غير مؤدى: {fmt(c.scolaireNonPaye)}
-                            </p>
-                          )}
-                        </div>
-                        <div className="mt-1.5 h-1.5 w-28 overflow-hidden rounded-full bg-gray-100">
-                          <div
-                            className="h-1.5 rounded-full bg-emerald-500"
-                            style={{
-                              width: `${Math.min((Number(c.total) / maxConso) * 100, 100)}%`,
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        {(pecParFamille[String(row.id)] ?? []).length === 0 ? (
+                          <span className="text-xs text-gray-300">—</span>
+                        ) : (
+                          <span
+                            title={(pecParFamille[String(row.id)] ?? []).map((x) => `${x.parrainNom}: ${resumePec(x)}`).join("\n")}
+                            className="inline-block max-w-[200px] truncate rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700"
+                          >
+                            🤝 {Array.from(new Set((pecParFamille[String(row.id)] ?? []).flatMap((x) => x.besoins)))
+                              .map(besoinLabel)
+                              .join("، ")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-center">
+                          <button
+                            type="button"
+                            title="الأنشطة والمبالغ"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDetailFamille(row);
                             }}
-                          />
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">✓ {c.presentCount}</span>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-bold text-red-600">✗ {c.absentCount}</span>
-                        </div>
-                      </td>
-                      <td className="px-5 py-4">
-                        <div className="flex justify-center gap-1">
-                          <button type="button" title="الأنشطة والمبالغ" onClick={() => setDetailFamille(row)} className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 transition hover:bg-emerald-50 hover:text-emerald-600">
+                            className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 transition hover:bg-emerald-50 hover:text-emerald-600"
+                          >
                             <i className="pi pi-list" />
-                          </button>
-                          <button type="button" title="عرض الملف" onClick={() => navigate(`/familleprofile/${row.id}`)} className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 transition hover:bg-indigo-50 hover:text-indigo-600">
-                            <i className="pi pi-eye" />
                           </button>
                         </div>
                       </td>

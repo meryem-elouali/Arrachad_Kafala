@@ -28,7 +28,10 @@ interface PersonData {
 
 interface EnfantData {
   nom: string;
+  /** true dès que l'utilisateur modifie le nom : il ne suit plus celui du père */
+  nomManuel: boolean;
   prenom: string;
+  sexe: "" | "FILLE" | "GARCON";
   dateNaissance: string;
   estMalade: boolean;
   typeMaladie: string;
@@ -66,7 +69,9 @@ const emptyPerson = (): PersonData => ({
 
 const emptyEnfant = (): EnfantData => ({
   nom: "",
+  nomManuel: false,
   prenom: "",
+  sexe: "",
   dateNaissance: "",
   estMalade: false,
   typeMaladie: "",
@@ -605,13 +610,22 @@ export default function AjoutFamille() {
     setF({ nombreEnfants: count });
     setEnfants((prev) =>
       count > prev.length
-        ? [...prev, ...Array.from({ length: count - prev.length }, emptyEnfant)]
+        ? [
+            ...prev,
+            ...Array.from({ length: count - prev.length }, () => ({ ...emptyEnfant(), nom: pere.nom.trim() })),
+          ]
         : prev.slice(0, count)
     );
   };
 
   const setE = (i: number, patch: Partial<EnfantData>) =>
     setEnfants((prev) => prev.map((e, idx) => (idx === i ? { ...e, ...patch } : e)));
+
+  // Le nom de famille des enfants suit celui du père tant qu'il n'a pas été modifié à la main.
+  useEffect(() => {
+    const nomPere = pere.nom.trim();
+    setEnfants((prev) => prev.map((e) => (e.nomManuel ? e : { ...e, nom: nomPere })));
+  }, [pere.nom]);
 
   /* ---------- Progression ---------- */
   const progress = useMemo(() => {
@@ -622,7 +636,7 @@ export default function AjoutFamille() {
       famille.phone.trim(),
       pere.nom.trim() && pere.prenom.trim() && (pere.estDecedee || (pere.cin.trim() && pere.phone.trim())),
       mere.nom.trim() && mere.prenom.trim() && (mere.estDecedee || (mere.cin.trim() && mere.phone.trim())),
-      ...enfants.map((e) => e.nom.trim() && e.prenom.trim() && e.niveauId && e.ecoleId),
+      ...enfants.map((e) => e.nom.trim() && e.prenom.trim() && e.sexe && e.niveauId && e.ecoleId),
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }, [famille, pere, mere, enfants]);
@@ -645,6 +659,7 @@ export default function AjoutFamille() {
 
     enfants.forEach((e, i) => {
       if (!e.nom.trim() || !e.prenom.trim()) errs.push(`الطفل ${i + 1}: أدخل الاسم والنسب`);
+      if (!e.sexe) errs.push(`الطفل ${i + 1}: حدد الجنس (بنت أو ولد)`);
       if (!e.niveauId || !e.ecoleId) errs.push(`الطفل ${i + 1}: اختر المستوى الدراسي والمؤسسة`);
     });
     return errs;
@@ -714,8 +729,9 @@ export default function AjoutFamille() {
         pereId: savedPere.id,
         enfantsJson: JSON.stringify(
           enfants.map((e) => ({
-            nom: e.nom.trim(),
+            nom: e.nom.trim() || pere.nom.trim(),
             prenom: e.prenom.trim(),
+            sexe: e.sexe,
             dateNaissance: e.dateNaissance,
             estMalade: e.estMalade,
             typeMaladie: e.estMalade ? e.typeMaladie : "",
@@ -905,7 +921,7 @@ export default function AjoutFamille() {
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-sm font-bold text-emerald-700">
                       {i + 1}
                     </span>
-                    <h4 className="font-extrabold text-gray-800">الابن {i + 1}</h4>
+                    <h4 className="font-extrabold text-gray-800">الطفل {i + 1}</h4>
                   </div>
 
                   <div className="mb-4 flex justify-center">
@@ -914,7 +930,43 @@ export default function AjoutFamille() {
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <TextField label="الاسم" required value={e.prenom} onChange={(ev) => setE(i, { prenom: ev.target.value })} />
-                    <TextField label="النسب" required value={e.nom} onChange={(ev) => setE(i, { nom: ev.target.value })} />
+                    <div>
+                      <TextField
+                        label="النسب"
+                        required
+                        value={e.nom}
+                        onChange={(ev) => setE(i, { nom: ev.target.value, nomManuel: true })}
+                      />
+                      {!e.nomManuel && pere.nom.trim() && (
+                        <p className="mt-1 text-[11px] text-gray-400">يُملأ تلقائيا من نسب الأب</p>
+                      )}
+                    </div>
+                    <div className="md:col-span-2">
+                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                        الجنس <span className="text-red-500">*</span>
+                      </span>
+                      <div className="grid grid-cols-2 gap-2">
+                        {([
+                          ["FILLE", "بنت"],
+                          ["GARCON", "ولد"],
+                        ] as const).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            onClick={() => setE(i, { sexe: value })}
+                            className={`h-11 rounded-xl border text-sm font-bold transition ${
+                              e.sexe === value
+                                ? value === "FILLE"
+                                  ? "border-pink-500 bg-pink-500 text-white"
+                                  : "border-sky-600 bg-sky-600 text-white"
+                                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     <TextField
                       label="تاريخ الازدياد"
                       type="date"

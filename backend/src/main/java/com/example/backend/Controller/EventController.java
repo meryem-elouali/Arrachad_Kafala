@@ -4529,40 +4529,44 @@ public class EventController {
             Map<String, Object> props
     ) {
 
-        if (
-                props == null
-                        || !props.containsKey("caisseId")
-        ) {
-
+        if (props == null) {
             return;
         }
 
-        Object value =
-                props.get("caisseId");
+        if (props.containsKey("caisseId")) {
+            event.setCaisse(findCaisse(props.get("caisseId")));
+        }
+
+        if (props.containsKey("caisseChargeId")) {
+            event.setCaisseCharge(findCaisse(props.get("caisseChargeId")));
+        }
+    }
+
+
+    private EconomicCategory findCaisse(
+            Object value
+    ) {
 
         if (
                 value == null
                         || value.toString().isBlank()
         ) {
 
-            event.setCaisse(null);
-            return;
+            return null;
         }
 
-        event.setCaisse(
-                caisseRepository
-                        .findById(
-                                Long.valueOf(
-                                        value.toString()
+        return caisseRepository
+                .findById(
+                        Long.valueOf(
+                                value.toString()
+                        )
+                )
+                .orElseThrow(
+                        () ->
+                                new RuntimeException(
+                                        "الصندوق غير موجود"
                                 )
-                        )
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                "الصندوق غير موجود"
-                                        )
-                        )
-        );
+                );
     }
 
 
@@ -4582,6 +4586,20 @@ public class EventController {
                 "caisseNom",
                 event.getCaisse() != null
                         ? event.getCaisse().getNom()
+                        : null
+        );
+
+        map.put(
+                "caisseChargeId",
+                event.getCaisseCharge() != null
+                        ? event.getCaisseCharge().getId()
+                        : null
+        );
+
+        map.put(
+                "caisseChargeNom",
+                event.getCaisseCharge() != null
+                        ? event.getCaisseCharge().getNom()
                         : null
         );
     }

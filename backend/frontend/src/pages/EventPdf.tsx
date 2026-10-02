@@ -56,7 +56,27 @@ interface EventPdfProps {
   montantEgal: number;
   montantTotal: number;
   montantsParDegre: Record<number, number>;
+  /** Sections à inclure (toutes si absent) */
+  sections?: Set<string>;
+  association?: string;
+  service?: string;
+  orientation?: "portrait" | "landscape";
+  showPhotos?: boolean;
+  showSignature?: boolean;
+  chargeSupp?: number;
+  chargeLabel?: string;
+  caisseNom?: string | null;
+  caisseChargeNom?: string | null;
 }
+
+/** Sections paramétrables du rapport d'activité. */
+export const EVENT_REPORT_SECTIONS = [
+  { key: "description", label: "وصف النشاط" },
+  { key: "finances", label: "المعلومات المالية والإحصائيات" },
+  { key: "participants", label: "قائمة المشاركين" },
+  { key: "images", label: "صور النشاط" },
+  { key: "fichiers", label: "الملفات المرفقة" },
+];
 
 const COLORS = {
   primary: "#1e3a8a",
@@ -499,7 +519,18 @@ const EventPdf: React.FC<EventPdfProps> = ({
   montantEgal,
   montantTotal,
   montantsParDegre,
+  sections,
+  association = "جمعية الرشاد للكفالة",
+  service = "اللجنة الاجتماعية",
+  orientation = "portrait",
+  showPhotos = true,
+  showSignature = false,
+  chargeSupp = 0,
+  chargeLabel = "",
+  caisseNom,
+  caisseChargeNom,
 }) => {
+  const has = (key: string) => !sections || sections.has(key);
   const blocks = htmlToBlocks(description);
 
   const images = files.filter(isRenderableImage);
@@ -523,9 +554,13 @@ const EventPdf: React.FC<EventPdfProps> = ({
 
   return (
     <Document title={`تقرير النشاط - ${event.title}`}>
-      <Page size="A4" orientation="portrait" style={styles.page}>
+      <Page size="A4" orientation={orientation} style={styles.page}>
         {/* ============ EN-TÊTE ============ */}
         <View style={styles.header}>
+          <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", marginBottom: 6 }}>
+            <Text style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>{association}</Text>
+            <Text style={{ fontSize: 9, color: COLORS.muted }}>{service}</Text>
+          </View>
           <Text style={styles.headerTitle}>تقرير النشاط</Text>
           <Text style={styles.headerSub}>{event.title || "-"}</Text>
         </View>
@@ -566,6 +601,7 @@ const EventPdf: React.FC<EventPdfProps> = ({
           </View>
         </Section>
 
+     {has("description") && (
      <Section title="وصف النشاط">
        <View style={styles.description}>
          {blocks.length === 0 ? (
@@ -610,7 +646,9 @@ const EventPdf: React.FC<EventPdfProps> = ({
          )}
        </View>
      </Section>
+     )}
         {/* ============ FINANCES + STATISTIQUES ============ */}
+        {has("finances") && (
         <Section title="المعلومات المالية والإحصائيات">
           <View style={styles.grid}>
             <Card
@@ -654,6 +692,18 @@ const EventPdf: React.FC<EventPdfProps> = ({
                   value={`${Number(montant || 0).toFixed(2)} DH`}
                 />
               ))}
+
+            <Card
+              label="الصندوق"
+              value={caisseNom || (event.sawaedAlKhayr ? "سواعد الخير" : "توزيع تلقائي حسب فئة الأسر")}
+            />
+
+            {Number(chargeSupp) > 0 && (
+              <Card
+                label={`المصاريف الإضافية${chargeLabel ? ` (${chargeLabel})` : ""}`}
+                value={`${Number(chargeSupp).toFixed(2)} DH${caisseChargeNom ? ` — ${caisseChargeNom}` : ""}`}
+              />
+            )}
           </View>
 
           <View style={styles.statsRow} wrap={false}>
@@ -681,8 +731,10 @@ const EventPdf: React.FC<EventPdfProps> = ({
             </View>
           </View>
         </Section>
+        )}
 
         {/* ============ PARTICIPANTS ============ */}
+        {has("participants") && (
         <Section title="قائمة المشاركين">
           {rows.length === 0 ? (
             <Text style={{ textAlign: "right", color: COLORS.muted }}>
@@ -727,6 +779,9 @@ const EventPdf: React.FC<EventPdfProps> = ({
                       <Text style={{ marginLeft: 4 }}>{r.prefixe}</Text>
                     ) : null}
                     <Text>{r.nomComplet || "-"}</Text>
+                    {r.pec ? (
+                      <Text style={{ marginRight: 4, fontSize: 8, color: "#6d28d9" }}>(تكفل: {r.pec})</Text>
+                    ) : null}
                   </View>
 
                   <Text style={[styles.cell, styles.cDegre]}>{r.degre}</Text>
@@ -764,9 +819,10 @@ const EventPdf: React.FC<EventPdfProps> = ({
             </View>
           )}
         </Section>
+        )}
 
         {/* ============ IMAGES ============ */}
-        {images.length > 0 && (
+        {has("images") && showPhotos && images.length > 0 && (
           <Section title="صور النشاط">
             <View style={styles.imageGrid}>
               {images.map((file, i) => (
@@ -782,7 +838,7 @@ const EventPdf: React.FC<EventPdfProps> = ({
         )}
 
         {/* ============ AUTRES FICHIERS ============ */}
-        {otherFiles.length > 0 && (
+        {has("fichiers") && otherFiles.length > 0 && (
           <Section title="الملفات المرفقة">
             {otherFiles.map((file, i) => (
               <View key={i} style={styles.fileRow} wrap={false}>
@@ -794,6 +850,16 @@ const EventPdf: React.FC<EventPdfProps> = ({
               </View>
             ))}
           </Section>
+        )}
+
+        {showSignature && (
+          <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", marginTop: 30 }} wrap={false}>
+            {["توقيع المسؤول(ة)", "ختم الجمعية"].map((l) => (
+              <View key={l} style={{ width: "40%", borderTopWidth: 1, borderTopColor: COLORS.border, borderStyle: "dashed", paddingTop: 5 }}>
+                <Text style={{ textAlign: "center", fontSize: 9, color: COLORS.muted }}>{l}</Text>
+              </View>
+            ))}
+          </View>
         )}
 
         {/* ============ PIED DE PAGE ============ */}

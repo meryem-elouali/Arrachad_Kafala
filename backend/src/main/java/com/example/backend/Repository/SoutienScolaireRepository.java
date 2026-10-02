@@ -34,6 +34,24 @@ public interface SoutienScolaireRepository
     Double totalGlobalParAnnee(
             @Param("annee") String annee
     );
+
+    // Part réellement payée par l'association (montantPaye borné au coût)
+    @Query("""
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN COALESCE(s.montantPaye, 0.0) > COALESCE(s.montant, 0.0) THEN COALESCE(s.montant, 0.0)
+                ELSE COALESCE(s.montantPaye, 0.0)
+            END
+        ), 0)
+        FROM SoutienScolaire s
+        WHERE s.anneeScolaire = :annee
+        AND s.effectue = true
+    """)
+    Double totalAssociationParAnnee(
+            @Param("annee") String annee
+    );
+
+    List<SoutienScolaire> findByAnneeScolaireAndEffectueTrue(String anneeScolaire);
     @Query("""
     SELECT
         s.enfant.id AS enfantId,

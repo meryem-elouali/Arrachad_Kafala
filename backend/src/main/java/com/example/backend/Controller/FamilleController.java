@@ -224,6 +224,7 @@ public class FamilleController {
                 enfant.setDateNaissance((String) enfantData.get("dateNaissance"));
                 enfant.setTypeMaladie((String) enfantData.getOrDefault("typeMaladie", ""));
                 enfant.setEstMalade((Boolean) enfantData.getOrDefault("estMalade", false));
+                enfant.setSexe((String) enfantData.get("sexe"));
                 // Ignore les champs comme "niveauscolaire" et "ecole" car ils sont gérés via Etude
                 enfants.add(enfant);
             }

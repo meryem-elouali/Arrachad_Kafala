@@ -54,6 +54,14 @@ public class Event {
     private EconomicCategory caisse;
 
     // =========================================================
+    // CAISSE DES CHARGES SUPPLÉMENTAIRES (المصاريف الإضافية)
+    // null = même caisse que l'événement (ou non ventilé si automatique)
+    // =========================================================
+    @ManyToOne
+    @JoinColumn(name = "caisse_charge_id")
+    private EconomicCategory caisseCharge;
+
+    // =========================================================
     // CHARGE SUPPLÉMENTAIRE
     // =========================================================
     @Column(
@@ -349,6 +357,16 @@ public class Event {
     // =========================================================
     // سواعد الخير
     // =========================================================
+
+    public EconomicCategory getCaisseCharge() {
+        return caisseCharge;
+    }
+
+    public void setCaisseCharge(
+            EconomicCategory caisseCharge
+    ) {
+        this.caisseCharge = caisseCharge;
+    }
 
     public EconomicCategory getCaisse() {
         return caisse;

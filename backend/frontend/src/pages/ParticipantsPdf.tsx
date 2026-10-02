@@ -20,6 +20,9 @@ Font.register({
 Font.registerHyphenationCallback((word) => [word]);
 
 export interface ParticipantRow {
+  typeLabel?: string;
+  /** Prise en charge externe de la famille (وسيط), pour information */
+  pec?: string;
   prefixe?: string;   // "عائلة" pour une famille, sinon vide
   nomComplet: string;
   degre: string;
@@ -35,6 +38,8 @@ interface Props {
   rows: ParticipantRow[];
   montantTotal: string;
   showMontant: boolean;
+  association?: string;
+  service?: string;
 }
 
 const COLORS = {
@@ -163,6 +168,8 @@ const ParticipantsPdf: React.FC<Props> = ({
   rows,
   montantTotal,
   showMontant,
+  association = "جمعية الرشاد للكفالة",
+  service = "اللجنة الاجتماعية",
 }) => {
   const presents = rows.filter((r) => r.present).length;
   const absents = rows.length - presents;
@@ -170,6 +177,10 @@ const ParticipantsPdf: React.FC<Props> = ({
   return (
     <Document title={`لائحة المشاركين - ${title}`}>
       <Page size="A4" orientation="landscape" style={styles.page}>
+    <View style={{ flexDirection: "row-reverse", justifyContent: "space-between", borderBottomWidth: 2, borderBottomColor: COLORS.primary, paddingBottom: 6, marginBottom: 10 }}>
+      <Text style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary }}>{association}</Text>
+      <Text style={{ fontSize: 9, color: COLORS.muted }}>{service}</Text>
+    </View>
     <View style={styles.titleRow}>
       <Text style={styles.titleText}>لائحة المشاركين في</Text>
       <Text style={[styles.titleText, { marginRight: 10 }]}>

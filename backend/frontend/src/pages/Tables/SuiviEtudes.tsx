@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { Tone, kpis, openReport, table } from "../../lib/report";
 import ExcelJS from "exceljs";
 
 import MultiSelect from "../../components/form/MultiSelect";
@@ -59,6 +60,21 @@ type DegreCategorie = "DEFINI" | "NON_DEFINI" | "INCONNU";
 type DegreInfo = {
   categorie: DegreCategorie;
   degre: number | null;
+  /** Catégorie de la famille : أيتام، معوز، لطيم… */
+  typeNom?: string | null;
+};
+
+/** Catégorie affichée par défaut dans le suivi des études. */
+const CATEGORIE_PAR_DEFAUT = "أيتام";
+const CATEGORIE_STORAGE_KEY = "suivi_etudes_categorie";
+
+const loadCategorie = () => {
+  try {
+    const v = localStorage.getItem(CATEGORIE_STORAGE_KEY);
+    return v === null ? CATEGORIE_PAR_DEFAUT : v;
+  } catch {
+    return CATEGORIE_PAR_DEFAUT;
+  }
 };
 
 type SortState = { key: string; dir: 1 | -1 };
@@ -316,6 +332,18 @@ const getNoteValue = (row: EtudeRow): number | null => {
 // PDF (impression navigateur)
 // ============================================================
 
+const toneOf = (color: string): Tone => {
+  const c = (color || "").toLowerCase();
+  if (c.includes("ecfdf5") || c.includes("d1fae5") || c.includes("f0fdf4") || c.includes("dcfce7")) return "green";
+  if (c.includes("fffbeb") || c.includes("fef3c7") || c.includes("fff7ed")) return "amber";
+  if (c.includes("fef2f2") || c.includes("fee2e2")) return "red";
+  if (c.includes("f5f3ff") || c.includes("ede9fe")) return "violet";
+  if (c.includes("ecfeff") || c.includes("cffafe")) return "cyan";
+  if (c.includes("eff6ff") || c.includes("eef2ff") || c.includes("dbeafe") || c.includes("e0e7ff")) return "blue";
+  return "slate";
+};
+
+/* PDF (impression) : moteur commun lib/report */
 const printPdf = (
   title: string,
   headers: string[],
@@ -324,141 +352,19 @@ const printPdf = (
   orientation: ExportOrientation = "landscape",
   cards: { label: string; value: string; color: string }[] = []
 ) => {
-  const w = window.open("", "_blank");
-
-  if (!w) {
-    alert("يرجى السماح بالنوافذ المنبثقة لتصدير PDF");
-    return;
-  }
-
-  const esc = (value: any) =>
-    String(value ?? "")
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-  const generatedAt = new Date().toLocaleString("fr-FR");
-
-  w.document.write(`
-    <!DOCTYPE html>
-    <html dir="rtl" lang="ar">
-    <head>
-      <meta charset="UTF-8">
-      <title>${esc(title)}</title>
-      <style>
-        * { box-sizing: border-box; }
-        body {
-          margin: 0; padding: 26px; direction: rtl; color: #111827; background: #fff;
-          font-family: Tahoma, Arial, sans-serif;
-          -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important;
-        }
-        .report-header {
-          display: flex; align-items: center; justify-content: space-between; gap: 18px;
-          padding: 20px 22px; margin-bottom: 14px; border: 1px solid #e0e7ff; border-radius: 18px;
-          background: linear-gradient(135deg, #eef2ff 0%, #ffffff 55%, #ecfdf5 100%);
-        }
-        .brand {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 50px; height: 50px; border-radius: 15px; color: white; background: #4f46e5;
-          font-weight: 900; font-size: 18px;
-        }
-        .header-copy { flex: 1; }
-        .eyebrow { margin: 0 0 5px; color: #4f46e5; font-size: 11px; font-weight: 800; }
-        h1 { margin: 0; font-size: 22px; color: #111827; }
-        .subtitle { margin-top: 6px; color: #6b7280; font-size: 11px; }
-        .summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
-        .summary-item {
-          padding: 7px 11px; border: 1px solid #e5e7eb; border-radius: 999px;
-          background: #f9fafb; color: #374151; font-size: 10px; font-weight: 700;
-        }
-        .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 0 0 14px; }
-        .card { border-radius: 14px; padding: 10px; text-align: center; border: 1px solid #e5e7eb; }
-        .card b { display: block; font-size: 15px; }
-        .card span { font-size: 9px; color: #6b7280; }
-        .table-wrap { overflow: hidden; border: 1px solid #e5e7eb; border-radius: 16px; }
-        table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: 10px; }
-        thead { display: table-header-group; }
-        th {
-          padding: 10px 8px; border-bottom: 1px solid #c7d2fe; color: #312e81;
-          background: #eef2ff; font-weight: 900; white-space: nowrap;
-        }
-        td {
-          padding: 9px 8px; border-bottom: 1px solid #f0f2f5; color: #374151;
-          text-align: center; vertical-align: middle;
-        }
-        tbody tr:nth-child(even) td { background: #fafafa; }
-        tbody tr:last-child td { border-bottom: 0; }
-        tr { page-break-inside: avoid; }
-        .index { width: 34px; color: #6366f1; font-weight: 900; }
-        .footer {
-          display: flex; justify-content: space-between; gap: 12px;
-          margin-top: 14px; color: #9ca3af; font-size: 9px;
-        }
-        @page { size: A4 ${orientation}; margin: 10mm; }
-        @media print {
-          body { padding: 0; }
-          .report-header, .summary, .cards { break-inside: avoid; }
-        }
-      </style>
-    </head>
-    <body>
-      <div class="report-header">
-        <div class="brand">TA</div>
-        <div class="header-copy">
-          <p class="eyebrow">تقرير التتبع الدراسي</p>
-          <h1>${esc(title)}</h1>
-          <div class="subtitle">تقرير منظم حسب معايير التصدير المختارة</div>
-        </div>
-      </div>
-
-      <div class="summary">
-        ${info.filter(Boolean).map((item) => `<span class="summary-item">${esc(item)}</span>`).join("")}
-      </div>
-
-      ${
-        cards.length
-          ? `<div class="cards">${cards
-              .map(
-                (c) =>
-                  `<div class="card" style="background:${c.color}"><b>${esc(c.value)}</b><span>${esc(c.label)}</span></div>`
-              )
-              .join("")}</div>`
-          : ""
-      }
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th class="index">#</th>
-              ${headers.map((header) => `<th>${esc(header)}</th>`).join("")}
-            </tr>
-          </thead>
-          <tbody>
-            ${rows
-              .map(
-                (row, index) => `
-                  <tr>
-                    <td class="index">${index + 1}</td>
-                    ${row.map((cell) => `<td>${esc(cell)}</td>`).join("")}
-                  </tr>`
-              )
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="footer">
-        <span>التتبع الدراسي</span>
-        <span>تم إنشاء التقرير: ${esc(generatedAt)}</span>
-      </div>
-    </body>
-    </html>
-  `);
-
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 450);
+  openReport({
+    kind: "التتبع الدراسي",
+    title,
+    chips: info,
+    body:
+      kpis(cards.map((c) => ({ label: c.label, value: c.value, tone: toneOf(c.color) }))) +
+      table(
+        headers.map((h) => ({ label: h })),
+        rows.map((r) => r.map((v) => (v === null || v === undefined ? "" : String(v)))),
+        { numbered: true }
+      ),
+    settings: { orientation },
+  });
 };
 
 // ============================================================
@@ -496,6 +402,16 @@ export default function EtudesTable() {
   const [niveauFilter, setNiveauFilter] = useState("");
   const [ecoleFilter, setEcoleFilter] = useState("");
   const [cycleFilter, setCycleFilter] = useState<CycleScolaire | "">("");
+  // "" = toutes les catégories
+  const [categorieFilter, setCategorieFilter] = useState<string>(loadCategorie);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(CATEGORIE_STORAGE_KEY, categorieFilter);
+    } catch {
+      /* ignoré */
+    }
+  }, [categorieFilter]);
 
   // ---------- TRI / PAGINATION ----------
   const [sort, setSort] = useState<SortState>({ key: "nomEnfant", dir: 1 });
@@ -694,17 +610,22 @@ export default function EtudesTable() {
               ? null
               : Number(rawDegre);
 
+          const typeNom: string | null =
+            famille?.typeFamille?.nom ?? null;
+
           const info: DegreInfo =
             degre === null
               ? {
                   categorie: "NON_DEFINI",
                   degre: null,
+                  typeNom,
                 }
               : {
                   categorie: "DEFINI",
                   degre: Number.isFinite(degre)
                     ? degre
                     : null,
+                  typeNom,
                 };
 
           const enfants =
@@ -862,6 +783,9 @@ export default function EtudesTable() {
       const niveauOK = !niveauFilter || e.niveauNom === niveauFilter;
       const ecoleOK = !ecoleFilter || e.nomEcole === ecoleFilter;
       const cycleOK = !cycleFilter || getCycleScolaire(e.niveauNom) === cycleFilter;
+      const categorieOK =
+        !categorieFilter ||
+        degresEnfants[String(e.enfant?.id)]?.typeNom === categorieFilter;
 
       const searchOK =
         !s ||
@@ -870,9 +794,15 @@ export default function EtudesTable() {
         e.niveauNom?.toLowerCase().includes(s) ||
         e.anneeScolaire?.toLowerCase().includes(s);
 
-      return anneeOK && niveauOK && ecoleOK && cycleOK && searchOK;
+      return anneeOK && niveauOK && ecoleOK && cycleOK && categorieOK && searchOK;
     });
-  }, [etudes, year, search, niveauFilter, ecoleFilter, cycleFilter]);
+  }, [etudes, year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, degresEnfants]);
+
+  const categoriesOptions = useMemo(() => {
+    const set = new Set<string>([CATEGORIE_PAR_DEFAUT]);
+    Object.values(degresEnfants).forEach((d) => d.typeNom && set.add(d.typeNom));
+    return Array.from(set);
+  }, [degresEnfants]);
 
   // =========================================================
   // STATS
@@ -1090,7 +1020,8 @@ export default function EtudesTable() {
     search !== "" ||
     niveauFilter !== "" ||
     ecoleFilter !== "" ||
-    cycleFilter !== "";
+    cycleFilter !== "" ||
+    categorieFilter !== CATEGORIE_PAR_DEFAUT;
 
   const resetFilters = () => {
     const current = anneesDisponibles.find(
@@ -1098,6 +1029,7 @@ export default function EtudesTable() {
     );
     setYear(current ?? anneesDisponibles[0] ?? "all");
     setSearch("");
+    setCategorieFilter(CATEGORIE_PAR_DEFAUT);
     setNiveauFilter("");
     setEcoleFilter("");
     setCycleFilter("");
@@ -1152,7 +1084,7 @@ export default function EtudesTable() {
 
   useEffect(() => {
     setPage(0);
-  }, [year, search, niveauFilter, ecoleFilter, cycleFilter, rowsPerPage]);
+  }, [year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, rowsPerPage]);
 
   const pageCount = Math.max(1, Math.ceil(sortedEtudes.length / rowsPerPage));
 
@@ -1178,6 +1110,8 @@ export default function EtudesTable() {
         (!niveauFilter || e.niveauNom === niveauFilter) &&
         (!ecoleFilter || e.nomEcole === ecoleFilter) &&
         (!cycleFilter || cycle === cycleFilter) &&
+        (!categorieFilter ||
+          degresEnfants[String(e.enfant?.id)]?.typeNom === categorieFilter) &&
         (!s ||
           e.nomEnfant?.toLowerCase().includes(s) ||
           e.nomEcole?.toLowerCase().includes(s) ||
@@ -1185,7 +1119,7 @@ export default function EtudesTable() {
           e.anneeScolaire?.toLowerCase().includes(s))
       );
     });
-  }, [etudes, search, niveauFilter, ecoleFilter, cycleFilter]);
+  }, [etudes, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, degresEnfants]);
 
   const exportSourceRows = useMemo(() => {
     if (exportScope === "page") return pageRows;
@@ -2149,6 +2083,21 @@ export default function EtudesTable() {
               />
             </div>
 
+            <div className="flex shrink-0 gap-1 rounded-xl bg-gray-100 p-1 text-xs font-bold">
+              {[...categoriesOptions, ""].map((c) => (
+                <button
+                  key={c || "all"}
+                  type="button"
+                  onClick={() => setCategorieFilter(c)}
+                  className={`rounded-lg px-3 py-2 transition ${
+                    categorieFilter === c ? "bg-white text-indigo-700 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  {c || "كل الفئات"}
+                </button>
+              ))}
+            </div>
+
             <select
               value={cycleFilter}
               onChange={(e) => setCycleFilter(e.target.value as CycleScolaire | "")}
@@ -2194,25 +2143,24 @@ export default function EtudesTable() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1500px] text-right">
+            <table className="w-full min-w-[960px] text-right">
               <thead>
                 <tr className="bg-gray-50/70 text-xs font-semibold text-gray-500">
                   <th className="px-5 py-4">{sortHeader("nomEnfant", "الطالب")}</th>
-                  <th className="px-5 py-4 text-center">{sortHeader("cycle", "المرحلة الدراسية", true)}</th>
                   <th className="px-5 py-4">{sortHeader("niveauNom", "المستوى")}</th>
                   <th className="px-5 py-4">{sortHeader("nomEcole", "المؤسسة")}</th>
-                  <th className="px-5 py-4 text-center">{sortHeader("anneeScolaire", "السنة الدراسية", true)}</th>
-                  <th className="px-5 py-4 text-center">{sortHeader("note", "النقطة", true)}</th>
-                  <th className="px-5 py-4 text-center">فئة الدرجة</th>
-                  <th className="px-5 py-4">{sortHeader("total", "الدعم المالي")}</th>
-                  <th className="px-5 py-4 text-center">الإجراء</th>
+                  {year === "all" && (
+                    <th className="px-5 py-4 text-center">{sortHeader("anneeScolaire", "السنة", true)}</th>
+                  )}
+                  <th className="px-5 py-4 text-center">{sortHeader("note", "المعدل", true)}</th>
+                  <th className="px-5 py-4">{sortHeader("total", "الدعم الدراسي")}</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-gray-100">
                 {loading && (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-gray-400">
+                    <td colSpan={6} className="py-16 text-center text-gray-400">
                       جاري التحميل...
                     </td>
                   </tr>
@@ -2220,7 +2168,7 @@ export default function EtudesTable() {
 
                 {!loading && pageRows.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="py-16 text-center text-gray-400">
+                    <td colSpan={6} className="py-16 text-center text-gray-400">
                       لا توجد نتائج
                     </td>
                   </tr>
@@ -2252,132 +2200,55 @@ export default function EtudesTable() {
                         <td className="px-5 py-4">
                           <div className="flex items-center gap-3">
                             <span
-                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${grad} text-base font-bold text-white shadow-sm`}
+                              className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${grad} text-sm font-bold text-white shadow-sm`}
                             >
                               {row.nomEnfant?.charAt(0)?.toUpperCase() || "ط"}
                             </span>
                             <div className="min-w-0">
-                              <p className="truncate font-bold text-gray-800">{row.nomEnfant}</p>
+                              <p className="truncate font-bold text-gray-800 group-hover:text-indigo-700">{row.nomEnfant}</p>
                               <p className="truncate text-xs text-gray-400">
-                                عرض الملف الدراسي الكامل
+                                {degreInfo.typeNom || "غير مصنف"}
+                                {degreInfo.degre != null ? ` · الدرجة ${degreInfo.degre}` : ""}
                               </p>
                             </div>
                           </div>
                         </td>
 
-                        <td className="px-5 py-4 text-center">{cycleBodyTemplate(row)}</td>
-                        <td className="px-5 py-4">{niveauBodyTemplate(row)}</td>
+                        <td className="px-5 py-4">
+                          <div className="space-y-1">
+                            {niveauBodyTemplate(row)}
+                            <div className="text-[11px]">{cycleBodyTemplate(row)}</div>
+                          </div>
+                        </td>
                         <td className="px-5 py-4">
                           <span className="text-sm font-semibold text-gray-700">{row.nomEcole}</span>
                         </td>
-                        <td className="px-5 py-4 text-center">{anneeBodyTemplate(row)}</td>
+                        {year === "all" && <td className="px-5 py-4 text-center">{anneeBodyTemplate(row)}</td>}
                         <td className="px-5 py-4 text-center">{noteBodyTemplate(row)}</td>
 
-                        <td className="px-5 py-4 text-center">
-                          {degreInfo.categorie === "DEFINI" ? (
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-blue-50 px-3 py-1.5 text-xs font-black text-blue-700">
-                              الدرجات المحددة
-                              {degreInfo.degre != null
-                                ? ` - الدرجة ${degreInfo.degre}`
-                                : ""}
-                            </span>
-                          ) : degreInfo.categorie === "NON_DEFINI" ? (
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-orange-50 px-3 py-1.5 text-xs font-black text-orange-700">
-                              معوز / غير محدد
-                            </span>
+                        <td className="px-5 py-4">
+                          {consomme <= 0 ? (
+                            <span className="text-xs text-gray-300">لا يوجد دعم</span>
                           ) : (
-                            <span className="inline-flex whitespace-nowrap rounded-full bg-gray-100 px-3 py-1.5 text-xs font-black text-gray-500">
-                              غير مصنف
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="min-w-[190px]">
-                            <div className="flex items-center justify-between gap-3">
-                              <span
-                                className={`text-[11px] font-semibold ${
-                                  degreInfo.categorie === "DEFINI"
-                                    ? "text-blue-600"
-                                    : degreInfo.categorie === "NON_DEFINI"
-                                      ? "text-orange-600"
-                                      : "text-gray-400"
-                                }`}
-                              >
-                                {degreInfo.categorie === "DEFINI"
-                                  ? "مستهلك - درجات محددة"
-                                  : degreInfo.categorie === "NON_DEFINI"
-                                    ? "مستهلك - معوز"
-                                    : "مستهلك"}
-                              </span>
-                              <span
-                                className={`whitespace-nowrap text-sm font-bold ${
-                                  consomme > 0 ? "text-emerald-700" : "text-gray-400"
-                                }`}
-                              >
-                                {fmtMoney(consomme)}
-                              </span>
-                            </div>
-
-                            <div className="mt-1 flex items-center justify-between gap-3">
-                              <span
-                                className={`text-[11px] font-semibold ${
-                                  degreInfo.categorie === "DEFINI"
-                                    ? "text-indigo-600"
-                                    : degreInfo.categorie === "NON_DEFINI"
-                                      ? "text-amber-600"
-                                      : "text-gray-400"
-                                }`}
-                              >
-                                {degreInfo.categorie === "DEFINI"
-                                  ? "مؤدى - درجات محددة"
-                                  : degreInfo.categorie === "NON_DEFINI"
-                                    ? "مؤدى - معوز"
-                                    : "مدفوع من طرفنا"}
-                              </span>
-                              <span className="whitespace-nowrap text-xs font-bold text-violet-700">
-                                {fmtMoney(paye)}
-                              </span>
-                            </div>
-
-                            {autre > 0 && (
-                              <div className="mt-1 flex items-center justify-between gap-3">
-                                <span className="text-[11px] text-gray-400">تكفل به الغير</span>
-                                <span className="whitespace-nowrap text-xs font-bold text-amber-700">
-                                  {fmtMoney(autre)}
-                                </span>
+                            <div className="min-w-[180px]">
+                              <div className="flex items-center justify-between gap-3 text-xs">
+                                <span className="font-semibold text-gray-500">أدته الجمعية</span>
+                                <span className="whitespace-nowrap font-bold text-emerald-700">{fmtMoney(paye)}</span>
                               </div>
-                            )}
-
-                            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-gray-100">
-                              <div
-                                className="h-1.5 rounded-full bg-violet-500 transition-all"
-                                style={{ width: `${pourcentagePaye}%` }}
-                              />
+                              {autre > 0 && (
+                                <div className="mt-1 flex items-center justify-between gap-3 text-xs">
+                                  <span className="text-gray-400">أداه الغير</span>
+                                  <span className="whitespace-nowrap font-bold text-amber-700">{fmtMoney(autre)}</span>
+                                </div>
+                              )}
+                              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-100">
+                                <div
+                                  className="h-1.5 rounded-full bg-emerald-500 transition-all"
+                                  style={{ width: `${pourcentagePaye}%` }}
+                                />
+                              </div>
                             </div>
-
-                            {consommation.nombrePaiements > 0 && (
-                              <p className="mt-1 text-[11px] text-gray-400">
-                                {consommation.nombrePaiements} دفعة
-                              </p>
-                            )}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-4">
-                          <div className="flex justify-center">
-                            <button
-                              type="button"
-                              title="عرض الملف الدراسي"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openProfile(row);
-                              }}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl text-gray-400 transition hover:bg-indigo-50 hover:text-indigo-600"
-                            >
-                              <i className="pi pi-eye" />
-                            </button>
-                          </div>
+                          )}
                         </td>
                       </tr>
                     );

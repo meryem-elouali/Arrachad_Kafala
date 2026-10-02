@@ -11,7 +11,10 @@ import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { pdf } from "@react-pdf/renderer";
 import ParticipantsPdf, { ParticipantRow } from "./ParticipantsPdf";
-import EventPdf from "./EventPdf";
+import EventPdf, { EVENT_REPORT_SECTIONS } from "./EventPdf";
+import ReportOptionsModal from "../components/common/ReportOptionsModal";
+import { ReportSettings, loadReportSettings } from "../lib/report";
+import { PriseEnCharge, besoinLabel, resumePec } from "../lib/prisesEnCharge";
 
 const API = "http://localhost:8080/api";
 
@@ -83,6 +86,8 @@ interface EventDetail {
   montantsParDegre?: Record<number, number>;
   chargeSupplementaire?: number;
   chargeSupplementaireLabel?: string;
+  caisseChargeId?: number | null;
+  caisseChargeNom?: string | null;
 }
 
 /* ============================== HELPERS ============================== */
@@ -201,6 +206,7 @@ const EventDetails: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(true);
   const [isExportingEvent, setIsExportingEvent] = useState(false);
+  const [eventReportOpen, setEventReportOpen] = useState(false);
 
   // modification des infos
   const [isEditInfoOpen, setIsEditInfoOpen] = useState(false);
@@ -217,6 +223,10 @@ const EventDetails: React.FC = () => {
   const [editDegresFamille, setEditDegresFamille] = useState<number[]>([]);
   const [editSawaedAlKhayr, setEditSawaedAlKhayr] = useState(false);
   const [editCaisseId, setEditCaisseId] = useState<number | "">("");
+  // Caisse des المصاريف الإضافية ("" = même caisse que l'activité / répartition automatique)
+  const [chargeCaisseId, setChargeCaisseId] = useState<number | "">("");
+  // Prises en charge externes actives, par famille
+  const [pecParFamille, setPecParFamille] = useState<Record<string, PriseEnCharge[]>>({});
   const [caisses, setCaisses] = useState<{ id: number; nom: string }[]>([]);
 
   // vrai juste après un chargement serveur : évite de re-sauvegarder ce qu'on vient de recevoir
@@ -261,6 +271,7 @@ const EventDetails: React.FC = () => {
     setMontantsParDegre(data.montantsParDegre || {});
     setChargeSupp(Number(data.chargeSupplementaire || 0));
     setChargeSuppLabel(data.chargeSupplementaireLabel || "");
+    setChargeCaisseId(data.caisseChargeId ?? "");
 
     const rows: Participant[] = [];
     const add = (list: Participant[] | undefined, type: ParticipantType) =>
@@ -293,6 +304,10 @@ const EventDetails: React.FC = () => {
         getJson(`${API}/economie/fonds`)
           .then((data) => setCaisses(Array.isArray(data) ? data : []))
           .catch(() => setCaisses([]));
+        fetch(`${API}/prises-en-charge/actives`)
+          .then((r) => (r.ok ? r.json() : {}))
+          .then((data: Record<string, PriseEnCharge[]>) => setPecParFamille(data && typeof data === "object" ? data : {}))
+          .catch(() => setPecParFamille({}));
         setAllMeres(meres);
         setAllEnfants(enfants);
         setAllFamilles(familles);
@@ -314,10 +329,8 @@ const EventDetails: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, event?.id]);
 
-  /* ---------- Degré d'un participant (null = non défini) ---------- */
-  const resolveDegreParticipant = (p: Participant): number | null => {
-    if (p.degreFamille != null) return Number(p.degreFamille);
-
+  /* ---------- Famille d'un participant ---------- */
+  const resolveFamilleParticipant = (p: Participant): any => {
     let famille: any;
 
     if (p.type === "FAMILLE") {
@@ -343,8 +356,21 @@ const EventDetails: React.FC = () => {
       }
     }
 
+    return famille;
+  };
+
+  /* ---------- Degré d'un participant (null = non défini) ---------- */
+  const resolveDegreParticipant = (p: Participant): number | null => {
+    if (p.degreFamille != null) return Number(p.degreFamille);
+    const famille = resolveFamilleParticipant(p);
     const value = famille?.degreFamille ?? famille?.degre ?? famille?.degree;
     return value != null ? Number(value) : null;
+  };
+
+  /* ---------- Prise en charge externe de la famille d'un participant ---------- */
+  const pecParticipant = (p: Participant): PriseEnCharge[] => {
+    const famille = resolveFamilleParticipant(p);
+    return famille?.id != null ? pecParFamille[String(famille.id)] ?? [] : [];
   };
 
   /* ---------- Montants ---------- */
@@ -460,6 +486,7 @@ const EventDetails: React.FC = () => {
         montantTotal: montantTotalEvent,
         chargeSupplementaire: chargeSupp,
         chargeSupplementaireLabel: chargeSuppLabel,
+        caisseChargeId: chargeCaisseId === "" ? null : chargeCaisseId,
         description,
         meresParticipants: mapType("MERE"),
         enfantsParticipants: mapType("ENFANT"),
@@ -500,6 +527,7 @@ const EventDetails: React.FC = () => {
     montantsParDegre,
     chargeSupp,
     chargeSuppLabel,
+    chargeCaisseId,
   ]);
 
   /* ---------- Modification des infos ---------- */
@@ -747,6 +775,7 @@ const EventDetails: React.FC = () => {
             ? pereNomOf(p)
             : `${p.nom || ""} ${p.prenom || ""}`.trim(),
         degre: degre == null ? "غير محدد" : String(degre),
+        pec: pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، ") || undefined,
         montant:
           typeMontant === "GLOBAL" ? "-" : `${getMontantParticipant(p).toFixed(2)} DH`,
         present: p.present ?? true,
@@ -765,12 +794,14 @@ const EventDetails: React.FC = () => {
         rows={buildRows()}
         showMontant
         montantTotal={`${montantTotalEvent.toFixed(2)} DH`}
+        association={loadReportSettings().association}
+        service={loadReportSettings().service}
       />
     ).toBlob();
     downloadBlob(blob, `المشاركون_${event.title}.pdf`);
   };
 
-  const exportEventPdf = async () => {
+  const exportEventPdf = async (sections: Set<string>, settings: ReportSettings) => {
     if (!event) return;
     setIsExportingEvent(true);
     try {
@@ -786,9 +817,24 @@ const EventDetails: React.FC = () => {
           montantEgal={montantEgal}
           montantTotal={montantTotalEvent}
           montantsParDegre={montantsParDegre}
+          sections={sections}
+          association={settings.association}
+          service={settings.service}
+          orientation={settings.orientation}
+          showPhotos={settings.showPhotos}
+          showSignature={settings.showSignature}
+          chargeSupp={chargeSupp}
+          chargeLabel={chargeSuppLabel}
+          caisseNom={event.caisseNom}
+          caisseChargeNom={
+            chargeCaisseId === ""
+              ? event.caisseNom
+              : caisses.find((c) => c.id === chargeCaisseId)?.nom
+          }
         />
       ).toBlob();
       downloadBlob(blob, `تقرير_النشاط_${event.title}.pdf`);
+      setEventReportOpen(false);
     } finally {
       setIsExportingEvent(false);
     }
@@ -1257,7 +1303,7 @@ const EventDetails: React.FC = () => {
           )}
 
           {/* Charge supplémentaire */}
-          <div className="mt-5 grid grid-cols-1 gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 md:grid-cols-2">
+          <div className="mt-5 grid grid-cols-1 gap-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 md:grid-cols-3">
             <MoneyInput label="المصاريف الإضافية" value={chargeSupp} onChange={setChargeSupp} />
             <div>
               <label className={labelCls}>بيان المصاريف الإضافية</label>
@@ -1269,6 +1315,28 @@ const EventDetails: React.FC = () => {
                 className={inputCls}
               />
             </div>
+            <div>
+              <label className={labelCls}>تُخصم من صندوق</label>
+              <select
+                value={chargeCaisseId}
+                onChange={(e) => setChargeCaisseId(e.target.value ? Number(e.target.value) : "")}
+                className={inputCls}
+              >
+                <option value="">
+                  {event?.caisseNom ? `نفس صندوق النشاط (${event.caisseNom})` : "حسب التوزيع التلقائي"}
+                </option>
+                {caisses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nom}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {chargeSupp > 0 && chargeCaisseId === "" && !event?.caisseNom && typeMontant === "DISTRIBUE" && (
+              <p className="text-xs font-bold text-amber-700 md:col-span-3">
+                ⚠ بدون اختيار صندوق، لن تُخصم هذه المصاريف الإضافية من أي صندوق.
+              </p>
+            )}
           </div>
 
           {/* Résumé comptable : catégories strictement séparées */}
@@ -1329,6 +1397,25 @@ const EventDetails: React.FC = () => {
           )}
         </div>
 
+        {/* ----- Familles déjà prises en charge par un وسيط ----- */}
+        {(() => {
+          const concernes = participantsList.filter((p) => pecParticipant(p).length > 0);
+          if (concernes.length === 0) return null;
+          const besoins = Array.from(
+            new Set(concernes.flatMap((p) => pecParticipant(p).flatMap((x) => x.besoins)))
+          );
+          return (
+            <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
+              <p className="font-black">
+                🤝 {concernes.length} من المشاركين ينتمون لأسر لها تكفل خارجي ({besoins.map(besoinLabel).join("، ")})
+              </p>
+              <p className="mt-1 text-xs">
+                تحقق من أن هذا النشاط لا يكرر ما يقدمه الوسيط. يمكنك الإبقاء عليهم إذا كان النشاط لا يخص نفس الحاجة.
+              </p>
+            </div>
+          );
+        })()}
+
         {/* ----- Tableau ----- */}
         {participantsList.length > 0 ? (
           <div className="overflow-x-auto rounded-2xl border border-gray-200">
@@ -1338,6 +1425,7 @@ const EventDetails: React.FC = () => {
                   <th className="p-3">الاسم</th>
                   <th className="p-3">اللقب</th>
                   <th className="p-3">الدرجة</th>
+                  <th className="p-3">تكفل خارجي</th>
                   <th className="p-3">المبلغ</th>
                   <th className="p-3">الحضور</th>
                   <th className="p-3">سبب الغياب</th>
@@ -1363,6 +1451,18 @@ const EventDetails: React.FC = () => {
                         >
                           {degreLabel(degree)}
                         </span>
+                      </td>
+                      <td className="p-3">
+                        {pecParticipant(p).length === 0 ? (
+                          <span className="text-xs text-gray-300">—</span>
+                        ) : (
+                          <span
+                            title={pecParticipant(p).map((x) => `${x.parrainNom}: ${resumePec(x)}`).join("\n")}
+                            className="inline-block max-w-[220px] truncate rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700"
+                          >
+                            🤝 {pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، ")}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 font-bold text-green-700">
                         {typeMontant === "GLOBAL"
@@ -1413,7 +1513,7 @@ const EventDetails: React.FC = () => {
           <SaveStatus isSaving={isSaving} isSaved={isSaved} />
           <button
             type="button"
-            onClick={exportEventPdf}
+            onClick={() => setEventReportOpen(true)}
             disabled={isExportingEvent}
             className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50"
           >
@@ -1562,6 +1662,14 @@ const EventDetails: React.FC = () => {
                       {" · "}
                       {degreLabel(resolveDegreParticipant(p))}
                     </p>
+                    {pecParticipant(p).length > 0 && (
+                      <p className="mt-1 text-xs font-bold text-violet-700">
+                        🤝 تكفل خارجي:{" "}
+                        {pecParticipant(p)
+                          .map((x) => `${x.parrainNom} (${resumePec(x)})`)
+                          .join(" · ")}
+                      </p>
+                    )}
                   </div>
                   <input
                     type="checkbox"
@@ -1841,6 +1949,15 @@ const EventDetails: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ReportOptionsModal
+        open={eventReportOpen}
+        title="تقرير النشاط"
+        sections={EVENT_REPORT_SECTIONS}
+        busy={isExportingEvent}
+        onClose={() => setEventReportOpen(false)}
+        onConfirm={exportEventPdf}
+      />
     </div>
   );
 };

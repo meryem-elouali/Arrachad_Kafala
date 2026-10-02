@@ -25,6 +25,10 @@ public class Enfant {
     private String typeMaladie;
     private Boolean estMalade = false;
 
+    /** FILLE ou GARCON */
+    @Column(length = 10)
+    private String sexe;
+
     @ManyToOne
     @JoinColumn(name = "famille_id")
     @JsonIgnore
@@ -142,5 +146,36 @@ public class Enfant {
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate birthDate = LocalDate.parse(dateNaissance, formatter);
         return Period.between(birthDate, LocalDate.now()).getYears();
+    }
+
+    public String getSexe() {
+        return sexe;
+    }
+
+    public void setSexe(String sexe) {
+        this.sexe = normaliserSexe(sexe);
+    }
+
+    public static String normaliserSexe(String value) {
+        if (value == null || value.isBlank()) return null;
+        String v = value.trim().toUpperCase();
+        if (v.equals("FILLE") || v.equals("F") || value.trim().equals("أنثى") || value.trim().equals("بنت")) return "FILLE";
+        if (v.equals("GARCON") || v.equals("G") || v.equals("M") || value.trim().equals("ذكر") || value.trim().equals("ولد")) return "GARCON";
+        return null;
+    }
+
+    /**
+     * Le nom de famille de l'enfant est, par défaut, celui du père.
+     */
+    @PrePersist
+    @PreUpdate
+    public void appliquerNomParDefaut() {
+        if ((nom == null || nom.isBlank())
+                && famille != null
+                && famille.getPere() != null
+                && famille.getPere().getNom() != null
+                && !famille.getPere().getNom().isBlank()) {
+            nom = famille.getPere().getNom().trim();
+        }
     }
 }

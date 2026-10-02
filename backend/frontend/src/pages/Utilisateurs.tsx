@@ -57,7 +57,9 @@ export default function Utilisateurs() {
   const [saving, setSaving] = useState(false);
 
   const user = me();
-  const allowed = user?.role === "SUPER_ADMIN";
+  // المسؤول الأعلى : tout ; المشرف : comptes des membres (pas les rôles, pas le compte du مسؤول أعلى)
+  const isSuper = user?.role === "SUPER_ADMIN";
+  const allowed = isSuper || user?.role === "ADMIN";
 
   const load = async () => {
     const [m, f] = await Promise.all([call(`${API}/membres`), call(`${API}/fonctions`)]);
@@ -124,7 +126,7 @@ export default function Utilisateurs() {
   if (!allowed)
     return (
       <div dir="rtl" className="py-24 text-center text-gray-500">
-        هذه الصفحة مخصصة للمسؤول الأعلى فقط.
+        هذه الصفحة مخصصة للمسؤول الأعلى والمشرفين فقط.
       </div>
     );
 
@@ -142,15 +144,17 @@ export default function Utilisateurs() {
               {list.length} مستخدم · {list.filter((m) => m.compteActif).length} حساب مفعل
             </p>
           </div>
-          <button
-            onClick={() => {
-              setErr("");
-              setForm({ ...EMPTY });
-            }}
-            className="h-11 rounded-xl bg-white px-6 text-sm font-bold text-indigo-700"
-          >
-            + مستخدم جديد
-          </button>
+          {isSuper && (
+            <button
+              onClick={() => {
+                setErr("");
+                setForm({ ...EMPTY });
+              }}
+              className="h-11 rounded-xl bg-white px-6 text-sm font-bold text-indigo-700"
+            >
+              + مستخدم جديد
+            </button>
+          )}
         </div>
 
         <input
@@ -183,7 +187,7 @@ export default function Utilisateurs() {
                     </td>
                     <td className="px-5 py-4">{m.fonction?.nom || "—"}</td>
                     <td className="px-5 py-4">
-                      {m.id === user.id ? (
+                      {m.id === user.id || !isSuper ? (
                         <span className={"rounded-full px-3 py-1 text-xs font-bold " + role.c}>
                           {role.l}
                         </span>
@@ -218,6 +222,9 @@ export default function Utilisateurs() {
                       {m.derniereConnexion?.replace("T", " ").slice(0, 16) || "—"}
                     </td>
                     <td className="px-5 py-4">
+                      {!isSuper && m.role === "SUPER_ADMIN" ? (
+                        <p className="text-center text-xs text-gray-400">—</p>
+                      ) : (
                       <div className="flex justify-center gap-2 text-xs font-bold">
                         <button
                           onClick={() => {
@@ -242,6 +249,7 @@ export default function Utilisateurs() {
                           </button>
                         )}
                       </div>
+                      )}
                     </td>
                   </tr>
                 );

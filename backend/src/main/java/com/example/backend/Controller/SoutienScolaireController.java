@@ -65,9 +65,21 @@ public class SoutienScolaireController {
                         annee
                 );
 
+        Double totalAssociation =
+                repository.totalAssociationParAnnee(
+                        annee
+                );
+
+        double consomme = total != null ? total : 0;
+        double association = totalAssociation != null ? totalAssociation : 0;
+
+        // "total" = ce que l'association a réellement payé.
         return Map.of(
                 "annee", annee,
-                "total", total != null ? total : 0
+                "total", association,
+                "totalAssociation", association,
+                "totalAutre", Math.max(consomme - association, 0),
+                "totalConsomme", consomme
         );
     }
 
@@ -127,6 +139,8 @@ public class SoutienScolaireController {
                 )
         );
 
+        appliquerPaiement(soutien, request);
+
         return repository.save(soutien);
     }
     // =========================================================
@@ -174,6 +188,8 @@ public class SoutienScolaireController {
                         request.getEffectue()
                 )
         );
+
+        appliquerPaiement(soutien, request);
 
         if (request.getEnfantId() != null) {
 
@@ -257,5 +273,39 @@ public class SoutienScolaireController {
                         );
 
         soutien.setEnfant(enfant);
+    }
+
+    /**
+     * montantPaye = part payée par l'association (0 .. montant).
+     * Le reste est payé par une autre personne / organisme (payeurAutre).
+     */
+    private void appliquerPaiement(
+            SoutienScolaire soutien,
+            SoutienScolaireRequest request
+    ) {
+
+        double montant =
+                soutien.getMontant() != null
+                        ? soutien.getMontant()
+                        : 0.0;
+
+        Double paye =
+                request.getMontantPaye();
+
+        soutien.setMontantPaye(
+                paye == null
+                        ? montant
+                        : Math.max(0.0, Math.min(paye, montant))
+        );
+
+        String autre =
+                request.getPayeurAutre();
+
+        soutien.setPayeurAutre(
+                autre == null || autre.isBlank()
+                        || soutien.getMontantPaye() >= montant
+                        ? null
+                        : autre.trim()
+        );
     }
 }

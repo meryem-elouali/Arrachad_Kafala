@@ -399,6 +399,23 @@ public class EconomicController {
         );
     }
 
+    /**
+     * Caisse proposée par défaut pour une famille :
+     * أيتام -> صندوق الأيتام، معوز -> صندوق المعوز.
+     */
+    @GetMapping("/familles/{familleId}/caisse-defaut")
+    public ResponseEntity<Map<String, Object>> getDefaultFund(
+            @PathVariable Long familleId
+    ) {
+        Famille famille = familleRepository.findById(familleId).orElse(null);
+        EconomicCategory caisse = economicService.caisseParDefaut(famille);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fundId", caisse != null ? caisse.getId() : null);
+        result.put("fundNom", caisse != null ? caisse.getNom() : null);
+        return ResponseEntity.ok(result);
+    }
+
     @PostMapping("/familles/{familleId}/depenses")
     public ResponseEntity<?> createFamilyExpense(
             @PathVariable Long familleId,

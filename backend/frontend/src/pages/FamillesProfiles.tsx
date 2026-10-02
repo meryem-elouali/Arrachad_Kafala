@@ -5,6 +5,22 @@ import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
 import FamilleDepenses from "../components/famille/FamilleDepenses";
+import FamillePrisesEnCharge from "../components/famille/FamillePrisesEnCharge";
+import ReportOptionsModal from "../components/common/ReportOptionsModal";
+import {
+  ReportSettings,
+  columns2,
+  fields,
+  kpis,
+  money as rMoney,
+  note,
+  openReport,
+  section,
+  table,
+  tag,
+  esc as rEsc,
+} from "../lib/report";
+import { PriseEnCharge, besoinLabel, couvertureLabel, statutInfo } from "../lib/prisesEnCharge";
 
 const API = "http://localhost:8080/api";
 
@@ -35,6 +51,7 @@ interface Enfant {
   id: number;
   prenom: string;
   nom: string;
+  sexe?: "FILLE" | "GARCON" | null;
   dateNaissance?: string;
   photoEnfant?: string;
   typeMaladie?: string;
@@ -72,7 +89,18 @@ interface SoutienEtude {
   intervenant?: string;
   montant: number;
   montantPaye: number;
+  payeurAutre?: string | null;
   effectue: boolean;
+}
+
+interface FamilleDepense {
+  id: number;
+  fundNom: string;
+  anneeScolaire: string;
+  montant: number;
+  dateDepense: string;
+  libelle: string;
+  note?: string | null;
 }
 
 interface ConsoEtudes {
@@ -295,6 +323,8 @@ const TONES: Record<string, string> = {
   amber: "bg-amber-50 text-amber-700",
   gray: "bg-gray-100 text-gray-600",
   sky: "bg-sky-50 text-sky-700",
+  pink: "bg-pink-50 text-pink-700",
+  violet: "bg-violet-50 text-violet-700",
   white: "bg-white/20 text-white",
 };
 
@@ -569,10 +599,20 @@ const ModalShell = ({
 const fmtMoney = (n: any) =>
   `${Number(n || 0).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} DH`;
 
-const esc = (v: any) =>
-  String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
 const yn = (v?: boolean) => (v ? "نعم" : "لا");
+
+/**
+ * Sections disponibles dans le PDF du profil famille (paramétrables).
+ */
+const FAMILLE_REPORT_SECTIONS = [
+  { key: "infos", label: "معلومات الأسرة والوالدين" },
+  { key: "enfants", label: "الأطفال" },
+  { key: "bilan", label: "من يتكفل بماذا", hint: "ملخص: الجمعية / الوسطاء / جهات أخرى" },
+  { key: "evenements", label: "تفاصيل الأنشطة" },
+  { key: "soutien", label: "تفاصيل الدعم الدراسي" },
+  { key: "depenses", label: "مصاريف الأسرة (صناديق الجمعية)" },
+  { key: "prises", label: "التكفل الخارجي (الوسطاء)" },
+];
 
 const printFamilleReport = (
   f: Famille,
@@ -580,292 +620,311 @@ const printFamilleReport = (
   conso: { total: number; presentCount: number; absentCount: number; events: any[] },
   consoEtudes: ConsoEtudes,
   year: string,
-  studyYear: string
+  studyYear: string,
+  depenses: FamilleDepense[],
+  prises: PriseEnCharge[],
+  sections: Set<string>,
+  settings: ReportSettings
 ) => {
-  const w = window.open("", "_blank");
-  if (!w) {
-    alert("اسمح بالنوافذ المنبثقة لتصدير PDF");
-    return;
-  }
-
   const nomFamille = f.pere?.nom || f.nomFamille || f.mere?.nom || "غير محدد";
   const enfants = f.enfants || [];
   const yearLabel = year === "all" ? "كل السنوات" : year;
   const studyYearLabel = studyYear === "all" ? "كل السنوات الدراسية" : studyYear;
+
   const totalEvenements = Number(conso.total || 0);
-  const totalEtudesConsomme = Number(consoEtudes.totalConsomme || 0);
-  const totalEtudesPaye = Number(consoEtudes.totalPaye || 0);
-  const totalEtudesNonPaye = Number(consoEtudes.totalNonPaye || 0);
-  const totalPrisEnChargeAssociation = totalEvenements + totalEtudesPaye;
-  const totalConsommationGlobale = totalEvenements + totalEtudesConsomme;
+  const totalSoutienAssociation = Number(consoEtudes.totalPaye || 0);
+  const totalSoutienAutres = Number(consoEtudes.totalNonPaye || 0);
+  const totalDepenses = depenses.reduce((a, d) => a + Number(d.montant || 0), 0);
+  const totalAssociation = totalEvenements + totalSoutienAssociation + totalDepenses;
 
-  // consommation par personne
-  const byPerson: Record<string, { total: number; present: number; absent: number }> = {};
-  conso.events.forEach((e) => {
-    const k = e.participant || "العائلة";
-    byPerson[k] = byPerson[k] || { total: 0, present: 0, absent: 0 };
-    byPerson[k].total += Number(e.montant || 0);
-    e.present ? byPerson[k].present++ : byPerson[k].absent++;
-  });
-
-  const row = (label: string, value: any) =>
-    `<div class="f"><span>${esc(label)}</span><b>${esc(value === undefined || value === null || value === "" ? "غير محدد" : value)}</b></div>`;
+  const prisesActives = prises.filter((p) => p.statut === "ACTIVE");
+  const valeurMensuelleExterne = prisesActives.reduce((a, p) => a + Number(p.montantMensuel || 0), 0);
 
   const img = (b64?: string) => {
-    const s = photoSrc(b64);
-    return s ? `<img src="${s}" class="ph"/>` : `<div class="ph ph0">👤</div>`;
+    if (!settings.showPhotos) return "";
+    const src = photoSrc(b64);
+    return src ? `<img src="${src}" class="ph"/>` : "";
   };
 
-  const parent = (title: string, p: Person | undefined, photo?: string, isMere = false) => {
-    if (!p) return `<div class="card"><h3>${title}</h3><p class="muted">لا توجد معلومات</p></div>`;
-    const dead = !!p.estDecedee;
-    return `<div class="card">
-      <h3>${title}</h3>
-      <div class="pr">${img(photo)}<div><div class="nm">${esc(p.nom)} ${esc(p.prenom)}</div>${
-        dead ? `<span class="tag g">${isMere ? "متوفاة" : "متوفى"}</span>` : ""
-      }</div></div>
-      <div class="grid2">
-        ${
-          dead
-            ? row("تاريخ الوفاة", formatDate(p.dateDeces))
-            : row("الهاتف", p.phone) +
-              row("رقم البطاقة الوطنية", p.cin) +
-              row("تاريخ الازدياد", formatDate(p.dateNaissance)) +
-              row("مكان الازدياد", p.villeNaissance) +
-              row(isMere ? "هل الأم مريضة؟" : "هل الأب مريض؟", yn(p.estMalade)) +
-              (p.estMalade ? row("نوع المرض", p.typeMaladie) : "") +
-              row(isMere ? "هل الأم تعمل؟" : "هل الأب يعمل؟", yn(p.estTravaille)) +
-              (p.estTravaille ? row("نوع العمل", p.typeTravail) : "")
-        }
-      </div></div>`;
-  };
+  const parts: string[] = [];
 
-  const enfantsRows = enfants
-    .map((e, i) => {
-      const et = etudes[e.id];
-      const age = ageFrom(e.dateNaissance);
-      return `<tr>
-        <td>${i + 1}</td>
-        <td class="l">${img(e.photoEnfant)}</td>
-        <td><b>${esc(e.nom)} ${esc(e.prenom)}</b></td>
-        <td>${age !== null ? age + " سنة" : "-"}</td>
-        <td>${esc(formatDate(e.dateNaissance) || "-")}</td>
-        <td>${esc(et?.niveauScolaire?.nom || "-")}</td>
-        <td>${esc(et?.ecole?.nom || "-")}</td>
-        <td>${esc(et?.specialite?.nom || "-")}</td>
-        <td>${e.estMalade ? esc(e.typeMaladie || "مريض") : "لا"}</td>
-      </tr>`;
-    })
-    .join("");
+  // ---------- Synthèse (toujours en tête) ----------
+  parts.push(
+    kpis([
+      { label: "الأطفال", value: String(f.nombreEnfants ?? enfants.length), tone: "slate" },
+      { label: "ما دفعته الجمعية", value: rMoney(totalAssociation), tone: "green", hint: "أنشطة + دعم دراسي + مصاريف" },
+      { label: "مؤدى من جهات أخرى", value: rMoney(totalSoutienAutres), tone: "amber", hint: "الدعم الدراسي غير المؤدى من الجمعية" },
+      {
+        label: "التكفل الخارجي النشط",
+        value: prisesActives.length ? `${prisesActives.length} كفالة` : "لا يوجد",
+        tone: prisesActives.length ? "violet" : "slate",
+        hint: valeurMensuelleExterne ? `≈ ${rMoney(valeurMensuelleExterne)} شهريا` : undefined,
+      },
+    ])
+  );
 
-  const personRows = Object.entries(byPerson)
-    .sort((a, b) => b[1].total - a[1].total)
-    .map(
-      ([k, v]) =>
-        `<tr><td class="r">${esc(k)}</td><td>${v.present}</td><td>${v.absent}</td><td class="m">${fmtMoney(v.total)}</td></tr>`
-    )
-    .join("");
+  // ---------- Infos ----------
+  if (sections.has("infos")) {
+    const parent = (title: string, p: Person | undefined, photo?: string, isMere = false) => {
+      if (!p) return `<div class="card"><h3>${title}</h3><p class="muted">لا توجد معلومات</p></div>`;
+      const dead = !!p.estDecedee;
+      const list: [string, unknown][] = dead
+        ? [["تاريخ الوفاة", formatDate(p.dateDeces)]]
+        : [
+            ["الهاتف", p.phone],
+            ["رقم البطاقة الوطنية", p.cin],
+            ["تاريخ الازدياد", formatDate(p.dateNaissance)],
+            ["العمل", p.estTravaille ? p.typeTravail || "نعم" : "لا"],
+            ...(p.estMalade ? ([["المرض", p.typeMaladie || "نعم"]] as [string, unknown][]) : []),
+          ];
+      return `<div class="card">
+        <h3 style="margin-top:0;display:flex;align-items:center;gap:8px">${img(photo)}<span>${title}: ${rEsc(p.prenom)} ${rEsc(p.nom)}</span>
+        ${dead ? tag(isMere ? "متوفاة" : "متوفى", "slate") : ""}</h3>
+        ${fields(list, 2)}</div>`;
+    };
 
-  const eventRows = conso.events
-    .map(
-      (e, i) => `<tr>
-        <td>${i + 1}</td>
-        <td class="r"><b>${esc(e.title)}</b></td>
-        <td>${esc(e.startDate)}</td>
-        <td>${esc(e.type || "-")}</td>
-        <td>${esc(e.participant)}</td>
-        <td><span class="tag ${e.present ? "ok" : "ko"}">${e.present ? "حاضر" : "غائب"}</span>${
-          !e.present && e.motif ? `<div class="mt">${esc(e.motif)}</div>` : ""
-        }</td>
-        <td class="m">${fmtMoney(e.montant)}</td>
-      </tr>`
-    )
-    .join("");
+    parts.push(
+      section(
+        "معلومات الأسرة",
+        fields(
+          [
+            ["الفئة", f.typeFamille?.nom],
+            ["درجة الاستحقاق", f.degreFamille ?? "غير محددة"],
+            ["السكن", f.habitationFamille?.nom],
+            ["الهاتف", f.phone],
+            ["العنوان", f.adresseFamille],
+            ["تاريخ التسجيل", formatDate(f.dateInscription)],
+            ["دخل شهري", yn(f.revenuMensuel)],
+            ["جمعية أخرى", yn(f.beneficieAutreAssociation)],
+            ...(f.possedeMalade
+              ? ([["شخص مريض بالمنزل", `${f.personneMalade || "نعم"}${f.lienParenteMalade ? ` (${f.lienParenteMalade})` : ""}`]] as [string, unknown][])
+              : []),
+          ],
+          4
+        ) +
+          `<div style="margin-top:10px">${columns2(
+            parent("الأم", f.mere, f.mere?.photoMere, true),
+            parent("الأب", f.pere, f.pere?.photoPere)
+          )}</div>`
+      )
+    );
+  }
 
-  const soutienRows = consoEtudes.details
-    .map((s, i) => {
-      const nonPaye = Math.max(Number(s.montant || 0) - Number(s.montantPaye || 0), 0);
-      return `<tr>
-        <td>${i + 1}</td>
-        <td class="r"><b>${esc(s.enfantNom)}</b></td>
-        <td>${esc(s.anneeScolaire || "-")}</td>
-        <td>${esc(s.mois || "-")}</td>
-        <td>${esc(s.centre || "-")}</td>
-        <td>${esc(s.intervenant || "-")}</td>
-        <td class="m">${fmtMoney(s.montant)}</td>
-        <td class="m">${fmtMoney(s.montantPaye)}</td>
-        <td class="m np">${fmtMoney(nonPaye)}</td>
-      </tr>`;
-    })
-    .join("");
+  // ---------- Enfants ----------
+  if (sections.has("enfants")) {
+    parts.push(
+      section(
+        `الأطفال (${enfants.length})`,
+        table(
+          [
+            { label: "الاسم", align: "start" },
+            { label: "الجنس" },
+            { label: "السن" },
+            { label: "المستوى" },
+            { label: "المؤسسة" },
+            { label: "ملاحظة" },
+          ],
+          enfants.map((e) => {
+            const et = etudes[e.id];
+            const age = ageFrom(e.dateNaissance);
+            return [
+              `<span style="display:inline-flex;align-items:center;gap:6px">${img(e.photoEnfant)}<b>${rEsc(e.prenom)} ${rEsc(e.nom)}</b></span>`,
+              e.sexe === "FILLE" ? "بنت" : e.sexe === "GARCON" ? "ولد" : "—",
+              age !== null ? `${age} سنة` : "—",
+              et?.niveauScolaire?.nom,
+              et?.ecole?.nom,
+              e.estMalade ? `مريض: ${e.typeMaladie || ""}` : "",
+            ];
+          }),
+          { numbered: true, empty: "لا توجد معلومات عن الأطفال" }
+        )
+      )
+    );
+  }
 
-  const soutienParEnfantRows = Object.values(consoEtudes.parEnfant)
-    .sort((a, b) => b.totalPaye - a.totalPaye)
-    .map(
-      (v) => `<tr>
-        <td class="r"><b>${esc(v.enfantNom)}</b></td>
-        <td class="m">${fmtMoney(v.totalConsomme)}</td>
-        <td class="m">${fmtMoney(v.totalPaye)}</td>
-        <td class="m np">${fmtMoney(v.totalNonPaye)}</td>
-      </tr>`
-    )
-    .join("");
+  // ---------- Qui prend en charge quoi ----------
+  if (sections.has("bilan")) {
+    const lignesAssociation: unknown[][] = [
+      ["الأنشطة", yearLabel, rMoney(totalEvenements)],
+      ["الدعم الدراسي (الجزء المؤدى من الجمعية)", studyYearLabel, rMoney(totalSoutienAssociation)],
+      ...Object.entries(
+        depenses.reduce<Record<string, number>>((acc, d) => {
+          acc[d.fundNom] = (acc[d.fundNom] || 0) + Number(d.montant || 0);
+          return acc;
+        }, {})
+      ).map(([fund, total]) => [`مصاريف الأسرة — ${fund}`, studyYearLabel, rMoney(total)]),
+    ];
 
-  w.document.write(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-<title>ملف عائلة ${esc(nomFamille)}</title>
-<style>
-  *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body{font-family:Arial,Tahoma,sans-serif;margin:0;padding:22px;color:#111827;font-size:12px}
-  .hero{background:linear-gradient(270deg,#4f46e5,#3b82f6);color:#fff;border-radius:16px;padding:20px 24px;display:flex;justify-content:space-between;align-items:center}
-  .hero h1{margin:4px 0 8px;font-size:24px}
-  .hero small{opacity:.8}
-  .pill{display:inline-block;background:rgba(255,255,255,.2);border-radius:99px;padding:3px 12px;margin-left:6px;font-weight:bold;font-size:11px}
-  .kpis{display:flex;gap:10px}
-  .kpi{background:rgba(255,255,255,.18);border-radius:12px;padding:8px 16px;text-align:center}
-  .kpi b{display:block;font-size:18px}
-  .kpi span{font-size:10px;opacity:.8}
-  h2{font-size:15px;margin:20px 0 10px;padding-right:10px;border-right:4px solid #4f46e5}
-  h3{margin:0 0 10px;font-size:14px}
-  .card{border:1px solid #e5e7eb;border-radius:14px;padding:14px;break-inside:avoid}
-  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
-  .f{background:#f9fafb;border-radius:8px;padding:6px 10px}
-  .f span{display:block;font-size:10px;color:#9ca3af}
-  .f b{font-size:12px}
-  .pr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-  .nm{font-weight:bold;font-size:15px}
-  .ph{width:46px;height:46px;border-radius:12px;object-fit:cover;border:1px solid #e5e7eb}
-  .ph0{display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:20px}
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:10px}
-  .st{border-radius:12px;padding:10px;text-align:center}
-  .st b{display:block;font-size:17px}
-  .st span{font-size:10px;color:#6b7280}
-  table{width:100%;border-collapse:collapse;font-size:11px}
-  th{background:#2563eb;color:#fff;padding:7px;border:1px solid #d1d5db}
-  td{padding:6px;border:1px solid #e5e7eb;text-align:center;vertical-align:middle}
-  td.r{text-align:right} td.l .ph{width:34px;height:34px}
-  td.m{font-weight:bold;color:#047857;white-space:nowrap}
-  td.np{color:#b45309}
-  .stats5{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:10px}
-  tr:nth-child(even) td{background:#f9fafb}
-  thead{display:table-header-group} tr{break-inside:avoid}
-  .tag{display:inline-block;border-radius:99px;padding:2px 10px;font-weight:bold;font-size:10px}
-  .ok{background:#dcfce7;color:#15803d}.ko{background:#fee2e2;color:#dc2626}.g{background:#e5e7eb;color:#4b5563}
-  .mt{font-size:9px;color:#9ca3af;margin-top:2px}
-  .muted{color:#9ca3af}
-  .foot{margin-top:18px;text-align:center;font-size:10px;color:#9ca3af}
-  @page{size:A4;margin:10mm}
-</style></head><body>
+    const autresSoutien = consoEtudes.details.filter((x) => Number(x.montant || 0) > Number(x.montantPaye || 0));
+    const payeurs = autresSoutien.reduce<Record<string, number>>((acc, x) => {
+      const k = x.payeurAutre?.trim() || "جهة غير محددة";
+      acc[k] = (acc[k] || 0) + Math.max(Number(x.montant || 0) - Number(x.montantPaye || 0), 0);
+      return acc;
+    }, {});
 
-<div class="hero">
-  <div>
-    <small>ملف العائلة</small>
-    <h1>عائلة ${esc(nomFamille)}</h1>
-    <div>
-      ${f.typeFamille?.nom ? `<span class="pill">${esc(f.typeFamille.nom)}</span>` : ""}
-      <span class="pill">الدرجة: ${esc(f.degreFamille ?? "غير محددة")}</span>
-      ${f.phone ? `<span class="pill">📞 ${esc(f.phone)}</span>` : ""}
-    </div>
-  </div>
-  <div class="kpis">
-    <div class="kpi"><b>${f.nombreEnfants ?? enfants.length}</b><span>الأطفال</span></div>
-    <div class="kpi"><b>${esc(formatDate(f.dateInscription) || "—")}</b><span>تاريخ التسجيل</span></div>
-  </div>
-</div>
+    const lignesAutres: unknown[][] = [
+      ...Object.entries(payeurs).map(([who, total]) => [who, "الدعم الدراسي", rMoney(total)]),
+      ...prisesActives.map((p) => [
+        p.parrainNom,
+        `${p.besoins.map(besoinLabel).join("، ")}${p.besoinDetail ? ` (${p.besoinDetail})` : ""} — ${couvertureLabel(p.couverture)}`,
+        p.montantMensuel != null ? `≈ ${rMoney(p.montantMensuel)} / شهر` : "غير محدد",
+      ]),
+    ];
 
-<h2>معلومات العائلة</h2>
-<div class="card"><div class="grid4">
-  ${row("نوع الحالة", f.typeFamille?.nom)}
-  ${row("نوع السكن", f.habitationFamille?.nom)}
-  ${row("العنوان", f.adresseFamille)}
-  ${row("الهاتف", f.phone)}
-  ${row("تاريخ التسجيل", formatDate(f.dateInscription))}
-  ${row("درجة الأسرة", f.degreFamille)}
-  ${row("تستفيد من مساعدة", yn(f.aideFamille))}
-  ${row("دخل شهري", yn(f.revenuMensuel))}
-  ${row("جمعية أخرى", yn(f.beneficieAutreAssociation))}
-  ${row("شخص مريض بالمنزل", yn(f.possedeMalade))}
-  ${f.possedeMalade ? row("اسم المريض", f.personneMalade) + row("صلة القرابة", f.lienParenteMalade) : ""}
-</div></div>
+    parts.push(
+      section(
+        "من يتكفل بماذا",
+        note(
+          "<b>الجمعية</b>: المبالغ المؤداة فعليا من صناديق الجمعية. <b>جهات أخرى</b>: ما يؤديه أشخاص أو هيئات من خارج الجمعية — لا يُحتسب ضمن مصاريف الجمعية.",
+          "blue"
+        ) +
+          `<h3>1. ما تتحمله الجمعية</h3>` +
+          table(
+            [{ label: "البند", align: "start" }, { label: "الفترة" }, { label: "المبلغ", money: true }],
+            lignesAssociation,
+            { totals: ["المجموع", "", rMoney(totalAssociation)] }
+          ) +
+          `<h3>2. ما يتحمله الوسطاء وجهات أخرى</h3>` +
+          table(
+            [{ label: "الجهة / الشخص", align: "start" }, { label: "ما يتكفل به", align: "start" }, { label: "القيمة", money: true }],
+            lignesAutres,
+            { empty: "لا يوجد أي تكفل من خارج الجمعية" }
+          )
+      )
+    );
+  }
 
-<h2>الوالدان</h2>
-<div class="two">
-  ${parent("معلومات الأم", f.mere, f.mere?.photoMere, true)}
-  ${parent("معلومات الأب", f.pere, f.pere?.photoPere)}
-</div>
+  // ---------- Activités ----------
+  if (sections.has("evenements")) {
+    parts.push(
+      section(
+        "الأنشطة",
+        kpis([
+          { label: "المصروف من الجمعية", value: rMoney(totalEvenements), tone: "green" },
+          { label: "المشاركات", value: String(conso.events.length), tone: "blue" },
+          { label: "حضور", value: String(conso.presentCount), tone: "cyan" },
+          { label: "غياب", value: String(conso.absentCount), tone: "red" },
+        ]) +
+          table(
+            [
+              { label: "النشاط", align: "start" },
+              { label: "التاريخ" },
+              { label: "المشارك" },
+              { label: "الحضور" },
+              { label: "المبلغ", money: true },
+            ],
+            conso.events.map((e) => [
+              e.title,
+              e.startDate,
+              e.participant,
+              e.present ? tag("حاضر", "green") : tag("غائب", "red"),
+              rMoney(e.montant),
+            ]),
+            { numbered: true, empty: "لا توجد مشاركات في هذه الفترة" }
+          ),
+        yearLabel
+      )
+    );
+  }
 
-<h2>الأطفال (${enfants.length})</h2>
-${
-  enfants.length
-    ? `<table><thead><tr><th>#</th><th>الصورة</th><th>الاسم</th><th>السن</th><th>تاريخ الازدياد</th><th>المستوى</th><th>المدرسة</th><th>التخصص</th><th>المرض</th></tr></thead><tbody>${enfantsRows}</tbody></table>`
-    : `<p class="muted">لا توجد معلومات عن الأطفال</p>`
-}
+  // ---------- Soutien scolaire ----------
+  if (sections.has("soutien")) {
+    parts.push(
+      section(
+        "الدعم الدراسي",
+        kpis([
+          { label: "الكلفة الإجمالية", value: rMoney(consoEtudes.totalConsomme), tone: "slate" },
+          { label: "المؤدى من الجمعية", value: rMoney(totalSoutienAssociation), tone: "green" },
+          { label: "المؤدى من جهات أخرى", value: rMoney(totalSoutienAutres), tone: "amber" },
+        ]) +
+          table(
+            [
+              { label: "الطفل", align: "start" },
+              { label: "الشهر" },
+              { label: "المركز" },
+              { label: "الكلفة", money: true },
+              { label: "الجمعية", money: true },
+              { label: "جهة أخرى", money: true },
+              { label: "الجهة الأخرى", align: "start" },
+            ],
+            consoEtudes.details.map((x) => {
+              const autre = Math.max(Number(x.montant || 0) - Number(x.montantPaye || 0), 0);
+              return [
+                x.enfantNom,
+                `${x.mois || "—"} ${x.anneeScolaire ? `(${x.anneeScolaire})` : ""}`,
+                x.centre,
+                rMoney(x.montant),
+                rMoney(Math.min(Number(x.montantPaye || 0), Number(x.montant || 0))),
+                autre > 0 ? rMoney(autre) : "—",
+                autre > 0 ? x.payeurAutre || "غير محددة" : "",
+              ];
+            }),
+            { numbered: true, empty: "لا توجد مصاريف دعم دراسي في هذه الفترة" }
+          ),
+        studyYearLabel
+      )
+    );
+  }
 
-<h2>الاستهلاك الإجمالي للعائلة</h2>
-<div class="stats5">
-  <div class="st" style="background:#eff6ff"><b style="color:#1d4ed8">${fmtMoney(totalEvenements)}</b><span>مصاريف الأنشطة</span></div>
-  <div class="st" style="background:#f5f3ff"><b style="color:#6d28d9">${fmtMoney(totalEtudesConsomme)}</b><span>الدعم الدراسي المستهلك</span></div>
-  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(totalEtudesPaye)}</b><span>الدعم المؤدى من الجمعية</span></div>
-  <div class="st" style="background:#fffbeb"><b style="color:#b45309">${fmtMoney(totalEtudesNonPaye)}</b><span>غير مؤدى من الجمعية</span></div>
-  <div class="st" style="background:#ecfeff"><b style="color:#0e7490">${fmtMoney(totalPrisEnChargeAssociation)}</b><span>إجمالي ما دفعته الجمعية</span></div>
-</div>
-<div class="card" style="margin-bottom:12px">
-  <div class="grid2">
-    ${row("القيمة الإجمالية المستهلكة", fmtMoney(totalConsommationGlobale))}
-    ${row("إجمالي ما دفعته الجمعية", fmtMoney(totalPrisEnChargeAssociation))}
-  </div>
-</div>
+  // ---------- Dépenses famille ----------
+  if (sections.has("depenses")) {
+    parts.push(
+      section(
+        "مصاريف الأسرة من صناديق الجمعية",
+        table(
+          [
+            { label: "التاريخ" },
+            { label: "البند", align: "start" },
+            { label: "الصندوق" },
+            { label: "المبلغ", money: true },
+          ],
+          depenses.map((d) => [d.dateDepense, d.note ? `${d.libelle} — ${d.note}` : d.libelle, d.fundNom, rMoney(d.montant)]),
+          { numbered: true, totals: depenses.length ? ["", "المجموع", "", rMoney(totalDepenses)] : null, empty: "لا توجد مصاريف مسجلة" }
+        ),
+        studyYearLabel
+      )
+    );
+  }
 
-<h2>الأنشطة والمبالغ المصروفة — ${esc(yearLabel)}</h2>
-<div class="stats">
-  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(conso.total)}</b><span>المبلغ المصروف في الأنشطة</span></div>
-  <div class="st" style="background:#eef2ff"><b style="color:#4338ca">${conso.events.length}</b><span>عدد المشاركات</span></div>
-  <div class="st" style="background:#f0fdf4"><b style="color:#15803d">${conso.presentCount}</b><span>حضور</span></div>
-  <div class="st" style="background:#fef2f2"><b style="color:#dc2626">${conso.absentCount}</b><span>غياب</span></div>
-</div>
+  // ---------- Prises en charge externes ----------
+  if (sections.has("prises")) {
+    parts.push(
+      section(
+        "التكفل الخارجي (الوسطاء)",
+        table(
+          [
+            { label: "الوسيط", align: "start" },
+            { label: "ما يتكفل به", align: "start" },
+            { label: "النوع" },
+            { label: "القيمة الشهرية", money: true },
+            { label: "الفترة" },
+            { label: "الحالة" },
+          ],
+          prises.map((p) => [
+            `${rEsc(p.parrainNom)}${p.parrainPhone ? `<br/><span class="muted">${rEsc(p.parrainPhone)}</span>` : ""}`,
+            `${p.besoins.map(besoinLabel).join("، ")}${p.besoinDetail ? ` — ${p.besoinDetail}` : ""}${p.remarques ? ` (${p.remarques})` : ""}`,
+            couvertureLabel(p.couverture),
+            p.montantMensuel != null ? rMoney(p.montantMensuel) : "—",
+            [p.dateDebut, p.dateFin].filter(Boolean).join(" ← ") || "—",
+            tag(statutInfo(p.statut).label, p.statut === "ACTIVE" ? "green" : p.statut === "SUSPENDUE" ? "amber" : "slate"),
+          ]),
+          { empty: "لا يوجد أي تكفل خارجي لهذه الأسرة" }
+        ) + note("هذه المساعدات مقدمة من أشخاص خارج الجمعية، وهي غير محتسبة في صناديق الجمعية.", "violet")
+      )
+    );
+  }
 
-${
-  personRows
-    ? `<h3>المصروف حسب الشخص</h3>
-<table><thead><tr><th>الشخص</th><th>حضور</th><th>غياب</th><th>المبلغ المصروف</th></tr></thead><tbody>${personRows}</tbody></table>`
-    : ""
-}
-
-<h3 style="margin-top:14px">تفاصيل الأنشطة</h3>
-${
-  eventRows
-    ? `<table><thead><tr><th>#</th><th>النشاط</th><th>التاريخ</th><th>النوع</th><th>المشارك</th><th>الحالة</th><th>المبلغ</th></tr></thead><tbody>${eventRows}</tbody></table>`
-    : `<p class="muted">لا توجد مشاركات في هذه الفترة</p>`
-}
-
-<h2>الدعم الدراسي — ${esc(studyYearLabel)}</h2>
-<div class="stats">
-  <div class="st" style="background:#f5f3ff"><b style="color:#6d28d9">${fmtMoney(totalEtudesConsomme)}</b><span>المبلغ المستهلك</span></div>
-  <div class="st" style="background:#ecfdf5"><b style="color:#047857">${fmtMoney(totalEtudesPaye)}</b><span>المؤدى من الجمعية</span></div>
-  <div class="st" style="background:#fffbeb"><b style="color:#b45309">${fmtMoney(totalEtudesNonPaye)}</b><span>غير مؤدى من الجمعية</span></div>
-  <div class="st" style="background:#eef2ff"><b style="color:#4338ca">${consoEtudes.details.length}</b><span>عدد حصص/سجلات الدعم</span></div>
-</div>
-
-${
-  soutienParEnfantRows
-    ? `<h3>الدعم حسب الطفل</h3>
-<table><thead><tr><th>الطفل</th><th>المستهلك</th><th>المؤدى من الجمعية</th><th>غير المؤدى من الجمعية</th></tr></thead><tbody>${soutienParEnfantRows}</tbody></table>`
-    : ""
-}
-
-<h3 style="margin-top:14px">تفاصيل الدعم الدراسي</h3>
-${
-  soutienRows
-    ? `<table><thead><tr><th>#</th><th>الطفل</th><th>السنة الدراسية</th><th>الشهر</th><th>المركز</th><th>المتدخل</th><th>المبلغ</th><th>المؤدى</th><th>غير المؤدى</th></tr></thead><tbody>${soutienRows}</tbody></table>`
-    : `<p class="muted">لا توجد مصاريف دعم دراسي في هذه الفترة</p>`
-}
-
-<div class="foot">تم إنشاء هذا التقرير بتاريخ ${esc(new Date().toLocaleDateString("fr-FR"))}</div>
-</body></html>`);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 500);
+  openReport({
+    kind: "ملف الأسرة",
+    title: `عائلة ${nomFamille}`,
+    chips: [
+      f.typeFamille?.nom ? `الفئة: ${f.typeFamille.nom}` : "",
+      `الأنشطة: ${yearLabel}`,
+      `الدراسة: ${studyYearLabel}`,
+    ].filter(Boolean),
+    body: parts.join(""),
+    settings,
+  });
 };
 /* ============================== PAGE ============================== */
 export default function FamillesProfiles() {
@@ -913,6 +972,7 @@ export default function FamillesProfiles() {
     id: 0,
     nom: "",
     prenom: "",
+    sexe: "" as "" | "FILLE" | "GARCON",
     dateNaissance: "",
     estMalade: false,
     typeMaladie: "",
@@ -1012,6 +1072,7 @@ export default function FamillesProfiles() {
                   intervenant: item.intervenant ?? "",
                   montant: Number(item.montant || 0),
                   montantPaye: Number(item.montantPaye || 0),
+                  payeurAutre: item.payeurAutre ?? null,
                   effectue: Boolean(item.effectue),
                 })
               );
@@ -1082,8 +1143,9 @@ export default function FamillesProfiles() {
     }
     setEnfantForm({
       id: enfant.id,
-      nom: enfant.nom || "",
+      nom: enfant.nom || famille?.pere?.nom || "",
       prenom: enfant.prenom || "",
+      sexe: enfant.sexe || "",
       dateNaissance: toInputDate(enfant.dateNaissance),
       estMalade: !!enfant.estMalade,
       typeMaladie: enfant.typeMaladie || "",
@@ -1150,7 +1212,8 @@ export default function FamillesProfiles() {
     const f = enfantForm;
     request(`${API}/enfant/${f.id}`, {
       prenom: f.prenom,
-      nom: f.nom,
+      nom: f.nom.trim() || famille?.pere?.nom || "",
+      sexe: f.sexe || null,
       dateNaissance: f.dateNaissance,
       estMalade: f.estMalade,
       typeMaladie: f.estMalade ? f.typeMaladie : "",
@@ -1286,7 +1349,7 @@ export default function FamillesProfiles() {
    setExportYearOpen(true);
  };
 
- const confirmExport = async () => {
+ const confirmExport = async (sections: Set<string>, settings: ReportSettings) => {
    if (!famille) return;
 
    setExporting(true);
@@ -1312,13 +1375,24 @@ export default function FamillesProfiles() {
 
      const studyData = buildConsoEtudes(exportStudyYear);
 
+     const [depensesRes, prisesRes] = await Promise.all([
+       fetch(`${API}/economie/familles/${familleId}/depenses`),
+       fetch(`${API}/famille/${familleId}/prises-en-charge`),
+     ]);
+     const toutesDepenses: FamilleDepense[] = depensesRes.ok ? await depensesRes.json() : [];
+     const prises: PriseEnCharge[] = prisesRes.ok ? await prisesRes.json() : [];
+
      printFamilleReport(
        famille,
        etudes,
        data,
        studyData,
        exportYear,
-       exportStudyYear
+       exportStudyYear,
+       toutesDepenses.filter((d) => exportStudyYear === "all" || d.anneeScolaire === exportStudyYear),
+       prises,
+       sections,
+       settings
      );
 
      setExportYearOpen(false);
@@ -1610,15 +1684,38 @@ export default function FamillesProfiles() {
             </div>
 
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <TextField label="الاسم" value={f.nom} onChange={(e) => set({ nom: e.target.value })} />
-              <TextField label="اللقب" value={f.prenom} onChange={(e) => set({ prenom: e.target.value })} />
+              <TextField label="الاسم" value={f.prenom} onChange={(e) => set({ prenom: e.target.value })} />
+              <TextField label="النسب" value={f.nom} onChange={(e) => set({ nom: e.target.value })} />
               <TextField
                 label="تاريخ الازدياد"
                 type="date"
                 value={f.dateNaissance}
                 onChange={(e) => set({ dateNaissance: e.target.value })}
               />
-              <div />
+              <div>
+                <span className="mb-1.5 block text-xs font-semibold text-gray-500">الجنس</span>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["FILLE", "بنت"],
+                    ["GARCON", "ولد"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => set({ sexe: value })}
+                      className={`h-11 rounded-xl border text-sm font-bold transition ${
+                        f.sexe === value
+                          ? value === "FILLE"
+                            ? "border-pink-500 bg-pink-500 text-white"
+                            : "border-sky-600 bg-sky-600 text-white"
+                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               <Toggle
                 label="هل الطفل مريض؟"
@@ -1816,6 +1913,9 @@ export default function FamillesProfiles() {
           <PersonCard role="pere" person={famille.pere} />
         </div>
 
+        {/* ============ TAKAFOUL EXTERNE ============ */}
+        <FamillePrisesEnCharge familleId={familleId} />
+
         {/* ============ ENFANTS ============ */}
         <Section title="معلومات الأطفال" subtitle={`${enfants.length} طفل`}>
           {enfants.length === 0 ? (
@@ -1840,6 +1940,11 @@ export default function FamillesProfiles() {
                             {enfant.nom} {enfant.prenom}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1.5">
+                            {enfant.sexe && (
+                              <Badge tone={enfant.sexe === "FILLE" ? "pink" : "indigo"}>
+                                {enfant.sexe === "FILLE" ? "بنت" : "ولد"}
+                              </Badge>
+                            )}
                             {age !== null && <Badge tone="sky">{age} سنة</Badge>}
                             {enfant.estMalade && <Badge tone="red">مريض</Badge>}
                           </div>
@@ -2246,91 +2351,51 @@ export default function FamillesProfiles() {
         {/* ============ DEPENSES FAMILLE ============ */}
         <FamilleDepenses familleId={familleId} />
       </div>
-{exportYearOpen && (
-  <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/50 p-4">
-    <div
-      dir="rtl"
-      className="w-[560px] max-w-full rounded-3xl bg-white p-6 shadow-xl"
-    >
-      <h3 className="text-lg font-extrabold text-gray-800">
-        تصدير ملف العائلة
-      </h3>
+<ReportOptionsModal
+        open={exportYearOpen}
+        title="ملف الأسرة"
+        sections={FAMILLE_REPORT_SECTIONS}
+        busy={exporting}
+        onClose={() => setExportYearOpen(false)}
+        onConfirm={confirmExport}
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-gray-500">فترة الأنشطة</span>
+            <select
+              value={exportYear}
+              onChange={(e) => setExportYear(e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
+            >
+              <option value="all">كل السنوات</option>
+              {Array.from({ length: 8 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <p className="mt-1 text-xs text-gray-400">
-        اختر سنة الأنشطة والسنة الدراسية التي تريد تضمينها في التقرير
-      </p>
-
-      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
-            فترة الأنشطة
-          </span>
-
-          <select
-            value={exportYear}
-            onChange={(e) => setExportYear(e.target.value)}
-            className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
-          >
-            <option value="all">كل السنوات</option>
-
-            {Array.from(
-              { length: 8 },
-              (_, i) => String(new Date().getFullYear() - i)
-            ).map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
-            فترة الدعم الدراسي
-          </span>
-
-          <select
-            value={exportStudyYear}
-            onChange={(e) => setExportStudyYear(e.target.value)}
-            className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
-          >
-            <option value="all">كل السنوات الدراسية</option>
-
-            {studyYears.map((y) => (
-              <option key={y} value={y}>
-                {y}
-              </option>
-            ))}
-
-            {exportStudyYear !== "all" &&
-              !studyYears.includes(exportStudyYear) && (
+          <label className="block">
+            <span className="mb-1.5 block text-xs font-semibold text-gray-500">السنة الدراسية (الدعم والمصاريف)</span>
+            <select
+              value={exportStudyYear}
+              onChange={(e) => setExportStudyYear(e.target.value)}
+              className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
+            >
+              <option value="all">كل السنوات الدراسية</option>
+              {studyYears.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+              {exportStudyYear !== "all" && !studyYears.includes(exportStudyYear) && (
                 <option value={exportStudyYear}>{exportStudyYear}</option>
               )}
-          </select>
-        </label>
-      </div>
-
-      <div className="mt-6 flex justify-end gap-2">
-        <button
-          type="button"
-          onClick={() => setExportYearOpen(false)}
-          className="h-11 rounded-xl border border-gray-200 px-5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-        >
-          إلغاء
-        </button>
-
-        <button
-          type="button"
-          onClick={confirmExport}
-          disabled={exporting}
-          className="h-11 rounded-xl bg-indigo-600 px-6 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
-        >
-          {exporting ? "جاري التحضير..." : "تصدير PDF"}
-        </button>
-      </div>
-    </div>
-  </div>
-)}
+            </select>
+          </label>
+        </div>
+      </ReportOptionsModal>
       <Modal isOpen={modal !== null} onClose={closeModal} className="max-w-[720px] m-4">
         <div className="w-full rounded-3xl bg-white p-6 dark:bg-gray-900 lg:p-10">{renderModal()}</div>
       </Modal>

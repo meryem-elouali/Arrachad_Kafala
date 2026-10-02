@@ -26,6 +26,8 @@ interface CalendarEvent {
   montantMouawiz?: number;
   montantSawaedAlKhayr?: number;
   montantNonVentile?: number;
+  caisseNom?: string | null;
+  caisseChargeNom?: string | null;
 }
 
 interface TypeStat {
@@ -235,55 +237,31 @@ const EventFinancialBreakdown: React.FC<{
   const mouawiz = numberValue(event.montantMouawiz);
   const sawaed = numberValue(event.montantSawaedAlKhayr);
   const unallocated = numberValue(event.montantNonVentile);
+  const total = defined + mouawiz + sawaed + unallocated;
 
-  // سواعد الخير est prioritaire :
-  // son montant ne doit jamais être mélangé aux autres catégories.
-  if (event.sawaedAlKhayr || sawaed > 0) {
-    return (
-      <div className="space-y-2">
-        <MoneyLine
-          label="سواعد الخير"
-          value={sawaed}
-          tone="sawaed"
-          compact
-        />
-
-        {unallocated > 0 && (
-          <MoneyLine
-            label="مبلغ غير موزع"
-            value={unallocated}
-            tone="unallocated"
-            compact
-          />
-        )}
-      </div>
-    );
-  }
+  const chips: { label: string; value: number; cls: string }[] = event.caisseNom
+    ? [{ label: event.caisseNom, value: total, cls: "bg-emerald-50 text-emerald-700" }]
+    : [
+        { label: "الأيتام", value: defined, cls: "bg-blue-50 text-blue-700" },
+        { label: "المعوز", value: mouawiz, cls: "bg-orange-50 text-orange-700" },
+        { label: "سواعد الخير", value: sawaed, cls: "bg-violet-50 text-violet-700" },
+        { label: "غير موزع", value: unallocated, cls: "bg-amber-50 text-amber-700" },
+      ].filter((c) => c.value > 0);
 
   return (
-    <div className="space-y-2">
-      <MoneyLine
-        label="الدرجات المحددة"
-        value={defined}
-        tone="defined"
-        compact
-      />
-
-      <MoneyLine
-        label="معوز / درجة غير محددة"
-        value={mouawiz}
-        tone="mouawiz"
-        compact
-      />
-
-      {unallocated > 0 && (
-        <MoneyLine
-          label="مبلغ غير موزع"
-          value={unallocated}
-          tone="unallocated"
-          compact
-        />
-      )}
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="text-lg font-black text-slate-900 dark:text-white">{formatMoney(total)}</span>
+      <div className="flex flex-wrap gap-1.5">
+        {chips.length === 0 ? (
+          <span className="text-[11px] font-bold text-slate-400">لا توجد مصاريف بعد</span>
+        ) : (
+          chips.map((c) => (
+            <span key={c.label} className={`rounded-full px-2.5 py-1 text-[11px] font-black ${c.cls}`}>
+              {c.label}: {formatMoney(c.value)}
+            </span>
+          ))
+        )}
+      </div>
     </div>
   );
 };
@@ -1335,13 +1313,16 @@ const ListeEvents: React.FC = () => {
 
                                     <div>
                                       <p className="text-[10px] font-bold text-slate-400">
-                                        تاريخ البداية
+                                        التاريخ
                                       </p>
 
                                       <p className="mt-0.5 font-black text-slate-700 dark:text-slate-200">
                                         {formatDate(
                                           event.startDate
                                         )}
+                                        {event.endDate &&
+                                          event.endDate !== event.startDate &&
+                                          ` ← ${formatDate(event.endDate)}`}
                                       </p>
                                     </div>
                                   </div>
@@ -1427,29 +1408,10 @@ const ListeEvents: React.FC = () => {
                                     FINANCES SÉPARÉES
                                 ================================= */}
 
-                                <div className="mt-5 border-t border-slate-100 pt-4 dark:border-slate-800">
-                                  <p className="mb-3 text-[11px] font-black text-slate-400">
-                                    المصاريف حسب الفئة
-                                  </p>
-
+                                <div className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-800">
                                   <EventFinancialBreakdown
                                     event={event}
                                   />
-                                </div>
-
-                                {/* Footer */}
-
-                                <div className="mt-5 flex items-center justify-between border-t border-slate-100 pt-4 dark:border-slate-800">
-                                  <span className="text-[11px] font-bold text-slate-400">
-                                    النهاية:{" "}
-                                    {formatDate(
-                                      event.endDate
-                                    )}
-                                  </span>
-
-                                  <span className="text-xs font-black text-indigo-600 opacity-0 transition group-hover:opacity-100 dark:text-indigo-300">
-                                    عرض التفاصيل
-                                  </span>
                                 </div>
                               </article>
                             </Link>

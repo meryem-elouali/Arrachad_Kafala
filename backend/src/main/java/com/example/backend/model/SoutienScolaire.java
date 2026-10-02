@@ -69,6 +69,28 @@ public class SoutienScolaire {
 
     private Boolean effectue = false;
 
+    /**
+     * Personne ou organisme qui paie la partie non payée par l'association
+     * (montant - montantPaye). Purement informatif.
+     */
+    @Column(name = "payeur_autre", length = 180)
+    private String payeurAutre;
+
+    public String getPayeurAutre() {
+        return payeurAutre;
+    }
+
+    public void setPayeurAutre(String payeurAutre) {
+        this.payeurAutre = payeurAutre;
+    }
+
+    /** Montant payé par l'association, borné entre 0 et le coût total. */
+    public double montantAssociation() {
+        double total = montant != null ? montant : 0.0;
+        double paye = montantPaye != null ? montantPaye : 0.0;
+        return Math.max(0.0, Math.min(paye, total));
+    }
+
     // =========================================================
     // GETTERS / SETTERS
     // =========================================================

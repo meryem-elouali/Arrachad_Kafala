@@ -3,6 +3,7 @@ package com.example.backend.service;
 import com.example.backend.Repository.EconomicCategoryRepository;
 import com.example.backend.Repository.EconomicReceiptRepository;
 import com.example.backend.Repository.FamilyAidRepository;
+import com.example.backend.Repository.SoutienScolaireRepository;
 import com.example.backend.model.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,7 +18,12 @@ import java.util.*;
  * - Entrées  : EconomicReceipt saisies à la main.
  * - Sorties  : calculées automatiquement à partir de
  *     1) les événements (caisse choisie sur l'événement, sinon répartition automatique),
- *     2) les dépenses des familles (FamilyAid).
+ *     2) les dépenses des familles (FamilyAid),
+ *     3) le soutien scolaire : uniquement la part payée par l'association,
+ *        imputée sur la caisse par défaut de la famille de l'enfant.
+ *
+ * Les prises en charge par des personnes extérieures (PriseEnCharge)
+ * ne sont jamais comptées ici.
  */
 @Service
 @Transactional(readOnly = true)
@@ -31,18 +37,47 @@ public class EconomicService {
     private final EconomicCategoryRepository categoryRepository;
     private final EconomicReceiptRepository receiptRepository;
     private final FamilyAidRepository familyAidRepository;
+    private final SoutienScolaireRepository soutienRepository;
     private final EventService eventService;
 
     public EconomicService(
             EconomicCategoryRepository categoryRepository,
             EconomicReceiptRepository receiptRepository,
             FamilyAidRepository familyAidRepository,
+            SoutienScolaireRepository soutienRepository,
             EventService eventService
     ) {
         this.categoryRepository = categoryRepository;
         this.receiptRepository = receiptRepository;
         this.familyAidRepository = familyAidRepository;
+        this.soutienRepository = soutienRepository;
         this.eventService = eventService;
+    }
+
+    // ============================================================
+    // CAISSE PAR DEFAUT D'UNE FAMILLE
+    //
+    // معوز          -> صندوق المعوز
+    // أيتام / لطيم  -> صندوق الأيتام
+    // sinon : selon le degré (défini -> الأيتام, non défini -> المعوز)
+    // ============================================================
+
+    public static String codeCaisseParDefaut(Famille famille) {
+        if (famille == null) return null;
+
+        String type = Libelles.type(famille);
+        if (type != null) {
+            String t = type.trim();
+            if (t.equals("معوز")) return FUND_MOUAWIZ;
+            if (t.equals("أيتام") || t.equals("لطيم")) return FUND_AYTAM;
+        }
+
+        return famille.getDegreFamille() != null ? FUND_AYTAM : FUND_MOUAWIZ;
+    }
+
+    public EconomicCategory caisseParDefaut(Famille famille) {
+        String code = codeCaisseParDefaut(famille);
+        return code == null ? null : categoryRepository.findByCode(code).orElse(null);
     }
 
     // ============================================================
@@ -111,13 +146,29 @@ public class EconomicService {
             ));
         }
 
+        for (SoutienScolaire soutien : data.soutiens) {
+            if (!Objects.equals(data.caisseSoutien.get(soutien), caisseId)) continue;
+
+            Enfant enfant = soutien.getEnfant();
+            String nomEnfant = enfant == null ? null
+                    : ((enfant.getPrenom() != null ? enfant.getPrenom() : "") + " "
+                    + (enfant.getNom() != null ? enfant.getNom() : "")).trim();
+
+            operations.add(operation(
+                    soutien.getId(), "SORTIE", "SOUTIEN", null,
+                    "دعم دراسي" + (soutien.getMois() != null ? " - " + soutien.getMois() : ""),
+                    soutien.getCentre(), nomEnfant, "SOUTIEN-" + soutien.getId(),
+                    BigDecimal.valueOf(soutien.montantAssociation())
+            ));
+        }
+
         for (FamilyAid aide : data.familyAids) {
             if (!sameCaisse(aide.getCaisse(), caisseId)) continue;
 
             operations.add(operation(
                     aide.getId(), "SORTIE", "FAMILLE", aide.getDateDepense(),
                     aide.getLibelle() != null ? aide.getLibelle() : "مصروف عائلة",
-                    "مصاريف الأسر", familleLabel(aide.getFamille()),
+                    "مصاريف الأسر", Libelles.famille(aide.getFamille()),
                     aide.getFamille() != null ? "FAMILLE-" + aide.getFamille().getId() : null,
                     safe(aide.getMontant())
             ));
@@ -137,6 +188,9 @@ public class EconomicService {
     private static class YearData {
         List<EconomicReceipt> receipts;
         List<FamilyAid> familyAids;
+        List<SoutienScolaire> soutiens = new ArrayList<>();
+        // Soutien -> caisse imputée
+        Map<SoutienScolaire, Long> caisseSoutien = new IdentityHashMap<>();
         // Événement -> (caisseId -> montant)
         Map<Event, Map<Long, BigDecimal>> eventAllocations = new LinkedHashMap<>();
         BigDecimal nonVentile = BigDecimal.ZERO;
@@ -159,20 +213,45 @@ public class EconomicService {
 
             Map<Long, BigDecimal> allocation = new HashMap<>();
 
+            BigDecimal total = safe(event.getMontantTotal());
+            BigDecimal charge = safe(event.getChargeSupplementaire()).min(total).max(BigDecimal.ZERO);
+
+            // Caisse des المصاريف الإضافية : explicite, sinon celle de l'événement.
+            EconomicCategory caisseCharge =
+                    event.getCaisseCharge() != null ? event.getCaisseCharge() : event.getCaisse();
+
             if (event.getCaisse() != null) {
-                // Caisse choisie explicitement : tout le coût de l'événement y va.
-                allocation.put(event.getCaisse().getId(), safe(event.getMontantTotal()));
+                // Caisse choisie explicitement : le coût hors charges y va.
+                add(allocation, event.getCaisse().getId(), total.subtract(charge));
             } else {
                 if (index == null) index = new FamilleIndex(eventService.getAllFamilles());
 
-                MontantsCategories m = calculerMontantsCategories(event, index);
+                // Sans caisse pour les charges : comportement historique (charges incluses).
+                BigDecimal chargeExclue = caisseCharge != null ? charge : BigDecimal.ZERO;
+                MontantsCategories m = calculerMontantsCategories(event, index, chargeExclue);
                 add(allocation, caisseParCode.get(FUND_AYTAM), m.degresDefinis());
                 add(allocation, caisseParCode.get(FUND_MOUAWIZ), m.mouawiz());
                 add(allocation, caisseParCode.get(FUND_SAAWED), m.sawaedAlKhayr());
                 data.nonVentile = data.nonVentile.add(m.nonVentile());
             }
 
+            if (caisseCharge != null) {
+                add(allocation, caisseCharge.getId(), charge);
+            }
+
             data.eventAllocations.put(event, allocation);
+        }
+
+        // Soutien scolaire : seule la part payée par l'association compte.
+        for (SoutienScolaire soutien : soutienRepository.findByAnneeScolaireAndEffectueTrue(anneeScolaire)) {
+            if (soutien.montantAssociation() <= 0) continue;
+
+            Famille famille = soutien.getEnfant() != null ? soutien.getEnfant().getFamille() : null;
+            Long caisseId = caisseParCode.get(codeCaisseParDefaut(famille));
+            if (caisseId == null) continue;
+
+            data.soutiens.add(soutien);
+            data.caisseSoutien.put(soutien, caisseId);
         }
 
         return data;
@@ -195,8 +274,10 @@ public class EconomicService {
                 .map(a -> safe(a.getMontant()))
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // Le soutien scolaire n'est pas encore rattaché à une caisse.
-        BigDecimal sortiesSoutien = BigDecimal.ZERO;
+        BigDecimal sortiesSoutien = data.soutiens.stream()
+                .filter(x -> Objects.equals(data.caisseSoutien.get(x), id))
+                .map(x -> BigDecimal.valueOf(x.montantAssociation()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         BigDecimal totalSorties = sortiesEvents.add(sortiesFamilles).add(sortiesSoutien);
 
@@ -263,13 +344,17 @@ public class EconomicService {
         }
     }
 
-    private MontantsCategories calculerMontantsCategories(Event event, FamilleIndex index) {
+    /**
+     * @param chargeExclue part des المصاريف الإضافية imputée sur une autre caisse (0 sinon)
+     */
+    private MontantsCategories calculerMontantsCategories(Event event, FamilleIndex index, BigDecimal chargeExclue) {
         BigDecimal zero = BigDecimal.ZERO;
+        BigDecimal totalEvent = safe(event.getMontantTotal()).subtract(chargeExclue).max(zero);
         List<EventParticipant> participants =
                 event.getParticipants() != null ? event.getParticipants() : List.of();
 
         if (Boolean.TRUE.equals(event.getSawaedAlKhayr())) {
-            return new MontantsCategories(zero, zero, safe(event.getMontantTotal()), zero);
+            return new MontantsCategories(zero, zero, totalEvent, zero);
         }
 
         if ("GLOBAL".equals(event.getTypeMontant())) {
@@ -285,7 +370,7 @@ public class EconomicService {
                 }
             }
 
-            BigDecimal total = safe(event.getMontantTotal());
+            BigDecimal total = totalEvent;
 
             if (hasDefined && !hasMouawiz) return new MontantsCategories(total, zero, zero, zero);
             if (hasMouawiz && !hasDefined) return new MontantsCategories(zero, total, zero, zero);
@@ -319,7 +404,8 @@ public class EconomicService {
             }
         }
 
-        return new MontantsCategories(definis, mouawiz, zero, safe(event.getChargeSupplementaire()));
+        BigDecimal chargeRestante = chargeExclue.signum() > 0 ? zero : safe(event.getChargeSupplementaire());
+        return new MontantsCategories(definis, mouawiz, zero, chargeRestante);
     }
 
     // ============================================================
@@ -333,17 +419,6 @@ public class EconomicService {
 
     private static boolean sameCaisse(EconomicCategory caisse, Long caisseId) {
         return caisse != null && Objects.equals(caisse.getId(), caisseId);
-    }
-
-    public static String familleLabel(Famille famille) {
-        if (famille == null) return null;
-        Mere mere = famille.getMere();
-        if (mere != null) {
-            String nom = ((mere.getPrenom() != null ? mere.getPrenom() : "") + " "
-                    + (mere.getNom() != null ? mere.getNom() : "")).trim();
-            if (!nom.isEmpty()) return "أسرة " + nom;
-        }
-        return "أسرة #" + famille.getId();
     }
 
     private static Map<String, Object> operation(

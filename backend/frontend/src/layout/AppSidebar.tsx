@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "react-router";
 
 import {
+  GroupIcon,
   CalenderIcon,
   GridIcon,
   ListIcon,
@@ -17,7 +18,8 @@ type NavItem = {
   icon: React.ReactNode;
   path: string;
   perm?: string;
-  role?: string;
+  /** Rôles autorisés (sinon : contrôle par permission) */
+  roles?: string[];
   match?: string[];
 };
 
@@ -54,6 +56,14 @@ const GROUPS: NavGroup[] = [
         path: "/basic-tables",
         perm: "FAMILLES",
         match: ["/familleprofile"],
+      },
+
+      {
+        name: "الوسطاء والكفلاء",
+        icon: <GroupIcon />,
+        path: "/parrains",
+        perm: "FAMILLES",
+        match: ["/parrains/"],
       },
 
       {
@@ -108,7 +118,7 @@ const GROUPS: NavGroup[] = [
         name: "الإدارة المالية",
         icon: <PageIcon />,
         path: "/gestion-economique",
-        perm: "ECONOMIE",
+        perm: "FINANCE",
       },
     ],
   },
@@ -127,7 +137,7 @@ const GROUPS: NavGroup[] = [
         name: "إدارة المستخدمين",
         icon: <UserCircleIcon />,
         path: "/utilisateurs",
-        role: "SUPER_ADMIN",
+        roles: ["SUPER_ADMIN", "ADMIN"],
       },
 
       {
@@ -189,10 +199,9 @@ const AppSidebar: React.FC = () => {
   const allowed = useCallback(
     (item: NavItem) => {
       // Restriction par rôle précis
-      if (item.role) {
-        return (
-          session.role ===
-          item.role
+      if (item.roles) {
+        return item.roles.includes(
+          session.role
         );
       }
 

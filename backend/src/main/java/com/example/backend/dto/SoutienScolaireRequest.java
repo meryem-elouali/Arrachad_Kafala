@@ -16,6 +16,15 @@ public class SoutienScolaireRequest {
 
     private Boolean effectue;
     private Double montantPaye;
+    private String payeurAutre;
+
+    public String getPayeurAutre() {
+        return payeurAutre;
+    }
+
+    public void setPayeurAutre(String payeurAutre) {
+        this.payeurAutre = payeurAutre;
+    }
 
     public Double getMontantPaye() {
         return montantPaye;

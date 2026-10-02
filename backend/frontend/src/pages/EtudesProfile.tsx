@@ -66,6 +66,9 @@ interface SoutienRow {
   // Montant réellement payé par nous.
   montantPaye: string | number;
 
+  // Personne / organisme qui paie le reste (montant - montantPaye).
+  payeurAutre: string;
+
   effectue: boolean;
 }
 
@@ -1726,6 +1729,10 @@ useEffect(() => {
                 item.montantPaye ??
                 "",
 
+              payeurAutre:
+                item.payeurAutre ??
+                "",
+
               effectue:
                 Boolean(
                   item.effectue
@@ -1766,6 +1773,8 @@ useEffect(() => {
       montant: "",
 
       montantPaye: "",
+
+      payeurAutre: "",
 
       effectue: false,
     };
@@ -1885,6 +1894,9 @@ useEffect(() => {
                     : Number(
                         row.montantPaye
                       ),
+
+                payeurAutre:
+                  row.payeurAutre || null,
 
                 effectue:
                   row.effectue,
@@ -3130,18 +3142,37 @@ useEffect(() => {
                         Number(
                           item.montantPaye || 0
                         ) && (
-                        <p className="mt-1 text-[11px] font-semibold text-amber-600">
-                          غير مؤدى من طرفنا:{" "}
-                          {(
-                            Number(
-                              item.montant || 0
-                            ) -
-                            Number(
-                              item.montantPaye || 0
-                            )
-                          ).toFixed(2)}{" "}
-                          DH
-                        </p>
+                        <div className="mt-1 space-y-1">
+                          <p className="text-[11px] font-semibold text-amber-600">
+                            غير مؤدى من طرفنا:{" "}
+                            {(
+                              Number(
+                                item.montant || 0
+                              ) -
+                              Number(
+                                item.montantPaye || 0
+                              )
+                            ).toFixed(2)}{" "}
+                            DH
+                          </p>
+                          <input
+                            value={item.payeurAutre || ""}
+                            onChange={(e) =>
+                              updateSoutien(item.id, "payeurAutre", e.target.value)
+                            }
+                            placeholder="من يؤدي الباقي؟ (شخص أو جهة)"
+                            className="h-8 w-full rounded-lg border border-amber-200 bg-amber-50 px-2 text-xs"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSoutien(item.id, "montantPaye", Number(item.montant || 0))
+                            }
+                            className="text-[11px] font-bold text-emerald-700 hover:underline"
+                          >
+                            أدت الجمعية المبلغ كاملا
+                          </button>
+                        </div>
                       )}
 
                     </td>

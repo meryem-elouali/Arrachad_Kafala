@@ -46,7 +46,8 @@ public class EnfantController {
     @PostMapping
     public ResponseEntity<Enfant> addEnfant(
             @RequestParam("prenom") String prenom,
-            @RequestParam("nom") String nom,
+            @RequestParam(value = "nom", required = false) String nom,
+            @RequestParam(value = "sexe", required = false) String sexe,
             @RequestParam("dateNaissance") String dateNaissance,
             @RequestParam("familleId") Long familleId,
             @RequestParam("niveauscolaireId") Long niveauscolaireId,
@@ -68,6 +69,7 @@ public class EnfantController {
         Enfant enfant = new Enfant();
         enfant.setPrenom(prenom);
         enfant.setNom(nom);
+        enfant.setSexe(sexe);
         enfant.setDateNaissance(dateNaissance);
         enfant.setTypeMaladie(typeMaladie);
         enfant.setEstMalade(estMalade != null ? estMalade : false);
@@ -100,6 +102,7 @@ public class EnfantController {
         if (payload.containsKey("dateNaissance")) enfant.setDateNaissance((String) payload.get("dateNaissance"));
         if (payload.containsKey("estMalade")) enfant.setEstMalade((Boolean) payload.get("estMalade"));
         if (payload.containsKey("typeMaladie")) enfant.setTypeMaladie((String) payload.get("typeMaladie"));
+        if (payload.containsKey("sexe")) enfant.setSexe((String) payload.get("sexe"));
 
         if (payload.containsKey("photoEnfantBase64")) {
             String photoBase64 = (String) payload.get("photoEnfantBase64");

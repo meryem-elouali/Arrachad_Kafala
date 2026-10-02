@@ -20,6 +20,8 @@ import ListeEvents from "./pages/ListeEvents";
 import EventDetails from "./pages/EventDetails";
 import DegreFamillePage from "./pages/DegreFamillePage";
 import GestionEconomique from "./pages/GestionEconomique";
+import Parrains from "./pages/Parrains";
+import ParrainProfile from "./pages/ParrainProfile";
 import BasicTables from "./pages/Tables/BasicTables";
 import SuiviEtudes from "./pages/Tables/SuiviEtudes";
 import AjoutFamille from "./pages/Forms/AjoutFamille";
@@ -69,6 +71,16 @@ export default function App() {
               <Route
                 path="/degre-famille"
                 element={<DegreFamillePage />}
+              />
+
+              <Route
+                path="/parrains"
+                element={<Parrains />}
+              />
+
+              <Route
+                path="/parrains/:id"
+                element={<ParrainProfile />}
               />
 
               <Route
