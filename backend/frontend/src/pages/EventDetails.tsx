@@ -13,6 +13,9 @@ import { pdf } from "@react-pdf/renderer";
 import ParticipantsPdf, { ParticipantRow } from "./ParticipantsPdf";
 import EventPdf, { EVENT_REPORT_SECTIONS } from "./EventPdf";
 import { ORGANISATEURS, Organisateur, organisateurLabel, organisateurOf } from "../lib/organisateur";
+import { REFERENCE_HEADER, exportParticipantsExcel } from "../lib/participantsExcel";
+import { RUBRIQUES } from "../lib/labels";
+import { schoolYearOf, schoolYearsList } from "../lib/schoolYear";
 import ReportOptionsModal from "../components/common/ReportOptionsModal";
 import { ReportSettings, loadReportSettings } from "../lib/report";
 import { PriseEnCharge, besoinLabel, resumePec } from "../lib/prisesEnCharge";
@@ -104,14 +107,7 @@ const getParticipantTypeLabel = (t?: ParticipantType) => (t ? CIBLE_LABEL[t] : "
 
 const participantKey = (type: ParticipantType, id: number) => `${type}-${id}`;
 
-const getAnneeScolaireFromDate = (dateStr: string) => {
-  if (!dateStr) return "";
-  const [y, m] = dateStr.split("-");
-  const year = Number(y);
-  const month = Number(m);
-  if (!year || !month) return "";
-  return month >= 9 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
-};
+const getAnneeScolaireFromDate = (dateStr: string) => schoolYearOf(dateStr);
 
 const convertToBase64 = (file: File): Promise<string> =>
   new Promise((resolve, reject) => {
@@ -254,11 +250,7 @@ const EventDetails: React.FC = () => {
     onUpdate: ({ editor }) => setDescription(editor.getHTML()),
   });
 
-  const currentYear = new Date().getFullYear();
-  const anneesScolaires = Array.from({ length: 21 }, (_, i) => {
-    const start = currentYear - 10 + i;
-    return `${start}/${start + 1}`;
-  });
+  const anneesScolaires = schoolYearsList(10, 10);
 
   /* ---------- Chargement ---------- */
   const applyEventData = (data: EventDetail) => {
@@ -845,26 +837,42 @@ const EventDetails: React.FC = () => {
     }
   };
 
-  const exportToExcel = () => {
+  const exportToExcel = async () => {
     if (!event) return;
-    const rows = participantsList.map((p, index) => {
+    const enfantOf = (p: Participant) => (p.type === "ENFANT" ? allEnfants.find((e: any) => Number(e.id) === Number(p.id)) : undefined);
+    const rows = participantsList.map((p) => {
+      const famille = resolveFamilleParticipant(p);
       const degre = resolveDegreParticipant(p);
+      const enfant: any = enfantOf(p);
+      const nomFamille = famille?.pere?.nom || famille?.mere?.nom || pereNomOf(p) || "";
       return {
-        "#": index + 1,
-        REFERENCE: p.uniqueKey,
-        النوع: getParticipantTypeLabel(p.type),
-        الاسم: p.type === "FAMILLE" ? "عائلة" : p.nom || "",
-        اللقب: p.type === "FAMILLE" ? pereNomOf(p) : p.prenom || "",
-        الدرجة: degre == null ? "معوز" : degre,
-        "المبلغ (DH)": typeMontant === "GLOBAL" ? "-" : getMontantParticipant(p),
-        الحضور: (p.present ?? true) ? "نعم" : "لا",
-        "سبب الغياب": p.motif || "",
+        reference: p.uniqueKey || "",
+        nomComplet: p.type === "FAMILLE" ? `عائلة ${nomFamille}`.trim() : `${p.prenom || ""} ${p.nom || ""}`.trim(),
+        qualite: getParticipantTypeLabel(p.type),
+        famille: nomFamille ? `عائلة ${nomFamille}` : "",
+        sexe: enfant?.sexe === "FILLE" ? "أنثى" : enfant?.sexe === "GARCON" ? "ذكر" : "",
+        categorie: famille?.typeFamille?.nom || (degre == null ? "معوز" : ""),
+        degre: degre == null ? "—" : String(degre),
+        present: p.present ?? true,
+        motif: (p.present ?? true) ? "" : p.motif || "",
+        montant: typeMontant === "GLOBAL" ? null : getMontantParticipant(p),
+        priseEnCharge: pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، "),
       };
     });
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "المشاركون");
-    XLSX.writeFile(workbook, `لائحة_المشاركة_${event.title}.xlsx`);
+    await exportParticipantsExcel(
+      {
+        titre: event.title,
+        type: event.eventType?.name,
+        dates: event.endDate && event.endDate !== event.startDate ? `${event.startDate} ← ${event.endDate}` : event.startDate,
+        lieu: event.place,
+        anneeScolaire: event.anneeScolaire,
+        organisateur: organisateurLabel(event.organisateur),
+        financement: event.caisseNom ? event.caisseNom : event.sawaedAlKhayr ? RUBRIQUES.SAWAED.fonds : "توزيع تلقائي حسب فئة الأسرة",
+        montantGlobal: typeMontant === "GLOBAL" ? montantTotalEvent : null,
+      },
+      rows,
+      `لائحة_المشاركين_${event.title}`
+    );
   };
 
   const importFromExcel = (file: File) => {
@@ -873,17 +881,33 @@ const EventDetails: React.FC = () => {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const workbook = XLSX.read(data, { type: "array" });
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json<any>(worksheet);
+      const matrix = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: "" });
+
+      // Ligne d'en-tête : celle qui contient la colonne « الحضور »
+      const headerIndex = matrix.findIndex((r) => Array.isArray(r) && r.some((c) => String(c).trim() === "الحضور"));
+      if (headerIndex < 0) {
+        alert("لم يتم العثور على عمود «الحضور» في الملف.");
+        return;
+      }
+      const header = matrix[headerIndex].map((c: any) => String(c).trim());
+      const refCol = header.findIndex((h: string) => h === REFERENCE_HEADER || h === "REFERENCE");
+      const presCol = header.indexOf("الحضور");
+      const motifCol = header.indexOf("سبب الغياب");
+      if (refCol < 0) {
+        alert("لم يتم العثور على عمود المرجع في الملف. استعمل ملفا مُصدَّرا من هذه الصفحة.");
+        return;
+      }
+
+      const parRef = new Map<string, any[]>();
+      matrix.slice(headerIndex + 1).forEach((r) => r[refCol] && parRef.set(String(r[refCol]), r));
 
       setParticipantsList((prev) =>
         prev.map((p) => {
-          const row = rows.find((r: any) => r.REFERENCE === p.uniqueKey);
+          const row = parRef.get(String(p.uniqueKey));
           if (!row) return p;
-          return {
-            ...p,
-            present: row["الحضور"] === "نعم" || row["الحضور"] === "oui",
-            motif: row["سبب الغياب"] || "",
-          };
+          const pres = String(row[presCol]).trim();
+          const present = pres === "حاضر" || pres === "نعم" || pres.toLowerCase() === "oui";
+          return { ...p, present, motif: present ? "" : String(motifCol >= 0 ? row[motifCol] : "") };
         })
       );
     };
@@ -932,7 +956,7 @@ const EventDetails: React.FC = () => {
             onClick={openEditEventInfo}
             className="inline-flex w-fit items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-slate-800"
           >
-            ✎ تعديل معلومات النشاط
+            تعديل معلومات النشاط
           </button>
         </div>
 
@@ -1178,10 +1202,7 @@ const EventDetails: React.FC = () => {
             </>
           ) : (
             <div className="mt-6 rounded-2xl border border-dashed border-gray-200 bg-gray-50/70 px-6 py-10 text-center dark:border-gray-700 dark:bg-gray-800/40">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-xl shadow-sm dark:bg-gray-900">
-                🖼️
-              </div>
-              <p className="mt-3 text-sm font-black text-gray-600 dark:text-gray-300">
+              <p className="text-sm font-black text-gray-600 dark:text-gray-300">
                 لا توجد صور أو ملفات حتى الآن
               </p>
               <p className="mt-1 text-xs text-gray-400">
@@ -1340,22 +1361,38 @@ const EventDetails: React.FC = () => {
             </div>
             {chargeSupp > 0 && chargeCaisseId === "" && !event?.caisseNom && typeMontant === "DISTRIBUE" && (
               <p className="text-xs font-bold text-amber-700 md:col-span-3">
-                ⚠ بدون اختيار صندوق، لن تُخصم هذه المصاريف الإضافية من أي صندوق.
+                تنبيه: بدون اختيار صندوق، لن تُخصم هذه المصاريف الإضافية من أي صندوق.
               </p>
             )}
           </div>
 
-          {/* Résumé comptable : catégories strictement séparées */}
-          {isSawaedAlKhayr ? (
+          {/* Résumé comptable : chaque montant avec sa rubrique (catégorie + fonds) */}
+          {event.caisseNom ? (
+            <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black text-emerald-700">{event.caisseNom}</p>
+                  <p className="mt-1 text-sm font-bold text-emerald-900">
+                    {typeMontant === "GLOBAL" ? "مبلغ إجمالي للنشاط" : "مجموع المبالغ الموزعة على المستفيدين"}
+                    {chargeSupp > 0 ? " مع المصاريف الإضافية" : ""}
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-700">
+                    صندوق محدد للنشاط: لا يُطبق التوزيع التلقائي حسب فئة الأسرة.
+                  </p>
+                </div>
+                <strong className="text-2xl font-black text-emerald-900">{formatMoney(montantTotalEvent)}</strong>
+              </div>
+            </div>
+          ) : isSawaedAlKhayr ? (
             <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50 p-5">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs font-black text-violet-600">سواعد الخير</p>
+                  <p className="text-xs font-black text-violet-600">{RUBRIQUES.SAWAED.complet}</p>
                   <p className="mt-1 text-sm font-bold text-violet-800">
-                    المبلغ الكامل لهذا النشاط مصنف في سواعد الخير فقط
+                    {typeMontant === "GLOBAL" ? "مبلغ إجمالي للنشاط" : "مجموع المبالغ الموزعة على المستفيدين"}
                   </p>
                   <p className="mt-1 text-xs text-violet-600">
-                    لا يدخل في الدرجات المحددة ولا في مصاريف المعوزين.
+                    لا يُحتسب ضمن {RUBRIQUES.AYTAM.fonds} ولا ضمن {RUBRIQUES.MOUAWIZ.fonds}.
                   </p>
                 </div>
                 <strong className="text-2xl font-black text-violet-900">
@@ -1367,15 +1404,15 @@ const EventDetails: React.FC = () => {
             <div className="mt-5 space-y-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <SummaryCard
-                  title="المبلغ المستهلك للدرجات المحددة"
+                  title={RUBRIQUES.AYTAM.complet}
                   value={formatMoney(montantDegresDefinisAffiche)}
-                  subtitle={`${participantsDegreDefini.length} مستفيد بدرجة محددة`}
+                  subtitle={`${typeMontant === "GLOBAL" ? "مبلغ إجمالي" : "مبالغ موزعة"} · ${participantsDegreDefini.length} مستفيد من أسر ذات درجة`}
                   tone="blue"
                 />
                 <SummaryCard
-                  title="المبلغ المستهلك للمعوزين / الدرجة غير المحددة"
+                  title={RUBRIQUES.MOUAWIZ.complet}
                   value={formatMoney(montantMouawizAffiche)}
-                  subtitle={`${participantsDegreNonDefini.length} مستفيد بدون درجة محددة`}
+                  subtitle={`${typeMontant === "GLOBAL" ? "مبلغ إجمالي" : "مبالغ موزعة"} · ${participantsDegreNonDefini.length} مستفيد من أسر بدون درجة`}
                   tone="orange"
                 />
               </div>
@@ -1384,9 +1421,9 @@ const EventDetails: React.FC = () => {
                 <div className="rounded-2xl border border-slate-300 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-black text-slate-700">مبلغ غير موزع بين الفئتين</p>
+                      <p className="text-sm font-black text-slate-700">{RUBRIQUES.NON_AFFECTE.complet}</p>
                       <p className="mt-1 text-xs text-slate-500">
-                        يحدث هذا مثلاً مع مبلغ إجمالي يشمل معوزين ودرجات محددة معاً، أو مع مصاريف إضافية غير منسوبة لفئة.
+                        مبلغ إجمالي يشمل أسرا من الفئتين معا، أو مصاريف إضافية بدون صندوق. حدد صندوقا للنشاط أو للمصاريف الإضافية.
                       </p>
                     </div>
                     <strong className="text-xl font-black text-slate-800">
@@ -1397,7 +1434,7 @@ const EventDetails: React.FC = () => {
               )}
 
               <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-xs font-bold text-slate-500">
-                لا يتم جمع مصاريف الدرجات المحددة مع مصاريف المعوزين أو سواعد الخير في رقم واحد.
+                تُعرض مصاريف كل صندوق على حدة ولا تُجمع في مبلغ واحد.
               </div>
             </div>
           )}
@@ -1413,7 +1450,7 @@ const EventDetails: React.FC = () => {
           return (
             <div className="mb-4 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-800">
               <p className="font-black">
-                🤝 {concernes.length} من المشاركين ينتمون لأسر لها تكفل خارجي ({besoins.map(besoinLabel).join("، ")})
+                {concernes.length} من المشاركين ينتمون لأسر لها تكفل خارجي ({besoins.map(besoinLabel).join("، ")})
               </p>
               <p className="mt-1 text-xs">
                 تحقق من أن هذا النشاط لا يكرر ما يقدمه الوسيط. يمكنك الإبقاء عليهم إذا كان النشاط لا يخص نفس الحاجة.
@@ -1466,7 +1503,7 @@ const EventDetails: React.FC = () => {
                             title={pecParticipant(p).map((x) => `${x.parrainNom}: ${resumePec(x)}`).join("\n")}
                             className="inline-block max-w-[220px] truncate rounded-full bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700"
                           >
-                            🤝 {pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، ")}
+                            تكفل خارجي: {pecParticipant(p).flatMap((x) => x.besoins).map(besoinLabel).join("، ")}
                           </span>
                         )}
                       </td>
@@ -1670,7 +1707,7 @@ const EventDetails: React.FC = () => {
                     </p>
                     {pecParticipant(p).length > 0 && (
                       <p className="mt-1 text-xs font-bold text-violet-700">
-                        🤝 تكفل خارجي:{" "}
+                        تكفل خارجي:{" "}
                         {pecParticipant(p)
                           .map((x) => `${x.parrainNom} (${resumePec(x)})`)
                           .join(" · ")}

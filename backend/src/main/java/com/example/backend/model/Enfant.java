@@ -29,6 +29,31 @@ public class Enfant {
     @Column(length = 10)
     private String sexe;
 
+    // =========================================================
+    // STATUT SCOLAIRE
+    // EN_COURS  : suivi dans « تتبع الدراسة »
+    // ARRETE    : a arrêté ses études (historique conservé)
+    // NON_SUIVI : ne nécessite pas de suivi scolaire
+    // Valeur absente (enfants existants) = EN_COURS.
+    // =========================================================
+    public static final String STATUT_EN_COURS = "EN_COURS";
+    public static final String STATUT_ARRETE = "ARRETE";
+    public static final String STATUT_NON_SUIVI = "NON_SUIVI";
+    public static final java.util.List<String> STATUTS_SCOLAIRES =
+            java.util.List.of(STATUT_EN_COURS, STATUT_ARRETE, STATUT_NON_SUIVI);
+
+    @Column(name = "statut_scolaire", length = 12)
+    private String statutScolaire;
+
+    @Column(name = "date_arret_etudes")
+    private LocalDate dateArretEtudes;
+
+    @Column(name = "motif_arret_etudes", length = 255)
+    private String motifArretEtudes;
+
+    @Column(name = "remarque_scolaire", length = 1000)
+    private String remarqueScolaire;
+
     @ManyToOne
     @JoinColumn(name = "famille_id")
     @JsonIgnore
@@ -177,5 +202,52 @@ public class Enfant {
                 && !famille.getPere().getNom().isBlank()) {
             nom = famille.getPere().getNom().trim();
         }
+    }
+
+    public String getStatutScolaire() {
+        // Valeur absente (enfants existants) = en cours d'études.
+        // Attention : List.of(...).contains(null) lève une NullPointerException.
+        return statutScolaire != null && STATUTS_SCOLAIRES.contains(statutScolaire) ? statutScolaire : STATUT_EN_COURS;
+    }
+
+    /** Statut normalisé ; les informations d'arrêt ne sont conservées que pour ARRETE. */
+    public void setStatutScolaire(String statut) {
+        String s = statut == null ? STATUT_EN_COURS : statut.trim().toUpperCase();
+        if (!STATUTS_SCOLAIRES.contains(s)) {
+            throw new IllegalArgumentException("Statut scolaire invalide : " + statut);
+        }
+        this.statutScolaire = s;
+        if (!STATUT_ARRETE.equals(s)) {
+            this.dateArretEtudes = null;
+            this.motifArretEtudes = null;
+        }
+    }
+
+    public boolean estScolarise() {
+        return STATUT_EN_COURS.equals(getStatutScolaire());
+    }
+
+    public LocalDate getDateArretEtudes() {
+        return dateArretEtudes;
+    }
+
+    public void setDateArretEtudes(LocalDate dateArretEtudes) {
+        this.dateArretEtudes = dateArretEtudes;
+    }
+
+    public String getMotifArretEtudes() {
+        return motifArretEtudes;
+    }
+
+    public void setMotifArretEtudes(String motifArretEtudes) {
+        this.motifArretEtudes = motifArretEtudes;
+    }
+
+    public String getRemarqueScolaire() {
+        return remarqueScolaire;
+    }
+
+    public void setRemarqueScolaire(String remarqueScolaire) {
+        this.remarqueScolaire = remarqueScolaire;
     }
 }

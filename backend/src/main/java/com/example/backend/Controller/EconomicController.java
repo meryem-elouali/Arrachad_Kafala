@@ -61,7 +61,7 @@ public class EconomicController {
     @Transactional
     public void initializeSystemFunds() {
         ensureSystemFund(FUND_AYTAM, "صندوق الأيتام", 1);
-        ensureSystemFund(FUND_MOUAWIZ, "صندوق المعوز", 2);
+        ensureSystemFund(FUND_MOUAWIZ, "صندوق المعوزين", 2);
         ensureSystemFund(FUND_SAAWED, "صندوق سواعد الخير", 3);
         ensureSystemFund(FUND_SARATAN, "صندوق السرطان", 4);
     }
@@ -522,8 +522,7 @@ public class EconomicController {
 
     // L'année scolaire commence en septembre
     private String schoolYearOf(LocalDate date) {
-        int start = date.getMonthValue() >= 9 ? date.getYear() : date.getYear() - 1;
-        return start + "/" + (start + 1);
+        return com.example.backend.service.Valeurs.anneeScolaire(date);
     }
 
     // ============================================================

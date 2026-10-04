@@ -116,15 +116,8 @@ public class Etude {
             return false;
         }
 
-        LocalDate now = LocalDate.now();
-
-        int anneeDepart =
-                now.getMonthValue() >= 9
-                        ? now.getYear()
-                        : now.getYear() - 1;
-
         String actuelle =
-                anneeDepart + "/" + (anneeDepart + 1);
+                com.example.backend.service.Valeurs.anneeScolaire(LocalDate.now());
 
         String valeur =
                 anneeScolaire

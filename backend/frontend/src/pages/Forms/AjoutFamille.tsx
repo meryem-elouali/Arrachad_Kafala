@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import { currentSchoolYear } from "../../lib/schoolYear";
+import { STATUTS_SCOLAIRES } from "../../lib/labels";
 
 const API = "http://localhost:8080/api";
 
@@ -32,6 +34,10 @@ interface EnfantData {
   nomManuel: boolean;
   prenom: string;
   sexe: "" | "FILLE" | "GARCON";
+  /** EN_COURS : suivi dans « تتبع الدراسة » ; ARRETE ; NON_SUIVI */
+  statutScolaire: "EN_COURS" | "ARRETE" | "NON_SUIVI";
+  dateArretEtudes: string;
+  motifArretEtudes: string;
   dateNaissance: string;
   estMalade: boolean;
   typeMaladie: string;
@@ -45,11 +51,7 @@ interface EnfantData {
 /* ============================== HELPERS ============================== */
 const todayISO = () => new Date().toLocaleDateString("en-CA");
 
-const schoolYear = () => {
-  const n = new Date();
-  const y = n.getFullYear();
-  return n.getMonth() >= 8 ? `${y}/${y + 1}` : `${y - 1}/${y}`;
-};
+const schoolYear = () => currentSchoolYear();
 
 const emptyPerson = (): PersonData => ({
   nom: "",
@@ -72,6 +74,9 @@ const emptyEnfant = (): EnfantData => ({
   nomManuel: false,
   prenom: "",
   sexe: "",
+  statutScolaire: "EN_COURS",
+  dateArretEtudes: "",
+  motifArretEtudes: "",
   dateNaissance: "",
   estMalade: false,
   typeMaladie: "",
@@ -636,7 +641,9 @@ export default function AjoutFamille() {
       famille.phone.trim(),
       pere.nom.trim() && pere.prenom.trim() && (pere.estDecedee || (pere.cin.trim() && pere.phone.trim())),
       mere.nom.trim() && mere.prenom.trim() && (mere.estDecedee || (mere.cin.trim() && mere.phone.trim())),
-      ...enfants.map((e) => e.nom.trim() && e.prenom.trim() && e.sexe && e.niveauId && e.ecoleId),
+      ...enfants.map(
+        (e) => e.nom.trim() && e.prenom.trim() && e.sexe && (e.statutScolaire !== "EN_COURS" || (e.niveauId && e.ecoleId))
+      ),
     ];
     return Math.round((checks.filter(Boolean).length / checks.length) * 100);
   }, [famille, pere, mere, enfants]);
@@ -660,7 +667,8 @@ export default function AjoutFamille() {
     enfants.forEach((e, i) => {
       if (!e.nom.trim() || !e.prenom.trim()) errs.push(`الطفل ${i + 1}: أدخل الاسم والنسب`);
       if (!e.sexe) errs.push(`الطفل ${i + 1}: حدد الجنس (بنت أو ولد)`);
-      if (!e.niveauId || !e.ecoleId) errs.push(`الطفل ${i + 1}: اختر المستوى الدراسي والمؤسسة`);
+      if (e.statutScolaire === "EN_COURS" && (!e.niveauId || !e.ecoleId))
+        errs.push(`الطفل ${i + 1}: اختر المستوى الدراسي والمؤسسة`);
     });
     return errs;
   };
@@ -732,18 +740,25 @@ export default function AjoutFamille() {
             nom: e.nom.trim() || pere.nom.trim(),
             prenom: e.prenom.trim(),
             sexe: e.sexe,
+            statutScolaire: e.statutScolaire,
+            dateArretEtudes: e.statutScolaire === "ARRETE" ? e.dateArretEtudes || null : null,
+            motifArretEtudes: e.statutScolaire === "ARRETE" ? e.motifArretEtudes.trim() || null : null,
             dateNaissance: e.dateNaissance,
             estMalade: e.estMalade,
             typeMaladie: e.estMalade ? e.typeMaladie : "",
           }))
         ),
         etudesJson: JSON.stringify(
-          enfants.map((e) => ({
-            ecoleId: e.ecoleId,
-            niveauScolaireId: e.niveauId,
-            specialiteId: e.specialiteId || null,
-            anneeScolaire: e.anneeScolaire,
-          }))
+          enfants.map((e) =>
+            e.statutScolaire === "EN_COURS"
+              ? {
+                  ecoleId: e.ecoleId,
+                  niveauScolaireId: e.niveauId,
+                  specialiteId: e.specialiteId || null,
+                  anneeScolaire: e.anneeScolaire,
+                }
+              : null
+          )
         ),
       });
 
@@ -974,16 +989,7 @@ export default function AjoutFamille() {
                       value={e.dateNaissance}
                       onChange={(ev) => setE(i, { dateNaissance: ev.target.value })}
                     />
-                    <TextField
-                      label="السنة الدراسية"
-                      placeholder="YYYY/YYYY"
-                      value={e.anneeScolaire}
-                      onChange={(ev) => {
-                        let v = ev.target.value.replace(/\D/g, "").slice(0, 8);
-                        if (v.length > 4) v = `${v.slice(0, 4)}/${v.slice(4)}`;
-                        setE(i, { anneeScolaire: v });
-                      }}
-                    />
+                    <div />
 
                     <Toggle
                       label="هل الابن مريض؟"
@@ -997,42 +1003,100 @@ export default function AjoutFamille() {
                       onChange={(ev) => setE(i, { typeMaladie: ev.target.value })}
                     />
 
-                    <div>
-                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">
-                        المستوى الدراسي <span className="text-red-500">*</span>
-                      </span>
-                      <Select
-                        options={niveaux}
-                        value={e.niveauId}
-                        onChange={(v) => setE(i, { niveauId: v })}
-                        placeholder="اختر المستوى الدراسي"
-                        apiUrl={`${API}/enfant/niveauScolaire`}
-                        onNewItem={(o) => setNiveaux((p) => [...p, o])}
-                      />
-                    </div>
-                    <div>
-                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">
-                        المؤسسة <span className="text-red-500">*</span>
-                      </span>
-                      <Select
-                        options={ecoles}
-                        value={e.ecoleId}
-                        onChange={(v) => setE(i, { ecoleId: v })}
-                        placeholder="اختر المؤسسة"
-                        apiUrl={`${API}/enfant/ecole`}
-                        onNewItem={(o) => setEcoles((p) => [...p, o])}
-                      />
-                    </div>
-                    <div className="md:col-span-2">
-                      <span className="mb-1.5 block text-xs font-semibold text-gray-500">التخصص</span>
-                      <Select
-                        options={specialites}
-                        value={e.specialiteId}
-                        onChange={(v) => setE(i, { specialiteId: v })}
-                        placeholder="اختر التخصص"
-                        apiUrl={`${API}/enfant/specialite`}
-                        onNewItem={(o) => setSpecialites((p) => [...p, o])}
-                      />
+                    <div className="md:col-span-2 rounded-2xl border border-gray-200 bg-white p-4">
+                      <span className="mb-2 block text-xs font-semibold text-gray-500">الوضعية الدراسية</span>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {STATUTS_SCOLAIRES.map((st) => (
+                          <button
+                            key={st.value}
+                            type="button"
+                            onClick={() => setE(i, { statutScolaire: st.value as EnfantData["statutScolaire"] })}
+                            className={`h-11 rounded-xl border text-sm font-bold transition ${
+                              e.statutScolaire === st.value
+                                ? "border-indigo-600 bg-indigo-600 text-white"
+                                : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                            }`}
+                          >
+                            {st.label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {e.statutScolaire === "EN_COURS" && (
+                        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <TextField
+                            label="السنة الدراسية"
+                            placeholder="YYYY/YYYY"
+                            value={e.anneeScolaire}
+                            onChange={(ev) => {
+                              let v = ev.target.value.replace(/\D/g, "").slice(0, 8);
+                              if (v.length > 4) v = `${v.slice(0, 4)}/${v.slice(4)}`;
+                              setE(i, { anneeScolaire: v });
+                            }}
+                          />
+                          <div />
+                        <div>
+                          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                            المستوى الدراسي <span className="text-red-500">*</span>
+                          </span>
+                          <Select
+                            options={niveaux}
+                            value={e.niveauId}
+                            onChange={(v) => setE(i, { niveauId: v })}
+                            placeholder="اختر المستوى الدراسي"
+                            apiUrl={`${API}/enfant/niveauScolaire`}
+                            onNewItem={(o) => setNiveaux((p) => [...p, o])}
+                          />
+                        </div>
+                        <div>
+                          <span className="mb-1.5 block text-xs font-semibold text-gray-500">
+                            المؤسسة <span className="text-red-500">*</span>
+                          </span>
+                          <Select
+                            options={ecoles}
+                            value={e.ecoleId}
+                            onChange={(v) => setE(i, { ecoleId: v })}
+                            placeholder="اختر المؤسسة"
+                            apiUrl={`${API}/enfant/ecole`}
+                            onNewItem={(o) => setEcoles((p) => [...p, o])}
+                          />
+                        </div>
+                        <div className="md:col-span-2">
+                          <span className="mb-1.5 block text-xs font-semibold text-gray-500">التخصص</span>
+                          <Select
+                            options={specialites}
+                            value={e.specialiteId}
+                            onChange={(v) => setE(i, { specialiteId: v })}
+                            placeholder="اختر التخصص"
+                            apiUrl={`${API}/enfant/specialite`}
+                            onNewItem={(o) => setSpecialites((p) => [...p, o])}
+                          />
+                        </div>
+                        </div>
+                      )}
+
+                      {e.statutScolaire === "ARRETE" && (
+                        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                          <TextField
+                            label="تاريخ التوقف (اختياري)"
+                            type="date"
+                            max={todayISO()}
+                            value={e.dateArretEtudes}
+                            onChange={(ev) => setE(i, { dateArretEtudes: ev.target.value })}
+                          />
+                          <TextField
+                            label="سبب التوقف (اختياري)"
+                            value={e.motifArretEtudes}
+                            onChange={(ev) => setE(i, { motifArretEtudes: ev.target.value })}
+                          />
+                        </div>
+                      )}
+
+                      {e.statutScolaire === "NON_SUIVI" && (
+                        <p className="mt-3 text-xs text-gray-400">
+                          لن يظهر هذا الطفل في تتبع الدراسة. يمكن تغيير وضعيته لاحقا من ملف الأسرة.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1063,7 +1127,7 @@ export default function AjoutFamille() {
               disabled={loading}
               className="h-11 rounded-xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
             >
-              {loading ? "جاري التسجيل..." : "💾 تسجيل العائلة"}
+              {loading ? "جاري التسجيل..." : "تسجيل العائلة"}
             </button>
           </div>
         </div>

@@ -22,6 +22,11 @@ import DegreFamillePage from "./pages/DegreFamillePage";
 import GestionEconomique from "./pages/GestionEconomique";
 import Parrains from "./pages/Parrains";
 import ParrainProfile from "./pages/ParrainProfile";
+import Planning from "./pages/Planning";
+import Reunions from "./pages/Reunions";
+import ReunionDetails from "./pages/ReunionDetails";
+import Membres from "./pages/Membres";
+import MembreProfile from "./pages/MembreProfile";
 import BasicTables from "./pages/Tables/BasicTables";
 import SuiviEtudes from "./pages/Tables/SuiviEtudes";
 import AjoutFamille from "./pages/Forms/AjoutFamille";
@@ -82,6 +87,12 @@ export default function App() {
                 path="/parrains/:id"
                 element={<ParrainProfile />}
               />
+
+              <Route path="/planning" element={<Planning />} />
+              <Route path="/reunions" element={<Reunions />} />
+              <Route path="/reunions/:id" element={<ReunionDetails />} />
+              <Route path="/membres" element={<Membres />} />
+              <Route path="/membres/:id" element={<MembreProfile />} />
 
               <Route
                 path="/EtudesProfile/:enfantid"

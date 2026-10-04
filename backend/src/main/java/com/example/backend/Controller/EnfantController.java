@@ -70,6 +70,7 @@ public class EnfantController {
         enfant.setPrenom(prenom);
         enfant.setNom(nom);
         enfant.setSexe(sexe);
+        enfant.setStatutScolaire(null);
         enfant.setDateNaissance(dateNaissance);
         enfant.setTypeMaladie(typeMaladie);
         enfant.setEstMalade(estMalade != null ? estMalade : false);
@@ -103,12 +104,24 @@ public class EnfantController {
         if (payload.containsKey("estMalade")) enfant.setEstMalade((Boolean) payload.get("estMalade"));
         if (payload.containsKey("typeMaladie")) enfant.setTypeMaladie((String) payload.get("typeMaladie"));
         if (payload.containsKey("sexe")) enfant.setSexe((String) payload.get("sexe"));
+        appliquerStatutScolaire(enfant, payload);
 
         if (payload.containsKey("photoEnfantBase64")) {
             String photoBase64 = (String) payload.get("photoEnfantBase64");
             if (photoBase64 != null && !photoBase64.isEmpty()) {
                 enfant.setPhotoEnfant(java.util.Base64.getDecoder().decode(photoBase64));
             }
+        }
+
+        // Enfant (re)mis en suivi scolaire sans aucune étude : on crée celle de l'année en cours
+        // pour pouvoir y enregistrer le niveau / l'établissement choisis.
+        if (enfant.estScolarise()
+                && etudeRepo.findLatestEtudeByEnfantId(id) == null
+                && (idPositif(payload.get("niveauScolaireId")) || idPositif(payload.get("ecoleId")))) {
+            Etude nouvelle = new Etude();
+            nouvelle.setEnfant(enfant);
+            nouvelle.setAnneeScolaire(com.example.backend.service.Valeurs.anneeScolaire(java.time.LocalDate.now()));
+            etudeRepo.save(nouvelle);
         }
 
         // ✅ Gestion null safe pour niveauScolaireId
@@ -195,5 +208,49 @@ public class EnfantController {
     @GetMapping("/{id}/etude")
     public Etude getLatestEtudeByEnfant(@PathVariable Long id) {
         return etudeRepo.findLatestEtudeByEnfantId(id);
+    }
+
+    // =========================================================
+    // STATUT SCOLAIRE
+    //
+    // Aucun historique n'est supprimé : seul le statut change.
+    // =========================================================
+    public static void appliquerStatutScolaire(Enfant enfant, Map<String, Object> payload) {
+        if (!payload.containsKey("statutScolaire")) return;
+
+        Object statut = payload.get("statutScolaire");
+        try {
+            enfant.setStatutScolaire(statut == null ? null : statut.toString());
+        } catch (IllegalArgumentException e) {
+            throw new com.example.backend.config.HttpError(400, "الوضعية الدراسية غير صالحة");
+        }
+
+        if (Enfant.STATUT_ARRETE.equals(enfant.getStatutScolaire())) {
+            Object date = payload.get("dateArretEtudes");
+            String d = date == null ? "" : date.toString().trim();
+            try {
+                enfant.setDateArretEtudes(d.isEmpty() ? null : java.time.LocalDate.parse(d.substring(0, Math.min(10, d.length()))));
+            } catch (java.time.format.DateTimeParseException e) {
+                throw new com.example.backend.config.HttpError(400, "تاريخ التوقف غير صالح");
+            }
+            if (enfant.getDateArretEtudes() != null && enfant.getDateArretEtudes().isAfter(java.time.LocalDate.now())) {
+                throw new com.example.backend.config.HttpError(400, "تاريخ التوقف لا يمكن أن يكون في المستقبل");
+            }
+            enfant.setMotifArretEtudes(texte(payload.get("motifArretEtudes"), 255));
+        }
+
+        if (payload.containsKey("remarqueScolaire")) {
+            enfant.setRemarqueScolaire(texte(payload.get("remarqueScolaire"), 1000));
+        }
+    }
+
+    private static boolean idPositif(Object value) {
+        return value instanceof Number n && n.longValue() > 0;
+    }
+
+    private static String texte(Object value, int max) {
+        if (value == null || value.toString().isBlank()) return null;
+        String v = value.toString().trim();
+        return v.length() > max ? v.substring(0, max) : v;
     }
 }

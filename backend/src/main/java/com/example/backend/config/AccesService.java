@@ -27,6 +27,21 @@ public class AccesService {
         return m;
     }
 
+    /** Vrai si le membre est admin ou si sa fonction possède la permission (FAMILLES, REUNIONS, EVENTS…). */
+    public static boolean aPermission(MembreLajna m, String permission) {
+        return isAdmin(m)
+                || (m != null && m.getFonction() != null
+                && m.getFonction().getPermissions() != null
+                && m.getFonction().getPermissions().contains(permission));
+    }
+
+    /** Membre connecté disposant de la permission (ou admin). */
+    public MembreLajna permission(Long id, String permission) {
+        MembreLajna m = acteur(id);
+        if (!aPermission(m, permission)) throw new HttpError(403, "غير مسموح: لا تملك صلاحية هذا القسم");
+        return m;
+    }
+
     public MembreLajna superAdmin(Long id) {
         MembreLajna m = acteur(id);
         if (!isSuper(m)) throw new HttpError(403, "غير مسموح: للمسؤول الأعلى فقط");

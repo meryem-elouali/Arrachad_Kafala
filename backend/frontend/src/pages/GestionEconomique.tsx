@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "axios";
+import { currentSchoolYear, schoolYearsList } from "../lib/schoolYear";
 import ExportButtons from "../components/common/ExportButtons";
 import type { TableExport } from "../lib/exportTable";
 
@@ -82,25 +83,9 @@ type IncomeForm = {
   note: string;
 };
 
-const getCurrentSchoolYear = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+const getCurrentSchoolYear = () => currentSchoolYear();
 
-  return month >= 9
-    ? `${year}/${year + 1}`
-    : `${year - 1}/${year}`;
-};
-
-const getSchoolYears = () => {
-  const current = getCurrentSchoolYear();
-  const first = Number(current.split("/")[0]);
-
-  return Array.from({ length: 8 }, (_, index) => {
-    const start = first - index;
-    return `${start}/${start + 1}`;
-  });
-};
+const getSchoolYears = () => schoolYearsList(7);
 
 const todayIso = () =>
   new Date().toISOString().slice(0, 10);

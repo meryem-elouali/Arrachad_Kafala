@@ -10,11 +10,12 @@ import {
   EventContentArg,
   EventInput,
 } from "@fullcalendar/core";
-import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
 import { useNavigate } from "react-router-dom";
-import { ORGANISATEURS, Organisateur, organisateurOf } from "../lib/organisateur";
+import { Organisateur, organisateurOf } from "../lib/organisateur";
+import EventFormModal, { EventFormInitial, EventFormValues } from "../components/events/EventFormModal";
+import { currentSchoolYear as currentSchoolYearOf } from "../lib/schoolYear";
 
 const API = "http://localhost:8080/api";
 
@@ -41,47 +42,9 @@ interface CalendarEventProps {
   organisateur?: Organisateur;
 }
 
-interface Caisse {
-  id: number;
-  nom: string;
-}
-
 interface CalendarEvent extends EventInput {
   extendedProps: CalendarEventProps;
 }
-
-const TARGETS: Array<{
-  value: Cible;
-  label: string;
-  description: string;
-  icon: string;
-}> = [
-  {
-    value: "MERE",
-    label: "الأمهات",
-    description: "الأنشطة الموجهة للأمهات",
-    icon: "👩",
-  },
-  {
-    value: "ENFANT",
-    label: "الأطفال",
-    description: "الأنشطة الموجهة للأطفال",
-    icon: "👧",
-  },
-  {
-    value: "FAMILLE",
-    label: "العائلات",
-    description: "الأنشطة الموجهة للعائلة",
-    icon: "👨‍👩‍👧",
-  },
-];
-
-const DEGREE_OPTIONS = [
-  { value: 1, label: "الدرجة 1", short: "1" },
-  { value: 2, label: "الدرجة 2", short: "2" },
-  { value: 3, label: "الدرجة 3", short: "3" },
-  { value: 0, label: "معوز", short: "معوز" },
-];
 
 const EVENT_TONES = [
   {
@@ -111,55 +74,16 @@ const EVENT_TONES = [
 ];
 
 const Calendar: React.FC = () => {
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [eventTitle, setEventTitle] = useState("");
-  const [place, setPlace] = useState("");
-  const [cibles, setCibles] = useState<Cible[]>([]);
-  const [ageMin, setAgeMin] = useState<number | "">("");
-  const [ageMax, setAgeMax] = useState<number | "">("");
-  const [degresFamille, setDegresFamille] = useState<number[]>([]);
-  const [eventStartDate, setEventStartDate] = useState("");
-  const [eventEndDate, setEventEndDate] = useState("");
-  const [anneeScolaire, setAnneeScolaire] = useState("");
-  const [sawaedAlKhayr, setSawaedAlKhayr] = useState(false);
-  const [caisseId, setCaisseId] = useState<number | "">("");
-  const [organisateur, setOrganisateur] = useState<Organisateur>("LAJNA");
-  const [caisses, setCaisses] = useState<Caisse[]>([]);
+  const [formInitial, setFormInitial] = useState<EventFormInitial | null>(null);
   const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [eventTypeId, setEventTypeId] = useState<number | "">("");
   const [eventTypes, setEventTypes] = useState<EventType[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   const calendarRef = useRef<FullCalendar>(null);
   const { isOpen, openModal, closeModal } = useModal();
   const navigate = useNavigate();
 
-  const currentYear = new Date().getFullYear();
-
-  const anneesScolaires = Array.from({ length: 21 }, (_, i) => {
-    const debut = currentYear - 10 + i;
-    return `${debut}/${debut + 1}`;
-  });
-
-  const getAnneeScolaireFromDate = (dateStr: string) => {
-    if (!dateStr) return "";
-
-    const [yearStr, monthStr] = dateStr.split("-");
-    const year = Number(yearStr);
-    const month = Number(monthStr);
-
-    if (!year || !month) return "";
-
-    return month >= 9
-      ? `${year}/${year + 1}`
-      : `${year - 1}/${year}`;
-  };
-
-  const currentSchoolYear = useMemo(
-    () => getAnneeScolaireFromDate(new Date().toISOString().split("T")[0]),
-    []
-  );
+  const currentSchoolYear = useMemo(() => currentSchoolYearOf(), []);
 
   const includeLastDay = (dateStr: string) => {
     if (!dateStr) return dateStr;
@@ -178,13 +102,6 @@ const Calendar: React.FC = () => {
 
     return EVENT_TONES[index];
   };
-
-  useEffect(() => {
-    fetch(`${API}/economie/fonds`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setCaisses(Array.isArray(data) ? data : []))
-      .catch(() => setCaisses([]));
-  }, []);
 
   useEffect(() => {
     fetch(`${API}/events/event-types`)
@@ -259,39 +176,21 @@ const Calendar: React.FC = () => {
       });
   }, []);
 
-  const resetModalFields = () => {
-    setEventTitle("");
-    setCibles([]);
-    setAgeMin("");
-    setAgeMax("");
-    setEventStartDate("");
-    setEventEndDate("");
-    setEventTypeId("");
-    setPlace("");
-    setAnneeScolaire("");
-    setSawaedAlKhayr(false);
-    setCaisseId("");
-    setOrganisateur("LAJNA");
-    setSelectedEvent(null);
-    setDegresFamille([]);
-  };
-
   const handleCloseModal = () => {
     closeModal();
-    resetModalFields();
+    setFormInitial(null);
   };
 
   const openNewEventModal = () => {
-    resetModalFields();
-    setAnneeScolaire(currentSchoolYear);
+    setFormInitial({ anneeScolaire: currentSchoolYear });
     openModal();
   };
 
   const handleDateSelect = (selectInfo: DateSelectArg) => {
-    resetModalFields();
-    setEventStartDate(selectInfo.startStr);
-    setEventEndDate(selectInfo.endStr || selectInfo.startStr);
-    setAnneeScolaire(getAnneeScolaireFromDate(selectInfo.startStr));
+    setFormInitial({
+      startDate: selectInfo.startStr,
+      endDate: selectInfo.endStr || selectInfo.startStr,
+    });
     openModal();
   };
 
@@ -299,193 +198,57 @@ const Calendar: React.FC = () => {
     const fcEvent = clickInfo.event;
     const props = fcEvent.extendedProps as CalendarEventProps;
 
-    setSelectedEvent({
+    setFormInitial({
       id: fcEvent.id,
       title: fcEvent.title,
-      start: fcEvent.startStr,
-      end: fcEvent.endStr,
-      allDay: fcEvent.allDay,
-      extendedProps: props,
+      startDate: props.startDate || fcEvent.startStr,
+      endDate: props.endDate || fcEvent.endStr,
+      cibles: Array.isArray(props.cibles) ? props.cibles : [],
+      ageMin: props.ageMin ?? null,
+      ageMax: props.ageMax ?? null,
+      degresFamille: props.degresFamille ?? [],
+      eventType: props.eventType,
+      place: props.place ?? "",
+      anneeScolaire: props.anneeScolaire ?? "",
+      sawaedAlKhayr: Boolean(props.sawaedAlKhayr),
+      caisseId: props.caisseId ?? null,
+      organisateur: organisateurOf(props.organisateur),
     });
-
-    setEventTitle(fcEvent.title);
-    setEventStartDate(props.startDate || fcEvent.startStr);
-    setEventEndDate(props.endDate || fcEvent.endStr);
-    setCibles(Array.isArray(props.cibles) ? props.cibles : []);
-    setAgeMin(props.ageMin ?? "");
-    setAgeMax(props.ageMax ?? "");
-    setEventTypeId(props.eventType?.id ?? "");
-    setPlace(props.place ?? "");
-    setAnneeScolaire(props.anneeScolaire ?? "");
-    setSawaedAlKhayr(Boolean(props.sawaedAlKhayr));
-    setCaisseId(props.caisseId ?? "");
-    setOrganisateur(organisateurOf(props.organisateur));
-    setDegresFamille(
-      Array.isArray(props.degresFamille)
-        ? props.degresFamille.map(Number)
-        : []
-    );
 
     openModal();
   };
 
-  const toggleTarget = (value: Cible) => {
-    if (cibles.includes(value)) {
-      setCibles((prev) => prev.filter((c) => c !== value));
-
-      if (value === "ENFANT") {
-        setAgeMin("");
-        setAgeMax("");
-      }
-
-      return;
-    }
-
-    if (value === "FAMILLE") {
-      setCibles(["FAMILLE"]);
-      setAgeMin("");
-      setAgeMax("");
-      return;
-    }
-
-    setCibles((prev) => [
-      ...prev.filter((c) => c !== "FAMILLE"),
-      value,
-    ]);
-  };
-
-  const toggleDegree = (value: number) => {
-    setDegresFamille((prev) =>
-      prev.includes(value)
-        ? prev.filter((degre) => degre !== value)
-        : [...prev, value]
-    );
-  };
-
-  const handleAddOrUpdateEvent = async () => {
-    if (
-      !eventTitle.trim() ||
-      cibles.length === 0 ||
-      !eventTypeId ||
-      !place.trim() ||
-      !anneeScolaire ||
-      !eventStartDate ||
-      !eventEndDate
-    ) {
-      alert(
-        "يرجى ملء عنوان النشاط، الفئة، النوع، المكان، السنة الدراسية والتواريخ."
-      );
-      return;
-    }
-
-    if (eventEndDate < eventStartDate) {
-      alert("تاريخ النهاية يجب أن يكون بعد أو يساوي تاريخ البداية.");
-      return;
-    }
-
-    const eventData = {
-      title: eventTitle.trim(),
-      start: eventStartDate,
-      end: eventEndDate,
+  /** Mise à jour du calendrier après création / modification par le formulaire partagé. */
+  const handleSaved = (savedEvent: any, values: EventFormValues) => {
+    const fcEvent: CalendarEvent = {
+      id: String(savedEvent.id),
+      title: savedEvent.title ?? values.title,
+      start: savedEvent.startDate ?? values.startDate,
+      end: includeLastDay(savedEvent.endDate ?? values.endDate),
+      allDay: true,
       extendedProps: {
-        cibles,
-        degresFamille,
-        ageMin: cibles.includes("ENFANT")
-          ? ageMin !== ""
-            ? Number(ageMin)
-            : null
-          : null,
-        ageMax: cibles.includes("ENFANT")
-          ? ageMax !== ""
-            ? Number(ageMax)
-            : null
-          : null,
-        eventType: { id: Number(eventTypeId) },
-        place: place.trim(),
-        anneeScolaire,
-        sawaedAlKhayr,
-        caisseId: caisseId === "" ? null : caisseId,
-        organisateur,
+        calendar: savedEvent.calendar ?? "PRIMARY",
+        cibles: values.cibles,
+        ageMin: values.ageMin,
+        ageMax: values.ageMax,
+        degresFamille: values.degresFamille,
+        eventType: values.eventType,
+        place: values.place,
+        startDate: savedEvent.startDate ?? values.startDate,
+        endDate: savedEvent.endDate ?? values.endDate,
+        anneeScolaire: savedEvent.anneeScolaire ?? values.anneeScolaire,
+        sawaedAlKhayr:
+          typeof savedEvent.sawaedAlKhayr === "boolean" ? savedEvent.sawaedAlKhayr : values.sawaedAlKhayr,
+        caisseId: values.caisseId,
+        organisateur: values.organisateur,
       },
     };
 
-    try {
-      setSaving(true);
-
-      const url = selectedEvent?.id
-        ? `${API}/events/${selectedEvent.id}`
-        : `${API}/events`;
-
-      const response = await fetch(url, {
-        method: selectedEvent ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(eventData),
-      });
-
-      if (!response.ok) {
-        throw new Error("خطأ أثناء الحفظ");
-      }
-
-      const savedEvent = await response.json();
-
-      const selectedType =
-        eventTypes.find((type) => type.id === Number(eventTypeId)) ??
-        savedEvent.eventType ?? {
-          id: Number(eventTypeId),
-          name: "",
-        };
-
-      const fcEvent: CalendarEvent = {
-        id: String(savedEvent.id),
-        title: savedEvent.title ?? eventTitle.trim(),
-        start: savedEvent.startDate ?? eventStartDate,
-        end: includeLastDay(savedEvent.endDate ?? eventEndDate),
-        allDay: true,
-        extendedProps: {
-          calendar: savedEvent.calendar ?? "PRIMARY",
-          cibles,
-          ageMin: cibles.includes("ENFANT")
-            ? ageMin !== ""
-              ? Number(ageMin)
-              : null
-            : null,
-          ageMax: cibles.includes("ENFANT")
-            ? ageMax !== ""
-              ? Number(ageMax)
-              : null
-            : null,
-          degresFamille,
-          eventType: selectedType,
-          place: place.trim(),
-          startDate: savedEvent.startDate ?? eventStartDate,
-          endDate: savedEvent.endDate ?? eventEndDate,
-          anneeScolaire: savedEvent.anneeScolaire ?? anneeScolaire,
-          sawaedAlKhayr:
-            typeof savedEvent.sawaedAlKhayr === "boolean"
-              ? savedEvent.sawaedAlKhayr
-              : sawaedAlKhayr,
-          caisseId: caisseId === "" ? null : caisseId,
-          organisateur,
-        },
-      };
-
-      setEvents((prev) => {
-        if (selectedEvent?.id) {
-          return prev.map((event) =>
-            String(event.id) === String(selectedEvent.id) ? fcEvent : event
-          );
-        }
-
-        return [...prev, fcEvent];
-      });
-
-      handleCloseModal();
-    } catch (error) {
-      console.error(error);
-      alert("حدث خطأ أثناء حفظ النشاط.");
-    } finally {
-      setSaving(false);
-    }
+    setEvents((prev) =>
+      prev.some((event) => String(event.id) === fcEvent.id)
+        ? prev.map((event) => (String(event.id) === fcEvent.id ? fcEvent : event))
+        : [...prev, fcEvent]
+    );
   };
 
   const totalCurrentSchoolYear = useMemo(
@@ -567,12 +330,6 @@ const Calendar: React.FC = () => {
       </div>
     );
   };
-
-  const inputClass =
-    "h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white";
-
-  const labelClass =
-    "mb-2 block text-sm font-bold text-slate-700 dark:text-slate-200";
 
   return (
     <>
@@ -1057,591 +814,13 @@ const Calendar: React.FC = () => {
           </div>
         </section>
 
-        {/* MODAL */}
-        <Modal
-          isOpen={isOpen}
+        {/* Formulaire d'activité (composant partagé avec le planning annuel) */}
+        <EventFormModal
+          open={isOpen}
+          initial={formInitial}
           onClose={handleCloseModal}
-          className="max-w-[820px] p-0"
-        >
-          <div
-            className="max-h-[90vh] overflow-y-auto rounded-3xl bg-white dark:bg-slate-900"
-            dir="rtl"
-          >
-            {/* Modal header */}
-            <div className="relative overflow-hidden border-b border-slate-100 bg-gradient-to-l from-slate-50 to-indigo-50/70 px-6 py-6 dark:border-slate-800 dark:from-slate-900 dark:to-indigo-950/30 md:px-8">
-              <div className="absolute -left-12 -top-16 h-40 w-40 rounded-full bg-indigo-200/30 blur-3xl dark:bg-indigo-600/10" />
-
-              <div className="relative">
-                <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-indigo-100 px-3 py-1 text-[11px] font-black text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
-                  {selectedEvent ? "تعديل نشاط مسجل" : "نشاط جديد"}
-                </div>
-
-                <h3 className="text-2xl font-black text-slate-900 dark:text-white">
-                  {selectedEvent ? "تعديل النشاط" : "إضافة نشاط جديد"}
-                </h3>
-
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                  أدخل المعلومات الأساسية وحدد الفئات المستهدفة.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-7 px-6 py-6 md:px-8">
-              {/* Basic information */}
-              <section>
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50 text-sm font-black text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
-                    1
-                  </span>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-white">
-                      المعلومات الأساسية
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      اسم النشاط ونوعه ومكان تنظيمه
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>عنوان النشاط</label>
-                    <input
-                      type="text"
-                      value={eventTitle}
-                      onChange={(e) => setEventTitle(e.target.value)}
-                      placeholder="مثال: لقاء تربوي للأطفال"
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>نوع النشاط</label>
-                    <select
-                      value={eventTypeId}
-                      onChange={(e) =>
-                        setEventTypeId(
-                          e.target.value
-                            ? Number(e.target.value)
-                            : ""
-                        )
-                      }
-                      className={inputClass}
-                    >
-                      <option value="">اختر نوع النشاط</option>
-                      {eventTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>مكان النشاط</label>
-                    <input
-                      type="text"
-                      value={place}
-                      onChange={(e) => setPlace(e.target.value)}
-                      placeholder="مثال: مقر الجمعية"
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              </section>
-
-              <div className="h-px bg-slate-100 dark:bg-slate-800" />
-
-              {/* Organisateur */}
-              <section>
-                <h4 className="mb-3 font-black text-slate-800 dark:text-white">الجهة المنظمة</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  {ORGANISATEURS.map((o) => (
-                    <button
-                      key={o.value}
-                      type="button"
-                      onClick={() => setOrganisateur(o.value)}
-                      className={`h-12 rounded-2xl border text-sm font-black transition ${
-                        organisateur === o.value
-                          ? o.value === "LAJNA"
-                            ? "border-sky-600 bg-sky-600 text-white"
-                            : "border-violet-600 bg-violet-600 text-white"
-                          : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                      }`}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] font-semibold text-slate-400">
-                  من نظم النشاط. مصدر التمويل والصندوق يُحددان في القسم الموالي.
-                </p>
-              </section>
-
-              <div className="h-px bg-slate-100 dark:bg-slate-800" />
-
-              {/* Funding source */}
-              <section>
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-50 text-sm font-black text-violet-600 dark:bg-violet-500/10 dark:text-violet-300">
-                    2
-                  </span>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-white">
-                      مصدر تمويل النشاط
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      حدّد ما إذا كان النشاط تابعاً لسواعد الخير
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => setSawaedAlKhayr(false)}
-                    className={`relative rounded-2xl border p-4 text-right transition-all duration-200 ${
-                      !sawaedAlKhayr
-                        ? "border-slate-700 bg-slate-900 text-white shadow-md dark:border-slate-500 dark:bg-slate-700"
-                        : "border-slate-200 bg-white text-slate-700 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg ${
-                          !sawaedAlKhayr
-                            ? "bg-white/10"
-                            : "bg-slate-100 dark:bg-slate-800"
-                        }`}
-                      >
-                        ◌
-                      </span>
-                      <div>
-                        <p className="font-black">نشاط عادي</p>
-                        <p
-                          className={`mt-1 text-[11px] leading-5 ${
-                            !sawaedAlKhayr
-                              ? "text-slate-300"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          المصاريف تُصنّف حسب الدرجة المحددة أو معوز
-                        </p>
-                      </div>
-                    </div>
-
-                    {!sawaedAlKhayr && (
-                      <span className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-black text-slate-900">
-                        ✓
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSawaedAlKhayr(true)}
-                    className={`relative rounded-2xl border p-4 text-right transition-all duration-200 ${
-                      sawaedAlKhayr
-                        ? "border-violet-500 bg-violet-600 text-white shadow-md shadow-violet-500/20"
-                        : "border-violet-200 bg-violet-50 text-violet-800 hover:-translate-y-0.5 hover:border-violet-300 hover:shadow-sm dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg ${
-                          sawaedAlKhayr
-                            ? "bg-white/15"
-                            : "bg-violet-100 dark:bg-violet-500/15"
-                        }`}
-                      >
-                        ♥
-                      </span>
-                      <div>
-                        <p className="font-black">سواعد الخير</p>
-                        <p
-                          className={`mt-1 text-[11px] leading-5 ${
-                            sawaedAlKhayr
-                              ? "text-violet-100"
-                              : "text-violet-500 dark:text-violet-300"
-                          }`}
-                        >
-                          ميزانية مستقلة لا تُخلط مع معوز أو الدرجات المحددة
-                        </p>
-                      </div>
-                    </div>
-
-                    {sawaedAlKhayr && (
-                      <span className="absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-white text-[10px] font-black text-violet-700">
-                        ✓
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {sawaedAlKhayr && (
-                  <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-xs font-bold leading-6 text-violet-700 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-200">
-                    مصاريف هذا النشاط ستُحتسب ضمن «سواعد الخير» فقط ولن تُضاف إلى
-                    «الدرجات المحددة» أو «معوز». اختيار الدرجات أدناه يبقى فقط
-                    لتحديد المستفيدين المؤهلين للنشاط.
-                  </div>
-                )}
-
-                <div className="mt-4">
-                  <label className="mb-2 block text-sm font-black text-slate-700 dark:text-slate-200">
-                    الصندوق الذي تُصرف منه مصاريف النشاط
-                  </label>
-                  <select
-                    value={caisseId}
-                    onChange={(e) =>
-                      setCaisseId(e.target.value ? Number(e.target.value) : "")
-                    }
-                    className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-800 outline-none focus:border-indigo-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                  >
-                    <option value="">
-                      تلقائي (حسب الدرجة / معوز / سواعد الخير)
-                    </option>
-                    {caisses.map((caisse) => (
-                      <option key={caisse.id} value={caisse.id}>
-                        {caisse.nom}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-400">
-                    عند اختيار صندوق، تُخصم كل مصاريف النشاط من هذا الصندوق. بدون
-                    اختيار، يُطبق التوزيع التلقائي المعتاد.
-                  </p>
-                </div>
-              </section>
-
-              <div className="h-px bg-slate-100 dark:bg-slate-800" />
-
-              {/* Targets */}
-              <section>
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-50 text-sm font-black text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
-                    3
-                  </span>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-white">
-                      الفئة المستهدفة
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      اختر المستفيدين من هذا النشاط
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  {TARGETS.map((item) => {
-                    const selected = cibles.includes(item.value);
-
-                    return (
-                      <button
-                        key={item.value}
-                        type="button"
-                        onClick={() => toggleTarget(item.value)}
-                        className={`relative overflow-hidden rounded-2xl border p-4 text-right transition-all duration-200 ${
-                          selected
-                            ? "border-indigo-400 bg-indigo-50 shadow-sm ring-2 ring-indigo-500/10 dark:bg-indigo-500/10"
-                            : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-md dark:border-slate-700 dark:bg-slate-900"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-xl dark:bg-slate-800">
-                            {item.icon}
-                          </span>
-
-                          <div className="min-w-0">
-                            <p
-                              className={`font-black ${
-                                selected
-                                  ? "text-indigo-700 dark:text-indigo-300"
-                                  : "text-slate-800 dark:text-white"
-                              }`}
-                            >
-                              {item.label}
-                            </p>
-                            <p className="mt-1 text-[11px] leading-5 text-slate-400">
-                              {item.description}
-                            </p>
-                          </div>
-                        </div>
-
-                        <span
-                          className={`absolute left-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border text-[10px] font-black transition ${
-                            selected
-                              ? "border-indigo-600 bg-indigo-600 text-white"
-                              : "border-slate-300 bg-white text-transparent dark:bg-slate-900"
-                          }`}
-                        >
-                          ✓
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
-              {/* Degree */}
-              <div
-                className={`grid transition-all duration-300 ${
-                  cibles.length > 0
-                    ? "grid-rows-[1fr] opacity-100"
-                    : "grid-rows-[0fr] opacity-0"
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <section className="rounded-2xl border border-slate-200 bg-slate-50/70 p-5 dark:border-slate-700 dark:bg-slate-800/40">
-                    <div className="mb-4">
-                      <h4 className="font-black text-slate-800 dark:text-white">
-                        درجة العائلة المستهدفة
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        يمكنك اختيار عدة درجات، بما فيها العائلات ذات الدرجة غير المحددة.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                      {DEGREE_OPTIONS.map((item) => {
-                        const selected =
-                          degresFamille.includes(item.value);
-
-                        return (
-                          <button
-                            key={item.value}
-                            type="button"
-                            onClick={() =>
-                              toggleDegree(item.value)
-                            }
-                            className={`relative rounded-xl border px-3 py-3.5 text-center transition-all duration-200 ${
-                              selected
-                                ? "border-indigo-600 bg-indigo-600 text-white shadow-md shadow-indigo-500/15"
-                                : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                            }`}
-                          >
-                            <div
-                              className={`mx-auto mb-2 flex h-7 w-7 items-center justify-center rounded-lg text-xs font-black ${
-                                selected
-                                  ? "bg-white/15"
-                                  : "bg-slate-100 dark:bg-slate-800"
-                              }`}
-                            >
-                              {item.short}
-                            </div>
-
-                            <div className="text-xs font-black">
-                              {item.label}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              {/* Children age */}
-              <div
-                className={`grid transition-all duration-300 ${
-                  cibles.includes("ENFANT")
-                    ? "grid-rows-[1fr] opacity-100"
-                    : "grid-rows-[0fr] opacity-0"
-                }`}
-              >
-                <div className="overflow-hidden">
-                  <section className="rounded-2xl border border-amber-200 bg-amber-50/50 p-5 dark:border-amber-900/40 dark:bg-amber-500/5">
-                    <div className="mb-4">
-                      <h4 className="font-black text-slate-800 dark:text-white">
-                        الفئة العمرية للأطفال
-                      </h4>
-                      <p className="mt-1 text-xs text-slate-400">
-                        اترك الحقول فارغة إذا لم يكن هناك شرط للعمر.
-                      </p>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div>
-                        <label className={labelClass}>
-                          الحد الأدنى للعمر
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            value={ageMin}
-                            onChange={(e) =>
-                              setAgeMin(
-                                e.target.value
-                                  ? Number(e.target.value)
-                                  : ""
-                              )
-                            }
-                            placeholder="مثال: 6"
-                            className={`${inputClass} pl-14`}
-                          />
-                          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                            سنة
-                          </span>
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className={labelClass}>
-                          الحد الأقصى للعمر
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="number"
-                            min="0"
-                            value={ageMax}
-                            onChange={(e) =>
-                              setAgeMax(
-                                e.target.value
-                                  ? Number(e.target.value)
-                                  : ""
-                              )
-                            }
-                            placeholder="مثال: 16"
-                            className={`${inputClass} pl-14`}
-                          />
-                          <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                            سنة
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  </section>
-                </div>
-              </div>
-
-              <div className="h-px bg-slate-100 dark:bg-slate-800" />
-
-              {/* Planning */}
-              <section>
-                <div className="mb-4 flex items-center gap-3">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50 text-sm font-black text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
-                    4
-                  </span>
-                  <div>
-                    <h4 className="font-black text-slate-800 dark:text-white">
-                      التخطيط الزمني
-                    </h4>
-                    <p className="text-xs text-slate-400">
-                      السنة الدراسية وفترة النشاط
-                    </p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className={labelClass}>
-                      السنة الدراسية
-                    </label>
-                    <select
-                      value={anneeScolaire}
-                      onChange={(e) =>
-                        setAnneeScolaire(e.target.value)
-                      }
-                      className={inputClass}
-                    >
-                      <option value="">
-                        اختر السنة الدراسية
-                      </option>
-                      {anneesScolaires.map((annee) => (
-                        <option key={annee} value={annee}>
-                          {annee}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>
-                      تاريخ البداية
-                    </label>
-                    <input
-                      type="date"
-                      value={eventStartDate}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setEventStartDate(value);
-                        setAnneeScolaire(
-                          getAnneeScolaireFromDate(value)
-                        );
-                      }}
-                      className={inputClass}
-                    />
-                  </div>
-
-                  <div>
-                    <label className={labelClass}>
-                      تاريخ النهاية
-                    </label>
-                    <input
-                      type="date"
-                      min={eventStartDate || undefined}
-                      value={eventEndDate}
-                      onChange={(e) =>
-                        setEventEndDate(e.target.value)
-                      }
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            {/* Footer */}
-            <div className="sticky bottom-0 flex flex-col-reverse gap-3 border-t border-slate-100 bg-white/95 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95 sm:flex-row sm:justify-end md:px-8">
-              <button
-                type="button"
-                onClick={handleCloseModal}
-                disabled={saving}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800"
-              >
-                إلغاء
-              </button>
-
-              <button
-                type="button"
-                onClick={handleAddOrUpdateEvent}
-                disabled={saving}
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-sm font-black text-white shadow-lg shadow-indigo-500/20 transition hover:-translate-y-0.5 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-              >
-                {saving ? (
-                  <>
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                    جاري الحفظ...
-                  </>
-                ) : (
-                  <>
-                    <svg
-                      className="h-4 w-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.2"
-                    >
-                      {selectedEvent ? (
-                        <>
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z" />
-                        </>
-                      ) : (
-                        <>
-                          <path d="M12 5v14M5 12h14" />
-                        </>
-                      )}
-                    </svg>
-                    {selectedEvent
-                      ? "حفظ التعديلات"
-                      : "إضافة النشاط"}
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </Modal>
+          onSaved={handleSaved}
+        />
       </div>
     </>
   );

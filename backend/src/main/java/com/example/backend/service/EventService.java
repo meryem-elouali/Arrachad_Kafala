@@ -5,6 +5,8 @@ import com.example.backend.Repository.EventRepository;
 import com.example.backend.Repository.EventTypeRepository;
 import com.example.backend.Repository.MereRepository;
 import com.example.backend.Repository.FamilleRepository;
+import com.example.backend.Repository.MembreActiviteRepository;
+import com.example.backend.Repository.PlanningActionRepository;
 import com.example.backend.dto.EventDetailsDTO;
 import com.example.backend.model.*;
 import jakarta.transaction.Transactional;
@@ -23,18 +25,24 @@ public class EventService {
     private final MereRepository mereRepository;
     private final EnfantRepository enfantRepository;
     private final FamilleRepository familleRepository;
+    private final PlanningActionRepository planningRepository;
+    private final MembreActiviteRepository activiteRepository;
 
     // Injecter tous les repositories
     public EventService(EventRepository eventRepository,
                         EventTypeRepository eventTypeRepository,
                         MereRepository mereRepository,
                         EnfantRepository enfantRepository,
-                        FamilleRepository familleRepository) {
+                        FamilleRepository familleRepository,
+                        PlanningActionRepository planningRepository,
+                        MembreActiviteRepository activiteRepository) {
         this.eventRepository = eventRepository;
         this.eventTypeRepository = eventTypeRepository;
         this.mereRepository = mereRepository;
         this.enfantRepository = enfantRepository;
         this.familleRepository = familleRepository;
+        this.planningRepository = planningRepository;
+        this.activiteRepository = activiteRepository;
     }
 
     // --------------------- EVENTS ---------------------
@@ -56,7 +64,14 @@ public class EventService {
         return eventRepository.save(event);
     }
 
+    /**
+     * Supprime l'activité après avoir détaché les actions du planning et les
+     * activités des membres qui y faisaient référence (elles sont conservées).
+     */
+    @Transactional
     public void deleteEvent(Long id) {
+        planningRepository.detacherEvent(id);
+        activiteRepository.detacherEvent(id);
         eventRepository.deleteById(id);
     }
 

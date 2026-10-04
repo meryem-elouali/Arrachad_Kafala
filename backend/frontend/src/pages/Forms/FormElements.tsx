@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageBreadcrumb from "../../components/common/PageBreadCrumb";
 import PageMeta from "../../components/common/PageMeta";
+import { currentSchoolYear } from "../../lib/schoolYear";
 
 const API = "http://localhost:8080/api";
 
@@ -42,11 +43,7 @@ interface EnfantData {
 /* ============================== HELPERS ============================== */
 const todayISO = () => new Date().toLocaleDateString("en-CA");
 
-const schoolYear = () => {
-  const n = new Date();
-  const y = n.getFullYear();
-  return n.getMonth() >= 8 ? `${y}/${y + 1}` : `${y - 1}/${y}`;
-};
+const schoolYear = () => currentSchoolYear();
 
 const emptyPerson = (): PersonData => ({
   nom: "",
@@ -971,7 +968,7 @@ export default function FormElements() {
               disabled={loading}
               className="h-11 rounded-xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-sm transition hover:bg-indigo-700 disabled:opacity-60"
             >
-              {loading ? "جاري التسجيل..." : "💾 تسجيل العائلة"}
+              {loading ? "جاري التسجيل..." : "تسجيل العائلة"}
             </button>
           </div>
         </div>

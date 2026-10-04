@@ -9,7 +9,10 @@ import { useParams } from "react-router";
 
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import ExportButtons from "../components/common/ExportButtons";
+import { currentSchoolYear } from "../lib/schoolYear";
 import type { TableExport } from "../lib/exportTable";
+import { STATUTS_SCOLAIRES, clsOf, labelOf, statutScolaireOf } from "../lib/labels";
+import { FormModal, inputCls, labelCls, textareaCls } from "../components/common/AppUI";
 
 import { FaCheck, FaTimes } from "react-icons/fa";
 
@@ -84,18 +87,7 @@ type SaveStatus =
 // ANNEE SCOLAIRE ACTUELLE
 // ============================================================
 
-const getCurrentSchoolYear = () => {
-  const now = new Date();
-
-  const y = now.getFullYear();
-
-  const month =
-    now.getMonth() + 1;
-
-  return month >= 9
-    ? `${y}/${y + 1}`
-    : `${y - 1}/${y}`;
-};
+const getCurrentSchoolYear = () => currentSchoolYear();
 
 // ============================================================
 // LISTE ANNEES
@@ -829,7 +821,17 @@ const addSchoolYear = (
     type: string;
     sexe: string;
     dateNaissance: string;
+    statutScolaire: string;
+    dateArretEtudes: string;
+    motifArretEtudes: string;
+    remarqueScolaire: string;
   } | null>(null);
+
+  // Modification du statut scolaire (l'historique n'est jamais supprimé)
+  const [statutOpen, setStatutOpen] = useState(false);
+  const [statutForm, setStatutForm] = useState({ statutScolaire: "EN_COURS", dateArretEtudes: "", motifArretEtudes: "", remarqueScolaire: "" });
+  const [statutSaving, setStatutSaving] = useState(false);
+  const [statutError, setStatutError] = useState("");
 
   // ==========================================================
   // CHARGER LA FAMILLE DE L'ENFANT
@@ -899,6 +901,10 @@ const addSchoolYear = (
           type: famille?.typeFamille?.nom || "",
           sexe: enfantData?.sexe === "FILLE" ? "بنت" : enfantData?.sexe === "GARCON" ? "ولد" : "",
           dateNaissance: enfantData?.dateNaissance || "",
+          statutScolaire: statutScolaireOf(enfantData?.statutScolaire),
+          dateArretEtudes: enfantData?.dateArretEtudes || "",
+          motifArretEtudes: enfantData?.motifArretEtudes || "",
+          remarqueScolaire: enfantData?.remarqueScolaire || "",
         });
 
         const rawDegre =
@@ -960,18 +966,18 @@ const addSchoolYear = (
       if (degreFamilleEnfant == null) {
         return {
           type: "NON_DEFINI" as const,
-          label: "معوز",
+          label: "المعوزون",
           description:
-            "المبالغ المؤداة لهذا الطفل تُصنّف ضمن فئة معوز.",
+            "المبالغ المؤداة لهذا الطفل تُحتسب ضمن صندوق المعوزين.",
         };
       }
 
       return {
         type: "DEFINI" as const,
         label:
-          `درجة محددة - الدرجة ${degreFamilleEnfant}`,
+          `الأيتام - الدرجة ${degreFamilleEnfant}`,
         description:
-          "المبالغ المؤداة لهذا الطفل تُصنّف ضمن الدرجات المحددة.",
+          "المبالغ المؤداة لهذا الطفل تُحتسب ضمن صندوق الأيتام.",
       };
     }, [
       loadingFamille,
@@ -2296,6 +2302,56 @@ useEffect(() => {
   // FICHE SCOLARITE (export PDF / Excel)
   // ==========================================================
 
+  const openStatut = () => {
+    setStatutError("");
+    setStatutForm({
+      statutScolaire: identite?.statutScolaire || "EN_COURS",
+      dateArretEtudes: identite?.dateArretEtudes || "",
+      motifArretEtudes: identite?.motifArretEtudes || "",
+      remarqueScolaire: identite?.remarqueScolaire || "",
+    });
+    setStatutOpen(true);
+  };
+
+  const saveStatut = async () => {
+    setStatutSaving(true);
+    setStatutError("");
+    try {
+      const arret = statutForm.statutScolaire === "ARRETE";
+      const res = await fetch(`${API}/enfant/${enfantid}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          statutScolaire: statutForm.statutScolaire,
+          dateArretEtudes: arret ? statutForm.dateArretEtudes || null : null,
+          motifArretEtudes: arret ? statutForm.motifArretEtudes || null : null,
+          remarqueScolaire: statutForm.remarqueScolaire || null,
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text();
+        throw new Error(t && t.length < 200 ? t : "تعذر حفظ الوضعية الدراسية");
+      }
+      const e = await res.json();
+      setIdentite((prev) =>
+        prev
+          ? {
+              ...prev,
+              statutScolaire: statutScolaireOf(e.statutScolaire),
+              dateArretEtudes: e.dateArretEtudes || "",
+              motifArretEtudes: e.motifArretEtudes || "",
+              remarqueScolaire: e.remarqueScolaire || "",
+            }
+          : prev
+      );
+      setStatutOpen(false);
+    } catch (err: any) {
+      setStatutError(err?.message || "تعذر حفظ الوضعية الدراسية");
+    } finally {
+      setStatutSaving(false);
+    }
+  };
+
   const buildFicheScolarite = (): TableExport => {
     const label = (opts: Option[], v: string | number) =>
       opts.find((o) => String(o.value) === String(v))?.label ?? (v === "" || v == null ? "" : String(v));
@@ -2318,6 +2374,11 @@ useEffect(() => {
         identite?.type ? `الفئة: ${identite.type}` : "",
         identite?.sexe || "",
         identite?.dateNaissance ? `تاريخ الازدياد: ${identite.dateNaissance}` : "",
+        identite
+          ? `الوضعية: ${labelOf(STATUTS_SCOLAIRES, identite.statutScolaire)}${
+              identite.statutScolaire === "ARRETE" && identite.dateArretEtudes ? ` (${identite.dateArretEtudes})` : ""
+            }${identite.statutScolaire === "ARRETE" && identite.motifArretEtudes ? ` — ${identite.motifArretEtudes}` : ""}`
+          : "",
         degreFamilleEnfant != null ? `الدرجة ${degreFamilleEnfant}` : familleTrouvee ? "معوز" : "",
       ].filter(Boolean),
       summary: [
@@ -2424,6 +2485,100 @@ useEffect(() => {
             <ExportButtons build={buildFicheScolarite} />
           </div>
         </div>
+
+        {identite && (
+          <div
+            className={`mt-5 flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between ${
+              identite.statutScolaire === "EN_COURS" ? "border-gray-100 bg-gray-50" : "border-amber-200 bg-amber-50/60"
+            }`}
+          >
+            <div className="text-sm">
+              <span className={`rounded-full px-3 py-1 text-xs font-black ${clsOf(STATUTS_SCOLAIRES, identite.statutScolaire)}`}>
+                {labelOf(STATUTS_SCOLAIRES, identite.statutScolaire)}
+              </span>
+              {identite.statutScolaire === "ARRETE" && (
+                <span className="mr-3 text-gray-600">
+                  {identite.dateArretEtudes ? `منذ ${identite.dateArretEtudes}` : ""}
+                  {identite.motifArretEtudes ? ` — ${identite.motifArretEtudes}` : ""}
+                </span>
+              )}
+              {identite.statutScolaire !== "EN_COURS" && (
+                <p className="mt-2 text-xs text-gray-500">
+                  لا يُحتسب ضمن التلاميذ المتمدرسين حاليا. المسار الدراسي السابق محفوظ أدناه.
+                </p>
+              )}
+              {identite.remarqueScolaire && <p className="mt-2 text-xs text-gray-500">ملاحظة: {identite.remarqueScolaire}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={openStatut}
+              className="h-10 shrink-0 rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 hover:bg-gray-50"
+            >
+              تغيير الوضعية الدراسية
+            </button>
+          </div>
+        )}
+
+        <FormModal
+          open={statutOpen}
+          kicker="الملف الدراسي"
+          title="الوضعية الدراسية"
+          onClose={() => setStatutOpen(false)}
+          onSave={saveStatut}
+          saving={statutSaving}
+          error={statutError}
+        >
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {STATUTS_SCOLAIRES.map((st) => (
+              <button
+                key={st.value}
+                type="button"
+                onClick={() => setStatutForm((f) => ({ ...f, statutScolaire: st.value }))}
+                className={`h-11 rounded-xl border text-sm font-bold transition ${
+                  statutForm.statutScolaire === st.value
+                    ? "border-indigo-600 bg-indigo-600 text-white"
+                    : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {st.label}
+              </button>
+            ))}
+          </div>
+          {statutForm.statutScolaire === "ARRETE" && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <label>
+                <span className={labelCls}>تاريخ التوقف (اختياري)</span>
+                <input
+                  type="date"
+                  max={new Date().toLocaleDateString("en-CA")}
+                  value={statutForm.dateArretEtudes}
+                  onChange={(e) => setStatutForm((f) => ({ ...f, dateArretEtudes: e.target.value }))}
+                  className={inputCls}
+                />
+              </label>
+              <label>
+                <span className={labelCls}>سبب التوقف (اختياري)</span>
+                <input
+                  value={statutForm.motifArretEtudes}
+                  maxLength={255}
+                  onChange={(e) => setStatutForm((f) => ({ ...f, motifArretEtudes: e.target.value }))}
+                  className={inputCls}
+                />
+              </label>
+            </div>
+          )}
+          <label className="block">
+            <span className={labelCls}>ملاحظة (اختياري)</span>
+            <textarea
+              rows={3}
+              maxLength={1000}
+              value={statutForm.remarqueScolaire}
+              onChange={(e) => setStatutForm((f) => ({ ...f, remarqueScolaire: e.target.value }))}
+              className={textareaCls}
+            />
+          </label>
+          <p className="text-[11px] text-gray-400">تغيير الوضعية لا يحذف أي سنة دراسية مسجلة.</p>
+        </FormModal>
 
       </div>
 
@@ -2914,7 +3069,7 @@ useEffect(() => {
           <div className="rounded-2xl border border-blue-100 bg-blue-50 p-5">
 
             <p className="text-sm font-semibold text-gray-500">
-              المبلغ المؤدى - الدرجات المحددة
+              المبلغ المؤدى - الأيتام
             </p>
 
             <p className="mt-1 text-3xl font-bold text-blue-700">
@@ -3310,7 +3465,7 @@ useEffect(() => {
 
                       {categoriePaiementSoutien.type === "DEFINI" ? (
                         <span className="inline-flex whitespace-nowrap rounded-full bg-blue-100 px-3 py-1.5 text-xs font-black text-blue-700">
-                          الدرجات المحددة
+                          الأيتام
                           {degreFamilleEnfant != null
                             ? ` - الدرجة ${degreFamilleEnfant}`
                             : ""}

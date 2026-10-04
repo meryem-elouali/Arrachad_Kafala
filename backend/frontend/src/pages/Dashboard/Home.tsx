@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import PageMeta from "../../components/common/PageMeta";
 import { besoinLabel, BESOINS } from "../../lib/prisesEnCharge";
+import { CATEGORIES_PLANNING, STATUTS_PLANNING, clsOf, labelOf } from "../../lib/labels";
+import { PlanningAction, heureCourte } from "../../lib/planning";
+import { currentSchoolYear, schoolYearsList } from "../../lib/schoolYear";
 
 const API = "http://localhost:8080/api";
 
@@ -33,6 +36,9 @@ interface DashboardData {
     sexeNonRenseigne: number;
     malades: number;
     scolarisesAnnee: number;
+    enCoursEtudes: number;
+    arretEtudes: number;
+    sansSuiviScolaire: number;
     redoublants: number;
     moyenneGenerale: number | null;
   };
@@ -45,22 +51,52 @@ interface DashboardData {
   finances: { totalEntrees: number; totalSorties: number; solde: number; nonVentile: number; fonds: FundSummary[] };
   prisesEnCharge: { parrainsActifs: number; prisesActives: number; famillesPrises: number; parBesoin: Record<string, number> };
   alertes: Alerte[];
+  planning: {
+    total: number;
+    termine: number;
+    enCours: number;
+    nonCommence: number;
+    annule: number;
+    retard: number;
+    progression: number;
+    aujourdhui: PlanningAction[];
+    semaine: PlanningAction[];
+    enRetard: PlanningAction[];
+    prochaines: PlanningAction[];
+  };
+  reunions: {
+    total: number;
+    realisees: number;
+    tauxPresence: number | null;
+    sansCompteRendu: number;
+    prochaines: { id: number; titre: string; date: string; heure?: string | null; lieu?: string | null }[];
+  };
 }
+
+/** Ligne compacte d'une action du planning (Dashboard). */
+const ActionLine = ({ a }: { a: PlanningAction }) => (
+  <li className="flex items-center gap-3 py-2">
+    <span className={`h-2 w-2 shrink-0 rounded-full ${a.enRetard ? "bg-red-500" : "bg-indigo-400"}`} />
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-sm font-bold text-gray-800 dark:text-white">{a.titre}</span>
+      <span className="block truncate text-[11px] text-gray-400">
+        {formatDate(a.datePrevue)}
+        {a.heure ? ` · ${heureCourte(a.heure)}` : ""}
+        {a.responsable ? ` · ${a.responsable.nom}` : ""}
+        {` · ${labelOf(CATEGORIES_PLANNING, a.categorie)}`}
+      </span>
+    </span>
+    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${clsOf(STATUTS_PLANNING, a.statut)}`}>
+      {labelOf(STATUTS_PLANNING, a.statut)}
+    </span>
+  </li>
+);
 
 /* ============================== Helpers ============================== */
 
 const money = (v: unknown) =>
   `${Number(v || 0).toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })} DH`;
 
-const schoolYearOf = (d = new Date()) => {
-  const y = d.getFullYear();
-  return d.getMonth() + 1 >= 9 ? `${y}/${y + 1}` : `${y - 1}/${y}`;
-};
-
-const schoolYears = () => {
-  const first = Number(schoolYearOf().split("/")[0]);
-  return Array.from({ length: 6 }, (_, i) => `${first - i}/${first - i + 1}`);
-};
 
 const formatDate = (iso: string) => {
   const d = new Date(`${iso}T00:00:00`);
@@ -69,10 +105,6 @@ const formatDate = (iso: string) => {
     : new Intl.DateTimeFormat("ar-MA", { weekday: "short", day: "numeric", month: "short" }).format(d);
 };
 
-const greeting = () => {
-  const h = new Date().getHours();
-  return h < 12 ? "صباح الخير" : h < 18 ? "مساء الخير" : "مساء النور";
-};
 
 // Ordre fixe des catégories de familles (couleur liée à la catégorie, jamais au rang)
 const TYPE_ORDER = ["أيتام", "معوز", "لطيم"];
@@ -127,7 +159,7 @@ const Card = ({
 /* ============================== Page ============================== */
 
 export default function Home() {
-  const [annee, setAnnee] = useState(schoolYearOf());
+  const [annee, setAnnee] = useState(currentSchoolYear());
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -199,12 +231,9 @@ export default function Home() {
           <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-sm font-semibold text-white/75">الرشاد للكفالة · اللجنة الاجتماعية</p>
-              <h1 className="mt-1 text-3xl font-black lg:text-4xl">
-                {greeting()}
-                {user?.nomComplet ? `، ${user.nomComplet}` : ""}
-              </h1>
+              <h1 className="mt-1 text-3xl font-black lg:text-4xl">لوحة القيادة</h1>
               <p className="mt-2 max-w-xl text-sm text-white/80">
-                هذه نظرة سريعة على وضعية الجمعية خلال السنة الدراسية {annee}: الأسر، الأطفال، الأنشطة والصناديق.
+                مؤشرات المتابعة للسنة الدراسية {annee}{user?.nomComplet ? ` · ${user.nomComplet}` : ""}
               </p>
               <div className="mt-5 flex flex-wrap gap-2">
                 {[
@@ -231,7 +260,7 @@ export default function Home() {
                 onChange={(e) => setAnnee(e.target.value)}
                 className="rounded-lg bg-white px-2 py-1 text-sm font-bold text-indigo-700 outline-none"
               >
-                {schoolYears().map((y) => (
+                {schoolYearsList(5).map((y) => (
                   <option key={y} value={y}>
                     {y}
                   </option>
@@ -246,6 +275,154 @@ export default function Home() {
 
         {data && (
           <>
+            {/* ---------------- Planning : ce qui doit être fait ---------------- */}
+            <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+              <div className="xl:col-span-2">
+                <Card
+                  title="المخطط السنوي"
+                  action={
+                    <Link to="/planning" className="text-xs font-bold text-indigo-600">
+                      المخطط كاملا ←
+                    </Link>
+                  }
+                >
+                  {data.planning.total === 0 ? (
+                    <p className="text-sm text-gray-400">
+                      لا توجد مهام مبرمجة لهذه السنة.{" "}
+                      <Link to="/planning" className="font-bold text-indigo-600">
+                        إعداد المخطط السنوي
+                      </Link>
+                    </p>
+                  ) : (
+                    <>
+                      <div className="flex flex-wrap items-end justify-between gap-4">
+                        <div>
+                          <p className="text-3xl font-black tabular-nums text-gray-900 dark:text-white">{data.planning.progression}%</p>
+                          <p className="text-xs text-gray-500">نسبة الإنجاز (دون المهام الملغاة)</p>
+                        </div>
+                        <div className="grid grid-cols-4 gap-4 text-center text-xs">
+                          {[
+                            ["المبرمجة", data.planning.total, "text-gray-900"],
+                            ["المنجزة", data.planning.termine, "text-emerald-700"],
+                            ["الجارية", data.planning.enCours, "text-indigo-700"],
+                            ["لم تبدأ", data.planning.nonCommence, "text-gray-600"],
+                          ].map(([l, v, c]) => (
+                            <div key={l as string}>
+                              <p className={`text-lg font-black tabular-nums dark:text-white ${c}`}>{v}</p>
+                              <p className="text-gray-500">{l}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div
+                        className="mt-3 h-2.5 w-full rounded-full"
+                        style={{ background: "var(--track)" }}
+                        title={`${data.planning.termine} منجز من ${data.planning.total - data.planning.annule}`}
+                      >
+                        <div className="h-2.5 rounded-full" style={{ width: `${data.planning.progression}%`, background: "var(--s3)" }} />
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-1 gap-5 md:grid-cols-2">
+                        <div>
+                          <p className="text-xs font-black text-gray-500">اليوم</p>
+                          {data.planning.aujourdhui.length === 0 ? (
+                            <p className="mt-2 text-xs text-gray-400">لا توجد مهام مبرمجة اليوم</p>
+                          ) : (
+                            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {data.planning.aujourdhui.map((a) => (
+                                <ActionLine key={a.id} a={a} />
+                              ))}
+                            </ul>
+                          )}
+                          <p className="mt-4 text-xs font-black text-gray-500">هذا الأسبوع</p>
+                          {data.planning.semaine.length === 0 ? (
+                            <p className="mt-2 text-xs text-gray-400">لا توجد مهام خلال الأيام القادمة</p>
+                          ) : (
+                            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {data.planning.semaine.map((a) => (
+                                <ActionLine key={a.id} a={a} />
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                        <div>
+                          <p className={`text-xs font-black ${data.planning.retard ? "text-red-600" : "text-gray-500"}`}>
+                            متأخرة {data.planning.retard ? `(${data.planning.retard})` : ""}
+                          </p>
+                          {data.planning.enRetard.length === 0 ? (
+                            <p className="mt-2 text-xs text-gray-400">لا توجد مهام متأخرة</p>
+                          ) : (
+                            <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                              {data.planning.enRetard.map((a) => (
+                                <ActionLine key={a.id} a={a} />
+                              ))}
+                            </ul>
+                          )}
+                          {data.planning.prochaines.length > 0 && (
+                            <>
+                              <p className="mt-4 text-xs font-black text-gray-500">لاحقا</p>
+                              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {data.planning.prochaines.map((a) => (
+                                  <ActionLine key={a.id} a={a} />
+                                ))}
+                              </ul>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </Card>
+              </div>
+
+              <Card
+                title="الاجتماعات"
+                action={
+                  <Link to="/reunions" className="text-xs font-bold text-indigo-600">
+                    السجل ←
+                  </Link>
+                }
+              >
+                <div className="grid grid-cols-2 gap-2 text-center">
+                  <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800">
+                    <p className="text-xl font-black text-gray-900 dark:text-white">
+                      {data.reunions.realisees}
+                      <span className="text-xs font-bold text-gray-400"> / {data.reunions.total}</span>
+                    </p>
+                    <p className="text-[11px] text-gray-500">منعقدة هذه السنة</p>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 dark:bg-gray-800">
+                    <p className="text-xl font-black text-gray-900 dark:text-white">
+                      {data.reunions.tauxPresence != null ? `${data.reunions.tauxPresence}%` : "—"}
+                    </p>
+                    <p className="text-[11px] text-gray-500">نسبة الحضور</p>
+                  </div>
+                </div>
+                <p className="mt-4 text-xs font-black text-gray-500">الاجتماعات القادمة</p>
+                {data.reunions.prochaines.length === 0 ? (
+                  <p className="mt-2 text-xs text-gray-400">لا توجد اجتماعات مبرمجة</p>
+                ) : (
+                  <ul className="mt-1 divide-y divide-gray-100 dark:divide-gray-800">
+                    {data.reunions.prochaines.map((r) => (
+                      <li key={r.id}>
+                        <Link to={`/reunions/${r.id}`} className="flex items-center gap-3 py-2">
+                          <span className="w-20 shrink-0 rounded-lg bg-indigo-50 px-2 py-1.5 text-center text-[11px] font-black text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">
+                            {formatDate(r.date)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-bold text-gray-800 dark:text-white">{r.titre}</span>
+                            <span className="block truncate text-[11px] text-gray-400">
+                              {[r.heure ? heureCourte(r.heure) : "", r.lieu].filter(Boolean).join(" · ")}
+                            </span>
+                          </span>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+            </div>
+
             {/* ---------------- Chiffres clés ---------------- */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Tile
@@ -341,7 +518,7 @@ export default function Home() {
                               <p className={`text-sm font-black tabular-nums ${neg ? "text-red-700 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>
                                 {money(f.solde)}
                               </p>
-                              <p className="text-[11px] text-gray-400">{neg ? "⚠ رصيد سالب" : "الرصيد"}</p>
+                              <p className="text-[11px] text-gray-400">{neg ? "رصيد سالب" : "الرصيد"}</p>
                             </div>
                           </div>
                         );
@@ -355,7 +532,7 @@ export default function Home() {
               <Card title="نقاط تستحق الانتباه">
                 {data.alertes.length === 0 ? (
                   <div className="flex items-center gap-3 rounded-xl bg-emerald-50 p-4 text-sm font-bold text-emerald-700 dark:bg-emerald-500/10">
-                    <span>✓</span> لا توجد ملاحظات حاليا
+                    لا توجد تنبيهات حاليا
                   </div>
                 ) : (
                   <ul className="space-y-2">
@@ -371,7 +548,7 @@ export default function Home() {
                                 : "border-sky-200 bg-sky-50 text-sky-800"
                           }`}
                         >
-                          <span className="font-black">{a.niveau === "DANGER" ? "⛔" : a.niveau === "WARNING" ? "⚠" : "ℹ"}</span>
+                          <span className="shrink-0 rounded-md bg-white/70 px-2 py-0.5 text-[11px] font-black">{a.niveau === "DANGER" ? "عاجل" : a.niveau === "WARNING" ? "تنبيه" : "معلومة"}</span>
                           <span className="flex-1">
                             <span className="block font-bold">{a.titre}</span>
                             <span className="text-xs opacity-80">{a.valeur}</span>
@@ -437,9 +614,21 @@ export default function Home() {
                   </Link>
                 }
               >
+                <ul className="mb-3 space-y-1.5 text-sm">
+                  {[
+                    ["يتابعون دراستهم", data.enfants.enCoursEtudes],
+                    ["توقفوا عن الدراسة", data.enfants.arretEtudes],
+                    ["بدون تتبع دراسي", data.enfants.sansSuiviScolaire],
+                  ].map(([l, v]) => (
+                    <li key={l as string} className="flex items-center justify-between">
+                      <span className="text-gray-600 dark:text-gray-300">{l}</span>
+                      <span className="font-black tabular-nums text-gray-900 dark:text-white">{v}</span>
+                    </li>
+                  ))}
+                </ul>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800">
-                    <p className="text-xs text-gray-500">متمدرسون هذه السنة</p>
+                    <p className="text-xs text-gray-500">مسجلون هذه السنة</p>
                     <p className="mt-1 text-2xl font-black text-gray-900 dark:text-white">{data.enfants.scolarisesAnnee}</p>
                   </div>
                   <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-800">

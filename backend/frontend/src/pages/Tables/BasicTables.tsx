@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import { useNavigate } from "react-router-dom";
+import { currentSchoolYear as currentSchoolYearOf, schoolYearsList } from "../../lib/schoolYear";
 import { PriseEnCharge, besoinLabel, resumePec } from "../../lib/prisesEnCharge";
 import { Tone, kpis, openReport, table } from "../../lib/report";
 
@@ -64,7 +65,7 @@ const FIELDS: Record<Group, FieldDef[]> = {
     { key: "nbParticipations", label: "عدد المشاركات", kind: "number" },
     { key: "present", label: "حضور", kind: "number" },
     { key: "absent", label: "غياب", kind: "number" },
-    { key: "eventDegresDefinis", label: "الأنشطة - الدرجات المحددة", kind: "money" },
+    { key: "eventDegresDefinis", label: "الأنشطة - الأيتام", kind: "money" },
     { key: "eventDegreNonDefini", label: "الأنشطة - معوز", kind: "money" },
     { key: "eventSawaedAlKhayr", label: "الأنشطة - سواعد الخير", kind: "money" },
     { key: "totalEvenements", label: "مجموع مصاريف الأنشطة", kind: "money" },
@@ -195,12 +196,9 @@ const fmt = (n: any) =>
     maximumFractionDigits: 2,
   })} DH`;
 
-const currentYear = new Date().getFullYear();
-const YEARS = Array.from({ length: 6 }, (_, i) => String(currentYear - i));
-const currentSchoolYear =
-  new Date().getMonth() + 1 >= 9
-    ? `${currentYear}/${currentYear + 1}`
-    : `${currentYear - 1}/${currentYear}`;
+// Années scolaires (1er septembre → 31 août) : règle commune lib/schoolYear
+const currentSchoolYear = currentSchoolYearOf();
+const YEARS = schoolYearsList(5);
 
 const AVATARS = [
   "from-blue-500 to-indigo-500",
@@ -226,14 +224,14 @@ const eventCategoryLabel = (event: any) => {
   }
 
   if (code === "DEGRE_DEFINI") {
-    return "الدرجات المحددة";
+    return "الأيتام";
   }
 
   if (
     code === "DEGRE_NON_DEFINI" ||
     code === "MOUAWIZ"
   ) {
-    return "معوز";
+    return "المعوزون";
   }
 
   return "غير مصنف";
@@ -509,7 +507,7 @@ export default function FamillesTable() {
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
   // ===== Année + consommation =====
-  const [year, setYear] = useState<string>(String(currentYear));
+  const [year, setYear] = useState<string>(currentSchoolYear);
   const [studyYear, setStudyYear] = useState<string>(currentSchoolYear);
   const [customStudyYear, setCustomStudyYear] = useState("");
   const [conso, setConso] = useState<Record<string, any>>({});
@@ -574,7 +572,7 @@ export default function FamillesTable() {
   // ===== Consommation (année de la page) =====
   useEffect(() => {
     axios
-      .get(`${API}/events/stats/familles`, { params: year === "all" ? {} : { year } })
+      .get(`${API}/events/stats/familles`, { params: year === "all" ? {} : { anneeScolaire: year } })
       .then((res) => {
         const m: Record<string, any> = {};
         (Array.isArray(res.data) ? res.data : []).forEach((s: any) => (m[String(s.familleId)] = s));
@@ -590,7 +588,7 @@ export default function FamillesTable() {
         params:
           year === "all"
             ? {}
-            : { year },
+            : { anneeScolaire: year },
       })
       .then((res) => {
         const data =
@@ -849,7 +847,7 @@ export default function FamillesTable() {
     let cancelled = false;
     setExportConsoLoading(true);
     axios
-      .get(`${API}/events/stats/familles`, { params: crit.year === "all" ? {} : { year: crit.year } })
+      .get(`${API}/events/stats/familles`, { params: crit.year === "all" ? {} : { anneeScolaire: crit.year } })
       .then((res) => {
         if (cancelled) return;
         const m: Record<string, any> = {};
@@ -1084,7 +1082,6 @@ export default function FamillesTable() {
     const s = search.trim().toLowerCase();
     const list = familles.filter(
       (f) =>
-        (year === "all" || f.anneeInscription === year) &&
         (!fType || f.typeFamilleNom === fType) &&
         (!fDegre || f.degreFamille === fDegre) &&
         (!fInscription || f.anneeInscription === fInscription) &&
@@ -1450,7 +1447,7 @@ export default function FamillesTable() {
 
         } else if (
           categorie.includes(
-            "الدرجات المحددة"
+            "الأيتام"
           )
         ) {
 
@@ -1546,7 +1543,7 @@ export default function FamillesTable() {
 
   const criteriaLabels = useMemo(() => {
     const l: string[] = [];
-    l.push(`فترة الأنشطة: ${crit.year === "all" ? "كل السنوات" : crit.year}`);
+    l.push(`السنة الدراسية للأنشطة: ${crit.year === "all" ? "كل السنوات الدراسية" : crit.year}`);
     if (exportType === "FAMILLES" || exportType === "CONSO") {
       l.push(`السنة الدراسية: ${exportStudyYear === "all" ? "كل السنوات الدراسية" : exportStudyYear}`);
     }
@@ -1600,7 +1597,7 @@ export default function FamillesTable() {
 
     if (exportSummary.hasAmount) {
       params.push(
-        `الدرجات المحددة: ${fmt(
+        `الأيتام: ${fmt(
           exportSummary.eventDegresDefinis
         )}`
       );
@@ -1661,14 +1658,14 @@ export default function FamillesTable() {
       ...(exportSummary.hasAmount
         ? [
             {
-              label: "الدرجات المحددة",
+              label: "الأيتام",
               value: fmt(
                 exportSummary.eventDegresDefinis
               ),
               color: "#eff6ff",
             },
             {
-              label: "معوز",
+              label: "المعوزون",
               value: fmt(
                 exportSummary.eventDegreNonDefini
               ),
@@ -1728,13 +1725,13 @@ export default function FamillesTable() {
 
           <div className="flex flex-wrap items-end gap-2">
             <label>
-              <span className="mb-1 block text-[10px] font-bold text-gray-400">سنة الأنشطة</span>
+              <span className="mb-1 block text-[10px] font-bold text-gray-400">السنة الدراسية للأنشطة</span>
               <select
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
                 className="h-11 rounded-xl border border-gray-200 bg-white px-3 text-sm font-semibold"
               >
-                <option value="all">كل السنوات</option>
+                <option value="all">كل السنوات الدراسية</option>
                 {YEARS.map((y) => (
                   <option key={y} value={y}>
                     {y}
@@ -2011,7 +2008,7 @@ export default function FamillesTable() {
                             title={(pecParFamille[String(row.id)] ?? []).map((x) => `${x.parrainNom}: ${resumePec(x)}`).join("\n")}
                             className="inline-block max-w-[200px] truncate rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700"
                           >
-                            🤝 {Array.from(new Set((pecParFamille[String(row.id)] ?? []).flatMap((x) => x.besoins)))
+                            تكفل خارجي: {Array.from(new Set((pecParFamille[String(row.id)] ?? []).flatMap((x) => x.besoins)))
                               .map(besoinLabel)
                               .join("، ")}
                           </span>
@@ -2187,17 +2184,17 @@ export default function FamillesTable() {
                 <Section
                   n={3}
                   title="الفترة"
-                  sub="اختر سنة الأنشطة والسنة الدراسية للدعم بشكل مستقل."
+                  sub="اختر السنة الدراسية للأنشطة والسنة الدراسية للدعم بشكل مستقل."
                 >
                   <div className="grid gap-4 md:grid-cols-2">
                     <div>
-                      <label className={labelCls}>سنة الأنشطة</label>
+                      <label className={labelCls}>السنة الدراسية للأنشطة</label>
                       <select
                         value={crit.year}
                         onChange={(e) => setC({ year: e.target.value })}
                         className={selectCls}
                       >
-                        <option value="all">كل السنوات</option>
+                        <option value="all">كل السنوات الدراسية</option>
                         {YEARS.map((y) => (
                           <option key={y} value={y}>{y}</option>
                         ))}
@@ -2371,7 +2368,7 @@ export default function FamillesTable() {
                 <div className="overflow-hidden rounded-3xl border border-indigo-100 bg-white shadow-sm">
                   <div className="bg-gradient-to-br from-indigo-600 to-violet-600 p-5 text-white">
                     <p className="text-xs font-bold text-indigo-100">
-                      {typeInfo.label} — {crit.year === "all" ? "كل السنوات" : crit.year}
+                      {typeInfo.label} — {crit.year === "all" ? "كل السنوات الدراسية" : `السنة الدراسية ${crit.year}`}
                     </p>
                     <div className="mt-2 flex items-end justify-between">
                       <div>
@@ -2394,7 +2391,7 @@ export default function FamillesTable() {
                       <>
                         <div className="flex items-center justify-between rounded-xl bg-blue-50 px-3 py-2.5">
                           <span className="text-xs font-semibold text-gray-500">
-                            الدرجات المحددة
+                            الأيتام
                           </span>
 
                           <strong className="text-sm text-blue-700">
@@ -2538,7 +2535,7 @@ export default function FamillesTable() {
 
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-gray-400">
                     <span>
-                      سنة الأنشطة: {year === "all" ? "كل السنوات" : year}
+                      السنة الدراسية للأنشطة: {year === "all" ? "كل السنوات الدراسية" : year}
                     </span>
                     <span>•</span>
                     <span>
@@ -2550,7 +2547,7 @@ export default function FamillesTable() {
 
                     <div className="rounded-xl bg-blue-50 p-3">
                       <p className="text-[11px] text-gray-500">
-                        الأنشطة - الدرجات المحددة
+                        الأنشطة - الأيتام
                       </p>
 
                       <p className="font-bold text-blue-700">
@@ -2717,9 +2714,9 @@ export default function FamillesTable() {
                                     <span className="inline-flex whitespace-nowrap rounded-full bg-violet-50 px-3 py-1 text-xs font-bold text-violet-700">
                                       سواعد الخير
                                     </span>
-                                  ) : eventCategoryLabel(ev) === "الدرجات المحددة" ? (
+                                  ) : eventCategoryLabel(ev) === "الأيتام" ? (
                                     <span className="inline-flex whitespace-nowrap rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                      الدرجات المحددة
+                                      الأيتام
                                     </span>
                                   ) : eventCategoryLabel(ev).includes("معوز") ? (
                                     <span className="inline-flex whitespace-nowrap rounded-full bg-orange-50 px-3 py-1 text-xs font-bold text-orange-700">

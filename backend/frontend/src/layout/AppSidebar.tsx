@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { Link, useLocation } from "react-router";
 
 import {
+  TaskIcon,
   GroupIcon,
   CalenderIcon,
   GridIcon,
@@ -126,12 +127,25 @@ const GROUPS: NavGroup[] = [
   {
     title: "اللجنة",
     items: [
-      // {
-      //   name: "اجتماعات اللجنة",
-      //   icon: <CalenderIcon />,
-      //   path: "/reunions",
-      //   perm: "REUNIONS",
-      // },
+      {
+        name: "المخطط السنوي",
+        icon: <TaskIcon />,
+        path: "/planning",
+      },
+
+      {
+        name: "اجتماعات اللجنة",
+        icon: <CalenderIcon />,
+        path: "/reunions",
+        match: ["/reunions/"],
+      },
+
+      {
+        name: "أعضاء اللجنة",
+        icon: <GroupIcon />,
+        path: "/membres",
+        match: ["/membres/"],
+      },
 
       {
         name: "إدارة المستخدمين",

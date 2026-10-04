@@ -3,6 +3,8 @@ import { TabView, TabPanel } from "primereact/tabview";
 import { Link, useNavigate } from "react-router-dom";
 import { ORGANISATEURS, Organisateur, organisateurCls, organisateurLabel, organisateurOf } from "../lib/organisateur";
 import ExportButtons from "../components/common/ExportButtons";
+import { RUBRIQUES } from "../lib/labels";
+import { currentSchoolYear, schoolYearsList } from "../lib/schoolYear";
 import type { TableExport } from "../lib/exportTable";
 
 const API = "http://localhost:8080/api";
@@ -155,20 +157,10 @@ const formatDate = (value?: string) => {
 
 const numberValue = (value: unknown) => Number(value ?? 0) || 0;
 
-const now = new Date();
-const currentCalendarYear = now.getFullYear();
-const currentMonth = now.getMonth();
 
-const currentSchoolStartYear =
-  currentMonth >= 8 ? currentCalendarYear : currentCalendarYear - 1;
+const CURRENT_SCHOOL_YEAR = currentSchoolYear();
 
-const CURRENT_SCHOOL_YEAR =
-  `${currentSchoolStartYear}/${currentSchoolStartYear + 1}`;
-
-const SCHOOL_YEARS = Array.from({ length: 8 }, (_, i) => {
-  const start = currentSchoolStartYear - i;
-  return `${start}/${start + 1}`;
-});
+const SCHOOL_YEARS = schoolYearsList(7);
 
 // ============================================================================
 // PETITES COMPOSANTES D'AFFICHAGE FINANCIER
@@ -246,15 +238,18 @@ const EventFinancialBreakdown: React.FC<{
   const chips: { label: string; value: number; cls: string }[] = event.caisseNom
     ? [{ label: event.caisseNom, value: total, cls: "bg-emerald-50 text-emerald-700" }]
     : [
-        { label: "الأيتام", value: defined, cls: "bg-blue-50 text-blue-700" },
-        { label: "المعوز", value: mouawiz, cls: "bg-orange-50 text-orange-700" },
-        { label: "سواعد الخير", value: sawaed, cls: "bg-violet-50 text-violet-700" },
-        { label: "غير موزع", value: unallocated, cls: "bg-amber-50 text-amber-700" },
+        { label: RUBRIQUES.AYTAM.complet, value: defined, cls: "bg-blue-50 text-blue-700" },
+        { label: RUBRIQUES.MOUAWIZ.complet, value: mouawiz, cls: "bg-orange-50 text-orange-700" },
+        { label: RUBRIQUES.SAWAED.complet, value: sawaed, cls: "bg-violet-50 text-violet-700" },
+        { label: RUBRIQUES.NON_AFFECTE.complet, value: unallocated, cls: "bg-amber-50 text-amber-700" },
       ].filter((c) => c.value > 0);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <span className="text-lg font-black text-slate-900 dark:text-white">{formatMoney(total)}</span>
+      <span className="text-sm font-black text-slate-900 dark:text-white">
+        <span className="text-[11px] font-bold text-slate-400">مجموع المصاريف: </span>
+        {formatMoney(total)}
+      </span>
       <div className="flex flex-wrap gap-1.5">
         {chips.length === 0 ? (
           <span className="text-[11px] font-bold text-slate-400">لا توجد مصاريف بعد</span>
@@ -525,7 +520,7 @@ const ListeEvents: React.FC = () => {
             e.endDate && e.endDate !== e.startDate ? `${e.startDate} ← ${e.endDate}` : e.startDate,
             e.place || "",
             (e.cibles || []).map((c) => CIBLE_LABELS[c] || c).join("، "),
-            e.caisseNom || (e.sawaedAlKhayr ? "سواعد الخير" : "توزيع تلقائي"),
+            e.caisseNom || (e.sawaedAlKhayr ? RUBRIQUES.SAWAED.fonds : "توزيع تلقائي حسب فئة الأسرة"),
             total,
           ];
         })
@@ -666,8 +661,8 @@ const ListeEvents: React.FC = () => {
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-indigo-100">
-                استعرض الأنشطة حسب النوع والسنة الدراسية، مع فصل مصاريف
-                الدرجات المحددة، معوز وسواعد الخير بشكل كامل.
+                الأنشطة حسب النوع والسنة الدراسية، مع مصاريف كل صندوق على حدة:
+                صندوق الأيتام، صندوق المعوزين وصندوق سواعد الخير.
               </p>
             </div>
 
@@ -841,32 +836,32 @@ const ListeEvents: React.FC = () => {
           </div>
 
           <MoneySummaryCard
-            title="الدرجات المحددة"
-            subtitle="مصاريف المستفيدين ذوي الدرجة 1 / 2 / 3"
+            title={RUBRIQUES.AYTAM.complet}
+            subtitle="مستفيدون من أسر ذات درجة (1 / 2 / 3)"
             value={totalMontantDegresDefinis}
             tone="defined"
             loading={loading}
           />
 
           <MoneySummaryCard
-            title="معوز"
-            subtitle="مصاريف المستفيدين بدون درجة محددة"
+            title={RUBRIQUES.MOUAWIZ.complet}
+            subtitle="مستفيدون من أسر بدون درجة"
             value={totalMontantMouawiz}
             tone="mouawiz"
             loading={loading}
           />
 
           <MoneySummaryCard
-            title="سواعد الخير"
-            subtitle="ميزانية مستقلة لأنشطة سواعد الخير"
+            title={RUBRIQUES.SAWAED.complet}
+            subtitle="ميزانية مستقلة"
             value={totalMontantSawaedAlKhayr}
             tone="sawaed"
             loading={loading}
           />
 
           <MoneySummaryCard
-            title="مبلغ غير موزع"
-            subtitle="مبالغ لا يمكن تصنيفها دون خلط"
+            title={RUBRIQUES.NON_AFFECTE.complet}
+            subtitle="يجب تحديد صندوق في صفحة النشاط"
             value={totalMontantNonVentile}
             tone="unallocated"
             loading={loading}
@@ -924,7 +919,7 @@ const ListeEvents: React.FC = () => {
                   STATISTIQUES
               =================================================== */}
 
-              <TabPanel header="📊 الإحصائيات">
+              <TabPanel header="الإحصائيات">
                 {loading ? (
                   <div className="space-y-4">
                     {[1, 2, 3].map((item) => (
@@ -975,21 +970,21 @@ const ListeEvents: React.FC = () => {
 
                             <div className="mt-4 space-y-2">
                               <MoneyLine
-                                label="الدرجات المحددة"
+                                label={RUBRIQUES.AYTAM.complet}
                                 value={row.montantDegresDefinis}
                                 tone="defined"
                                 compact
                               />
 
                               <MoneyLine
-                                label="معوز"
+                                label={RUBRIQUES.MOUAWIZ.complet}
                                 value={row.montantMouawiz}
                                 tone="mouawiz"
                                 compact
                               />
 
                               <MoneyLine
-                                label="سواعد الخير"
+                                label={RUBRIQUES.SAWAED.complet}
                                 value={row.montantSawaedAlKhayr}
                                 tone="sawaed"
                                 compact
@@ -997,7 +992,7 @@ const ListeEvents: React.FC = () => {
 
                               {row.montantNonVentile > 0 && (
                                 <MoneyLine
-                                  label="غير موزع"
+                                  label={RUBRIQUES.NON_AFFECTE.complet}
                                   value={row.montantNonVentile}
                                   tone="unallocated"
                                   compact
@@ -1027,19 +1022,19 @@ const ListeEvents: React.FC = () => {
                               </th>
 
                               <th className="px-5 py-4 text-xs font-black text-blue-700 dark:text-blue-300">
-                                الدرجات المحددة
+                                {RUBRIQUES.AYTAM.fonds}
                               </th>
 
                               <th className="px-5 py-4 text-xs font-black text-orange-700 dark:text-orange-300">
-                                معوز
+                                {RUBRIQUES.MOUAWIZ.fonds}
                               </th>
 
                               <th className="px-5 py-4 text-xs font-black text-violet-700 dark:text-violet-300">
-                                سواعد الخير
+                                {RUBRIQUES.SAWAED.fonds}
                               </th>
 
                               <th className="px-5 py-4 text-xs font-black text-slate-500 dark:text-slate-300">
-                                غير موزع
+                                {RUBRIQUES.NON_AFFECTE.categorie}
                               </th>
                             </tr>
                           </thead>
@@ -1140,8 +1135,8 @@ const ListeEvents: React.FC = () => {
 
                     {/* Pas de somme globale volontairement */}
                     <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-4 text-xs font-bold leading-6 text-slate-500 dark:border-slate-700 dark:bg-slate-800/40 dark:text-slate-300">
-                      يتم عرض مصاريف «الدرجات المحددة»، «معوز» و«سواعد الخير»
-                      بشكل مستقل. لا يتم جمع هذه الميزانيات في مبلغ مالي واحد.
+                      تُعرض مصاريف كل صندوق على حدة (صندوق الأيتام، صندوق المعوزين، صندوق سواعد الخير)
+                      ولا تُجمع في مبلغ واحد.
                     </div>
                   </div>
                 )}
@@ -1285,28 +1280,28 @@ const ListeEvents: React.FC = () => {
 
                             <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2 xl:max-w-3xl xl:grid-cols-4">
                               <MoneyLine
-                                label="الدرجات المحددة"
+                                label={RUBRIQUES.AYTAM.complet}
                                 value={totalDefined}
                                 tone="defined"
                                 compact
                               />
 
                               <MoneyLine
-                                label="معوز"
+                                label={RUBRIQUES.MOUAWIZ.complet}
                                 value={totalMouawiz}
                                 tone="mouawiz"
                                 compact
                               />
 
                               <MoneyLine
-                                label="سواعد الخير"
+                                label={RUBRIQUES.SAWAED.complet}
                                 value={totalSawaed}
                                 tone="sawaed"
                                 compact
                               />
 
                               <MoneyLine
-                                label="غير موزع"
+                                label={RUBRIQUES.NON_AFFECTE.complet}
                                 value={totalUnallocated}
                                 tone="unallocated"
                                 compact

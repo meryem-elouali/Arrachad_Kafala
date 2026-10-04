@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { currentSchoolYear } from "../../lib/schoolYear";
 import { Tone, kpis, openReport, table } from "../../lib/report";
+import { STATUTS_SCOLAIRES, clsOf, labelOf, statutScolaireOf } from "../../lib/labels";
 import ExcelJS from "exceljs";
 
 import MultiSelect from "../../components/form/MultiSelect";
@@ -32,7 +34,13 @@ type EtudeRow = {
   noteSemestre1?: number | string | null;
   noteSemestre2?: number | string | null;
   noteGenerale?: number | string | null;
-  enfant?: { id?: number | string; nom?: string; prenom?: string };
+  enfant?: {
+    id?: number | string;
+    nom?: string;
+    prenom?: string;
+    statutScolaire?: string | null;
+    dateArretEtudes?: string | null;
+  };
   ecole?: { id?: number | string; nom?: string };
   niveauScolaire?: { id?: number | string; nom?: string };
   nomEnfant: string;
@@ -163,6 +171,7 @@ const NOTE_CONFIG: Record<
 
 const exportableFields: Option[] = [
   { text: "الاسم الكامل", value: "nomEnfant" },
+  { text: "الوضعية الدراسية", value: "statutScolaireLabel" },
   { text: "المرحلة الدراسية", value: "cycleLabel" },
   { text: "المستوى", value: "niveauNom" },
   { text: "المؤسسة", value: "nomEcole" },
@@ -294,12 +303,7 @@ const getCycleScolaire = (niveau?: string): CycleScolaire => {
 // ANNÉES SCOLAIRES
 // ============================================================
 
-const getCurrentSchoolYear = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  return month >= 9 ? `${year}/${year + 1}` : `${year - 1}/${year}`;
-};
+const getCurrentSchoolYear = () => currentSchoolYear();
 
 const normalizeSchoolYear = (value?: string) => {
   const text = String(value ?? "").trim();
@@ -404,6 +408,35 @@ export default function EtudesTable() {
   const [cycleFilter, setCycleFilter] = useState<CycleScolaire | "">("");
   // "" = toutes les catégories
   const [categorieFilter, setCategorieFilter] = useState<string>(loadCategorie);
+
+  // Statut scolaire : par défaut seuls les élèves actuellement scolarisés ("" = tous)
+  const [statutFilter, setStatutFilter] = useState<string>(() => {
+    try {
+      return localStorage.getItem("suivi_etudes_statut") ?? "EN_COURS";
+    } catch {
+      return "EN_COURS";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("suivi_etudes_statut", statutFilter);
+    } catch {
+      /* ignoré */
+    }
+  }, [statutFilter]);
+
+  // Tous les enfants (y compris sans aucune étude) pour compter chaque statut
+  const [tousEnfants, setTousEnfants] = useState<
+    { id: number; statutScolaire?: string | null }[]
+  >([]);
+
+  useEffect(() => {
+    axios
+      .get(`${API}/enfant`)
+      .then((res) => setTousEnfants(Array.isArray(res.data) ? res.data : []))
+      .catch(() => setTousEnfants([]));
+  }, []);
 
   useEffect(() => {
     try {
@@ -572,7 +605,7 @@ export default function EtudesTable() {
   // On récupère les familles afin de savoir dans quelle caisse
   // classer les montants de soutien scolaire :
   //
-  // degré 1 / 2 / 3 => الدرجات المحددة
+  // degré 1 / 2 / 3 => الأيتام
   // degré null      => معوز
   //
   // IMPORTANT :
@@ -699,15 +732,15 @@ export default function EtudesTable() {
       info.categorie === "DEFINI"
     ) {
       return info.degre != null
-        ? `الدرجات المحددة - الدرجة ${info.degre}`
-        : "الدرجات المحددة";
+        ? `الأيتام - الدرجة ${info.degre}`
+        : "الأيتام";
     }
 
     if (
       info.categorie ===
       "NON_DEFINI"
     ) {
-      return "معوز";
+      return "المعوزون";
     }
 
     return "غير مصنف";
@@ -786,6 +819,8 @@ export default function EtudesTable() {
       const categorieOK =
         !categorieFilter ||
         degresEnfants[String(e.enfant?.id)]?.typeNom === categorieFilter;
+      const statutOK =
+        !statutFilter || statutScolaireOf(e.enfant?.statutScolaire) === statutFilter;
 
       const searchOK =
         !s ||
@@ -794,9 +829,19 @@ export default function EtudesTable() {
         e.niveauNom?.toLowerCase().includes(s) ||
         e.anneeScolaire?.toLowerCase().includes(s);
 
-      return anneeOK && niveauOK && ecoleOK && cycleOK && categorieOK && searchOK;
+      return anneeOK && niveauOK && ecoleOK && cycleOK && categorieOK && statutOK && searchOK;
     });
-  }, [etudes, year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, degresEnfants]);
+  }, [etudes, year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, statutFilter, degresEnfants]);
+
+  // Répartition par statut scolaire (catégorie de famille respectée)
+  const statutCounts = useMemo(() => {
+    const c: Record<string, number> = { EN_COURS: 0, ARRETE: 0, NON_SUIVI: 0 };
+    tousEnfants.forEach((en) => {
+      if (categorieFilter && degresEnfants[String(en.id)]?.typeNom !== categorieFilter) return;
+      c[statutScolaireOf(en.statutScolaire)] += 1;
+    });
+    return c;
+  }, [tousEnfants, categorieFilter, degresEnfants]);
 
   const categoriesOptions = useMemo(() => {
     const set = new Set<string>([CATEGORIE_PAR_DEFAUT]);
@@ -1028,7 +1073,8 @@ export default function EtudesTable() {
     niveauFilter !== "" ||
     ecoleFilter !== "" ||
     cycleFilter !== "" ||
-    categorieFilter !== CATEGORIE_PAR_DEFAUT;
+    categorieFilter !== CATEGORIE_PAR_DEFAUT ||
+    statutFilter !== "EN_COURS";
 
   const resetFilters = () => {
     const current = anneesDisponibles.find(
@@ -1037,6 +1083,7 @@ export default function EtudesTable() {
     setYear(current ?? anneesDisponibles[0] ?? "all");
     setSearch("");
     setCategorieFilter(CATEGORIE_PAR_DEFAUT);
+    setStatutFilter("EN_COURS");
     setNiveauFilter("");
     setEcoleFilter("");
     setCycleFilter("");
@@ -1091,7 +1138,7 @@ export default function EtudesTable() {
 
   useEffect(() => {
     setPage(0);
-  }, [year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, rowsPerPage]);
+  }, [year, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, statutFilter, rowsPerPage]);
 
   const pageCount = Math.max(1, Math.ceil(sortedEtudes.length / rowsPerPage));
 
@@ -1119,6 +1166,7 @@ export default function EtudesTable() {
         (!cycleFilter || cycle === cycleFilter) &&
         (!categorieFilter ||
           degresEnfants[String(e.enfant?.id)]?.typeNom === categorieFilter) &&
+        (!statutFilter || statutScolaireOf(e.enfant?.statutScolaire) === statutFilter) &&
         (!s ||
           e.nomEnfant?.toLowerCase().includes(s) ||
           e.nomEcole?.toLowerCase().includes(s) ||
@@ -1126,7 +1174,7 @@ export default function EtudesTable() {
           e.anneeScolaire?.toLowerCase().includes(s))
       );
     });
-  }, [etudes, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, degresEnfants]);
+  }, [etudes, search, niveauFilter, ecoleFilter, cycleFilter, categorieFilter, statutFilter, degresEnfants]);
 
   const exportSourceRows = useMemo(() => {
     if (exportScope === "page") return pageRows;
@@ -1159,6 +1207,7 @@ export default function EtudesTable() {
 
         return {
           ...row,
+          statutScolaireLabel: labelOf(STATUTS_SCOLAIRES, statutScolaireOf(row.enfant?.statutScolaire)),
           cycle,
           cycleLabel: NOTE_CONFIG[cycle].label,
           noteNumerique: note,
@@ -1251,7 +1300,7 @@ export default function EtudesTable() {
           if (
             exportDegreFilter === "defined" &&
             !categorieDegre.startsWith(
-              "الدرجات المحددة"
+              "الأيتام"
             )
           ) {
             return false;
@@ -1261,7 +1310,7 @@ export default function EtudesTable() {
             exportDegreFilter === "degree1" &&
             !(
               categorieDegre.startsWith(
-                "الدرجات المحددة"
+                "الأيتام"
               ) &&
               Number(degreFamille) === 1
             )
@@ -1273,7 +1322,7 @@ export default function EtudesTable() {
             exportDegreFilter === "degree2" &&
             !(
               categorieDegre.startsWith(
-                "الدرجات المحددة"
+                "الأيتام"
               ) &&
               Number(degreFamille) === 2
             )
@@ -1285,7 +1334,7 @@ export default function EtudesTable() {
             exportDegreFilter === "degree3" &&
             !(
               categorieDegre.startsWith(
-                "الدرجات المحددة"
+                "الأيتام"
               ) &&
               Number(degreFamille) === 3
             )
@@ -1374,7 +1423,7 @@ export default function EtudesTable() {
             String(
               row.categorieDegre
             ).startsWith(
-              "الدرجات المحددة"
+              "الأيتام"
             )
           ) {
             acc.consommeDegreDefini +=
@@ -1448,7 +1497,7 @@ export default function EtudesTable() {
     if (exportPaymentFilter === "external") labels.push("الأداء: تكفل به الغير");
 
     if (exportDegreFilter === "defined") {
-      labels.push("الدرجة: الدرجات المحددة");
+      labels.push("الدرجة: الأيتام");
     }
 
     if (exportDegreFilter === "degree1") {
@@ -1588,7 +1637,7 @@ export default function EtudesTable() {
     tr.height = 26;
     const tc = tr.getCell(1);
     tc.value =
-      `الدرجات المحددة — المستهلك: ${fmtMoney(
+      `الأيتام — المستهلك: ${fmtMoney(
         exportStats.consommeDegreDefini
       )} | المؤدى: ${fmtMoney(
         exportStats.payeDegreDefini
@@ -1653,7 +1702,7 @@ export default function EtudesTable() {
       exportDegreFilter === "undefined"
         ? "فئة الدرجة: معوز"
         : exportDegreFilter === "defined"
-          ? "فئة الدرجة: الدرجات المحددة"
+          ? "فئة الدرجة: الأيتام"
           : exportDegreFilter === "degree1"
             ? "فئة الدرجة: الدرجة 1"
             : exportDegreFilter === "degree2"
@@ -1664,10 +1713,10 @@ export default function EtudesTable() {
                   ? "فئة الدرجة: غير مصنف"
                   : "فئة الدرجة: جميع الدرجات",
       `المستفيدون من الدعم: ${exportStats.beneficiaires}`,
-      `الدرجات المحددة - المستهلك: ${fmtMoney(
+      `الأيتام - المستهلك: ${fmtMoney(
         exportStats.consommeDegreDefini
       )}`,
-      `الدرجات المحددة - المؤدى: ${fmtMoney(
+      `الأيتام - المؤدى: ${fmtMoney(
         exportStats.payeDegreDefini
       )}`,
       ...(exportStats.consommeDegreNonDefini > 0 || exportStats.payeDegreNonDefini > 0
@@ -1694,14 +1743,14 @@ export default function EtudesTable() {
       exportOrientation,
       [
         {
-          label: "مستهلك - الدرجات المحددة",
+          label: "مستهلك - الأيتام",
           value: fmtMoney(
             exportStats.consommeDegreDefini
           ),
           color: "#eff6ff",
         },
         {
-          label: "مؤدى - الدرجات المحددة",
+          label: "مؤدى - الأيتام",
           value: fmtMoney(
             exportStats.payeDegreDefini
           ),
@@ -1864,6 +1913,32 @@ export default function EtudesTable() {
           </div>
         </div>
 
+        {/* RÉPARTITION PAR STATUT SCOLAIRE (cliquable = filtre) */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+          {[...STATUTS_SCOLAIRES, { value: "", label: "كل الأطفال", cls: "bg-slate-100 text-slate-700" }].map((st) => {
+            const n = st.value
+              ? statutCounts[st.value]
+              : statutCounts.EN_COURS + statutCounts.ARRETE + statutCounts.NON_SUIVI;
+            const active = statutFilter === st.value;
+            return (
+              <button
+                key={st.value || "all"}
+                type="button"
+                onClick={() => setStatutFilter(st.value)}
+                className={`flex items-center justify-between rounded-2xl border p-4 text-right transition ${
+                  active ? "border-indigo-400 bg-indigo-50/70 shadow-sm" : "border-gray-200 bg-white hover:bg-gray-50"
+                }`}
+              >
+                <span className="text-sm font-bold text-gray-700">{st.label}</span>
+                <span className={`rounded-full px-3 py-1 text-sm font-black ${st.cls}`}>{n}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="-mt-3 text-[11px] text-gray-400">
+          الأطفال الذين توقفوا عن الدراسة أو لا يحتاجون تتبعا لا يُحتسبون ضمن التلاميذ المتمدرسين؛ مسارهم الدراسي السابق يبقى محفوظا.
+        </p>
+
         {/* STATS GÉNÉRALES
             Le soutien est compté en entier (y compris la part payée par d'autres),
             puis séparé entre l'association et les autres payeurs. */}
@@ -1917,7 +1992,7 @@ export default function EtudesTable() {
                 </div>
 
                 <div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5">
-                  <p className="text-sm text-gray-500">الدرجات المحددة</p>
+                  <p className="text-sm text-gray-500">الأيتام — صندوق الأيتام</p>
                   <p className="mt-1 whitespace-nowrap text-xl font-bold text-indigo-700">
                     أدته الجمعية: {money(statsSoutien.payeDegreDefini)}
                   </p>
@@ -1926,7 +2001,7 @@ export default function EtudesTable() {
 
                 {showMouawiz && (
                   <div className="rounded-2xl border border-orange-100 bg-orange-50 p-5">
-                    <p className="text-sm text-gray-500">معوز</p>
+                    <p className="text-sm text-gray-500">المعوزون — صندوق المعوزين</p>
                     <p className="mt-1 whitespace-nowrap text-xl font-bold text-orange-700">
                       أدته الجمعية: {money(statsSoutien.payeDegreNonDefini)}
                     </p>
@@ -2186,6 +2261,17 @@ export default function EtudesTable() {
                                 {degreInfo.typeNom || "غير مصنف"}
                                 {degreInfo.degre != null ? ` · الدرجة ${degreInfo.degre}` : ""}
                               </p>
+                              {statutScolaireOf(row.enfant?.statutScolaire) !== "EN_COURS" && (
+                                <span
+                                  className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-black ${clsOf(
+                                    STATUTS_SCOLAIRES,
+                                    statutScolaireOf(row.enfant?.statutScolaire)
+                                  )}`}
+                                >
+                                  {labelOf(STATUTS_SCOLAIRES, statutScolaireOf(row.enfant?.statutScolaire))}
+                                  {row.enfant?.dateArretEtudes ? ` · ${row.enfant.dateArretEtudes}` : ""}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </td>
@@ -2705,7 +2791,7 @@ export default function EtudesTable() {
                         </option>
 
                         <option value="defined">
-                          الدرجات المحددة
+                          الأيتام
                         </option>
 
                         <option value="degree1">
@@ -2801,7 +2887,7 @@ export default function EtudesTable() {
                 <div className="space-y-3 p-5">
                   <div className="flex items-center justify-between rounded-xl bg-blue-50 px-3 py-2.5">
                     <span className="text-xs font-semibold text-gray-500">
-                      مستهلك - الدرجات المحددة
+                      مستهلك - الأيتام
                     </span>
 
                     <strong className="text-sm text-blue-700">
@@ -2815,7 +2901,7 @@ export default function EtudesTable() {
 
                   <div className="flex items-center justify-between rounded-xl bg-indigo-50 px-3 py-2.5">
                     <span className="text-xs font-semibold text-gray-500">
-                      مؤدى - الدرجات المحددة
+                      مؤدى - الأيتام
                     </span>
 
                     <strong className="text-sm text-indigo-700">

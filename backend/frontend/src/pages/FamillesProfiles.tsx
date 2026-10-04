@@ -6,6 +6,10 @@ import PageMeta from "../components/common/PageMeta";
 import { Modal } from "../components/ui/modal";
 import FamilleDepenses from "../components/famille/FamilleDepenses";
 import FamillePrisesEnCharge from "../components/famille/FamillePrisesEnCharge";
+import FamilleDocuments, { FamilleDocument } from "../components/famille/FamilleDocuments";
+import { api as apiAuth } from "../lib/api";
+import { schoolYearsList } from "../lib/schoolYear";
+import { CATEGORIES_DOCUMENT, STATUTS_SCOLAIRES, labelOf, statutScolaireOf } from "../lib/labels";
 import ReportOptionsModal from "../components/common/ReportOptionsModal";
 import {
   ReportSettings,
@@ -52,6 +56,10 @@ interface Enfant {
   prenom: string;
   nom: string;
   sexe?: "FILLE" | "GARCON" | null;
+  statutScolaire?: "EN_COURS" | "ARRETE" | "NON_SUIVI" | null;
+  dateArretEtudes?: string | null;
+  motifArretEtudes?: string | null;
+  remarqueScolaire?: string | null;
   dateNaissance?: string;
   photoEnfant?: string;
   typeMaladie?: string;
@@ -612,6 +620,7 @@ const FAMILLE_REPORT_SECTIONS = [
   { key: "soutien", label: "تفاصيل الدعم الدراسي" },
   { key: "depenses", label: "مصاريف الأسرة (صناديق الجمعية)" },
   { key: "prises", label: "التكفل الخارجي (الوسطاء)" },
+  { key: "documents", label: "قائمة الوثائق والصور", defaultOn: false },
 ];
 
 const printFamilleReport = (
@@ -624,11 +633,12 @@ const printFamilleReport = (
   depenses: FamilleDepense[],
   prises: PriseEnCharge[],
   sections: Set<string>,
-  settings: ReportSettings
+  settings: ReportSettings,
+  documents: FamilleDocument[] = []
 ) => {
   const nomFamille = f.pere?.nom || f.nomFamille || f.mere?.nom || "غير محدد";
   const enfants = f.enfants || [];
-  const yearLabel = year === "all" ? "كل السنوات" : year;
+  const yearLabel = year === "all" ? "كل السنوات الدراسية" : year;
   const studyYearLabel = studyYear === "all" ? "كل السنوات الدراسية" : studyYear;
 
   const totalEvenements = Number(conso.total || 0);
@@ -731,8 +741,10 @@ const printFamilleReport = (
               `<span style="display:inline-flex;align-items:center;gap:6px">${img(e.photoEnfant)}<b>${rEsc(e.prenom)} ${rEsc(e.nom)}</b></span>`,
               e.sexe === "FILLE" ? "بنت" : e.sexe === "GARCON" ? "ولد" : "—",
               age !== null ? `${age} سنة` : "—",
-              et?.niveauScolaire?.nom,
-              et?.ecole?.nom,
+              statutScolaireOf(e.statutScolaire) === "EN_COURS"
+                ? et?.niveauScolaire?.nom
+                : labelOf(STATUTS_SCOLAIRES, statutScolaireOf(e.statutScolaire)),
+              statutScolaireOf(e.statutScolaire) === "EN_COURS" ? et?.ecole?.nom : "",
               e.estMalade ? `مريض: ${e.typeMaladie || ""}` : "",
             ];
           }),
@@ -914,6 +926,25 @@ const printFamilleReport = (
     );
   }
 
+  // ---------- Documents (liste uniquement) ----------
+  if (sections.has("documents")) {
+    parts.push(
+      section(
+        "الوثائق والصور",
+        table(
+          [{ label: "الملف", align: "start" }, { label: "الصنف" }, { label: "الوصف", align: "start" }, { label: "تاريخ الإضافة" }],
+          documents.map((d) => [
+            d.nom,
+            labelOf(CATEGORIES_DOCUMENT, d.categorie),
+            d.description || "",
+            d.createdAt ? d.createdAt.slice(0, 10) : "",
+          ]),
+          { numbered: true, empty: "لا توجد وثائق" }
+        )
+      )
+    );
+  }
+
   openReport({
     kind: "ملف الأسرة",
     title: `عائلة ${nomFamille}`,
@@ -973,6 +1004,10 @@ export default function FamillesProfiles() {
     nom: "",
     prenom: "",
     sexe: "" as "" | "FILLE" | "GARCON",
+    statutScolaire: "EN_COURS" as "EN_COURS" | "ARRETE" | "NON_SUIVI",
+    dateArretEtudes: "",
+    motifArretEtudes: "",
+    remarqueScolaire: "",
     dateNaissance: "",
     estMalade: false,
     typeMaladie: "",
@@ -1146,6 +1181,10 @@ export default function FamillesProfiles() {
       nom: enfant.nom || famille?.pere?.nom || "",
       prenom: enfant.prenom || "",
       sexe: enfant.sexe || "",
+      statutScolaire: statutScolaireOf(enfant.statutScolaire),
+      dateArretEtudes: enfant.dateArretEtudes || "",
+      motifArretEtudes: enfant.motifArretEtudes || "",
+      remarqueScolaire: enfant.remarqueScolaire || "",
       dateNaissance: toInputDate(enfant.dateNaissance),
       estMalade: !!enfant.estMalade,
       typeMaladie: enfant.typeMaladie || "",
@@ -1217,9 +1256,14 @@ export default function FamillesProfiles() {
       dateNaissance: f.dateNaissance,
       estMalade: f.estMalade,
       typeMaladie: f.estMalade ? f.typeMaladie : "",
-      niveauScolaireId: f.niveauScolaireId || null,
-      ecoleId: f.ecoleId || null,
-      specialiteId: f.specialiteId || null,
+      statutScolaire: f.statutScolaire,
+      dateArretEtudes: f.statutScolaire === "ARRETE" ? f.dateArretEtudes || null : null,
+      motifArretEtudes: f.statutScolaire === "ARRETE" ? f.motifArretEtudes || null : null,
+      remarqueScolaire: f.remarqueScolaire || null,
+      // L'historique scolaire n'est jamais supprimé : niveau / établissement ne sont envoyés que pour un enfant suivi.
+      niveauScolaireId: f.statutScolaire === "EN_COURS" ? f.niveauScolaireId || null : null,
+      ecoleId: f.statutScolaire === "EN_COURS" ? f.ecoleId || null : null,
+      specialiteId: f.statutScolaire === "EN_COURS" ? f.specialiteId || null : null,
       photoEnfantBase64: f.photo || null,
     });
   };
@@ -1359,7 +1403,7 @@ export default function FamillesProfiles() {
 
      if (exportYear !== year) {
        const r = await fetch(
-         `${API}/events/stats/familles${exportYear === "all" ? "" : `?year=${exportYear}`}`
+         `${API}/events/stats/familles${exportYear === "all" ? "" : `?anneeScolaire=${encodeURIComponent(exportYear)}`}`
        );
 
        const list: any[] = r.ok ? await r.json() : [];
@@ -1381,6 +1425,9 @@ export default function FamillesProfiles() {
      ]);
      const toutesDepenses: FamilleDepense[] = depensesRes.ok ? await depensesRes.json() : [];
      const prises: PriseEnCharge[] = prisesRes.ok ? await prisesRes.json() : [];
+     const documents: FamilleDocument[] = sections.has("documents")
+       ? await apiAuth<FamilleDocument[]>(`/famille/${familleId}/documents`).catch(() => [])
+       : [];
 
      printFamilleReport(
        famille,
@@ -1392,7 +1439,8 @@ export default function FamillesProfiles() {
        toutesDepenses.filter((d) => exportStudyYear === "all" || d.anneeScolaire === exportStudyYear),
        prises,
        sections,
-       settings
+       settings,
+       documents
      );
 
      setExportYearOpen(false);
@@ -1408,7 +1456,7 @@ export default function FamillesProfiles() {
    if (isNaN(familleId)) return;
 
    fetch(
-     `${API}/events/stats/familles${year === "all" ? "" : `?year=${year}`}`
+     `${API}/events/stats/familles${year === "all" ? "" : `?anneeScolaire=${encodeURIComponent(year)}`}`
    )
      .then((r) => (r.ok ? r.json() : []))
      .then((list: any[]) => {
@@ -1729,6 +1777,49 @@ export default function FamillesProfiles() {
                 onChange={(e) => set({ typeMaladie: e.target.value })}
               />
 
+              <div className="lg:col-span-2 rounded-2xl border border-gray-200 p-4">
+                <span className="mb-2 block text-xs font-semibold text-gray-500">الوضعية الدراسية</span>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  {STATUTS_SCOLAIRES.map((st) => (
+                    <button
+                      key={st.value}
+                      type="button"
+                      onClick={() => set({ statutScolaire: st.value as typeof f.statutScolaire })}
+                      className={`h-11 rounded-xl border text-sm font-bold transition ${
+                        f.statutScolaire === st.value
+                          ? "border-indigo-600 bg-indigo-600 text-white"
+                          : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                      }`}
+                    >
+                      {st.label}
+                    </button>
+                  ))}
+                </div>
+                {f.statutScolaire === "ARRETE" && (
+                  <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                    <TextField
+                      label="تاريخ التوقف (اختياري)"
+                      type="date"
+                      value={f.dateArretEtudes}
+                      onChange={(e) => set({ dateArretEtudes: e.target.value })}
+                    />
+                    <TextField
+                      label="سبب التوقف (اختياري)"
+                      value={f.motifArretEtudes}
+                      onChange={(e) => set({ motifArretEtudes: e.target.value })}
+                    />
+                  </div>
+                )}
+                {f.statutScolaire !== "EN_COURS" && (
+                  <p className="mt-3 text-[11px] text-gray-400">
+                    المسار الدراسي السابق يبقى محفوظا ويمكن الاطلاع عليه في الملف الدراسي.
+                  </p>
+                )}
+              </div>
+
+              {f.statutScolaire === "EN_COURS" && (
+                <>
+
               <div>
                 <span className="mb-1.5 block text-xs font-semibold text-gray-500">المستوى الدراسي</span>
                 <Select
@@ -1760,6 +1851,16 @@ export default function FamillesProfiles() {
                   placeholder="اختر المدرسة"
                   apiUrl={`${API}/enfant/ecole`}
                   onNewItem={(o) => setEcoles((p) => [...p, o])}
+                />
+              </div>
+                </>
+              )}
+
+              <div className="lg:col-span-2">
+                <TextField
+                  label="ملاحظة دراسية (اختياري)"
+                  value={f.remarqueScolaire}
+                  onChange={(e) => set({ remarqueScolaire: e.target.value })}
                 />
               </div>
             </div>
@@ -1858,7 +1959,7 @@ export default function FamillesProfiles() {
                 <div className="mt-3 flex flex-wrap justify-center gap-2 lg:justify-start">
                   {famille.typeFamille?.nom && <Badge tone="white">{famille.typeFamille.nom}</Badge>}
                   <Badge tone="white">{famille.degreFamille != null ? `الدرجة: ${famille.degreFamille}` : "معوز"}</Badge>
-                  {famille.phone && <Badge tone="white">📞 {famille.phone}</Badge>}
+                  {famille.phone && <Badge tone="white">الهاتف: <span dir="ltr">{famille.phone}</span></Badge>}
                 </div>
               </div>
             </div>
@@ -1916,6 +2017,9 @@ export default function FamillesProfiles() {
         {/* ============ TAKAFOUL EXTERNE ============ */}
         <FamillePrisesEnCharge familleId={familleId} />
 
+        {/* ============ DOCUMENTS & PHOTOS ============ */}
+        <FamilleDocuments familleId={familleId} />
+
         {/* ============ ENFANTS ============ */}
         <Section title="معلومات الأطفال" subtitle={`${enfants.length} طفل`}>
           {enfants.length === 0 ? (
@@ -1940,6 +2044,11 @@ export default function FamillesProfiles() {
                             {enfant.nom} {enfant.prenom}
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1.5">
+                            {statutScolaireOf(enfant.statutScolaire) !== "EN_COURS" && (
+                              <Badge tone={statutScolaireOf(enfant.statutScolaire) === "ARRETE" ? "amber" : "gray"}>
+                                {labelOf(STATUTS_SCOLAIRES, statutScolaireOf(enfant.statutScolaire))}
+                              </Badge>
+                            )}
                             {enfant.sexe && (
                               <Badge tone={enfant.sexe === "FILLE" ? "pink" : "indigo"}>
                                 {enfant.sexe === "FILLE" ? "بنت" : "ولد"}
@@ -1955,9 +2064,19 @@ export default function FamillesProfiles() {
 
                     <div className="grid grid-cols-2 gap-2.5">
                       <Field label="تاريخ الازدياد" value={formatDate(enfant.dateNaissance)} />
-                      <Field label="المستوى الدراسي" value={etude?.niveauScolaire?.nom} />
-                      <Field label="المدرسة" value={etude?.ecole?.nom} />
-                      <Field label="التخصص" value={etude?.specialite?.nom} />
+                      {statutScolaireOf(enfant.statutScolaire) === "EN_COURS" && (
+                        <>
+                          <Field label="المستوى الدراسي" value={etude?.niveauScolaire?.nom} />
+                          <Field label="المدرسة" value={etude?.ecole?.nom} />
+                          {etude?.specialite?.nom && <Field label="التخصص" value={etude.specialite.nom} />}
+                        </>
+                      )}
+                      {statutScolaireOf(enfant.statutScolaire) === "ARRETE" && (
+                        <>
+                          <Field label="توقف عن الدراسة" value={enfant.dateArretEtudes ? formatDate(enfant.dateArretEtudes) : "—"} />
+                          {enfant.motifArretEtudes && <Field label="سبب التوقف" value={enfant.motifArretEtudes} />}
+                        </>
+                      )}
                       {enfant.estMalade && <Field label="نوع المرض" value={enfant.typeMaladie} />}
                     </div>
                   </div>
@@ -2036,12 +2155,9 @@ export default function FamillesProfiles() {
                   onChange={(e) => setYear(e.target.value)}
                   className="h-10 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
                 >
-                  <option value="all">كل السنوات</option>
+                  <option value="all">كل السنوات الدراسية</option>
 
-                  {Array.from(
-                    { length: 8 },
-                    (_, i) => String(new Date().getFullYear() - i)
-                  ).map((y) => (
+                  {schoolYearsList(7).map((y) => (
                     <option key={y} value={y}>
                       {y}
                     </option>
@@ -2361,14 +2477,14 @@ export default function FamillesProfiles() {
       >
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold text-gray-500">فترة الأنشطة</span>
+            <span className="mb-1.5 block text-xs font-semibold text-gray-500">السنة الدراسية للأنشطة</span>
             <select
               value={exportYear}
               onChange={(e) => setExportYear(e.target.value)}
               className="h-11 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm font-semibold"
             >
-              <option value="all">كل السنوات</option>
-              {Array.from({ length: 8 }, (_, i) => String(new Date().getFullYear() - i)).map((y) => (
+              <option value="all">كل السنوات الدراسية</option>
+              {schoolYearsList(7).map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>

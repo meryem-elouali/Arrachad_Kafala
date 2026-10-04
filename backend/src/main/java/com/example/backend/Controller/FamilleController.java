@@ -225,6 +225,7 @@ public class FamilleController {
                 enfant.setTypeMaladie((String) enfantData.getOrDefault("typeMaladie", ""));
                 enfant.setEstMalade((Boolean) enfantData.getOrDefault("estMalade", false));
                 enfant.setSexe((String) enfantData.get("sexe"));
+                EnfantController.appliquerStatutScolaire(enfant, enfantData);
                 // Ignore les champs comme "niveauscolaire" et "ecole" car ils sont gérés via Etude
                 enfants.add(enfant);
             }
@@ -279,6 +280,13 @@ public class FamilleController {
             // 🔹 Traiter chaque étude manuellement
             for (int i = 0; i < etudesData.size(); i++) {
                 Map<String, Object> etudeData = etudesData.get(i);
+
+                // Pas d'étude pour un enfant non scolarisé (entrée nulle ou vide) :
+                // l'index reste aligné sur celui des enfants.
+                if (etudeData == null || etudeData.get("ecoleId") == null || etudeData.get("niveauScolaireId") == null) {
+                    continue;
+                }
+
                 Etude etude = new Etude();
 
                 // Associer l'enfant par index (puisque les enfants sont sauvegardés dans l'ordre)
